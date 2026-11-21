@@ -5,7 +5,7 @@ x-chatwoot: &chatwoot
     dockerfile: docker/Dockerfile
     args:
       RAILS_ENV: production
-      NODE_OPTIONS: --max-old-space-size=3072 --openssl-legacy-provider
+      NODE_OPTIONS: --max-old-space-size=4096 --openssl-legacy-provider
   environment: &chatwoot-environment
     RAILS_ENV: production
     NODE_ENV: production
