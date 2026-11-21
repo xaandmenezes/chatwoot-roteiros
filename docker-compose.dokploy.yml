@@ -1,0 +1,104 @@
+x-chatwoot: &chatwoot
+  image: chatwoot-psr:${CHATWOOT_IMAGE_TAG:?Set the deployed Git commit SHA}
+  build:
+    context: .
+    dockerfile: docker/Dockerfile
+    args:
+      RAILS_ENV: production
+      NODE_OPTIONS: --max-old-space-size=3072 --openssl-legacy-provider
+  environment: &chatwoot-environment
+    RAILS_ENV: production
+    NODE_ENV: production
+    INSTALLATION_ENV: docker
+    SECRET_KEY_BASE: ${SECRET_KEY_BASE:?Set SECRET_KEY_BASE in Dokploy}
+    FRONTEND_URL: ${FRONTEND_URL:?Set the HTTPS Chatwoot URL}
+    FORCE_SSL: "true"
+    DEFAULT_LOCALE: pt_BR
+    ENABLE_ACCOUNT_SIGNUP: "false"
+    ACTIVE_STORAGE_SERVICE: local
+    RAILS_LOG_TO_STDOUT: "true"
+    POSTGRES_HOST: postgres
+    POSTGRES_PORT: "5432"
+    POSTGRES_DATABASE: chatwoot
+    POSTGRES_USERNAME: chatwoot
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in Dokploy}
+    REDIS_URL: redis://redis:6379
+    REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in Dokploy}
+  volumes:
+    - storage_data:/app/storage
+
+services:
+  prepare:
+    <<: *chatwoot
+    entrypoint: docker/entrypoints/rails.sh
+    command: [bundle, exec, rails, db:chatwoot_prepare]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  rails:
+    <<: *chatwoot
+    entrypoint: docker/entrypoints/rails.sh
+    command: [bundle, exec, rails, s, -p, "3000", -b, 0.0.0.0]
+    restart: unless-stopped
+    depends_on:
+      prepare:
+        condition: service_completed_successfully
+    expose:
+      - "3000"
+    healthcheck:
+      test:
+        - CMD
+        - ruby
+        - -rnet/http
+        - -e
+        - 'request = Net::HTTP::Get.new("/health", {"X-Forwarded-Proto" => "https"}); response = Net::HTTP.start("127.0.0.1", 3000) { |http| http.request(request) }; exit(response.code == "200" && response.body.include?("woot") ? 0 : 1)'
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  sidekiq:
+    <<: *chatwoot
+    command: [bundle, exec, sidekiq, -C, config/sidekiq.yml]
+    restart: unless-stopped
+    depends_on:
+      prepare:
+        condition: service_completed_successfully
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: chatwoot
+      POSTGRES_USER: chatwoot
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in Dokploy}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in Dokploy}
+    command: [sh, -c, 'exec redis-server --requirepass "$$REDIS_PASSWORD" --appendonly yes']
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: [CMD-SHELL, 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping | grep -q PONG']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  storage_data:
+  postgres_data:
+  redis_data:
