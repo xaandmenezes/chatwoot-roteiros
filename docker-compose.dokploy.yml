@@ -41,6 +41,11 @@ services:
 
   rails:
     <<: *chatwoot
+    environment: &chatwoot-runtime-environment
+      <<: *chatwoot-environment
+      UMBLER_LABELS_ACCOUNT_ID: ${UMBLER_LABELS_ACCOUNT_ID:-}
+      UMBLER_ORGANIZATION_ID: ${UMBLER_ORGANIZATION_ID:-}
+      UMBLER_API_TOKEN: ${UMBLER_API_TOKEN:-}
     entrypoint: docker/entrypoints/rails.sh
     command: [bundle, exec, rails, s, -p, "3000", -b, 0.0.0.0]
     restart: unless-stopped
@@ -63,6 +68,7 @@ services:
 
   sidekiq:
     <<: *chatwoot
+    environment: *chatwoot-runtime-environment
     command: [bundle, exec, sidekiq, -C, config/sidekiq.yml]
     restart: unless-stopped
     depends_on:
