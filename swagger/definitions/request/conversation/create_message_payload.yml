@@ -39,6 +39,8 @@ properties:
     description: |
       External message ID, returned as `source_id`. Use it with
       `content_attributes.in_reply_to_external_id` to reference this message in a reply.
+      In an API inbox, retrying a public incoming text without attachments with the
+      same nonblank external ID in the same conversation returns the original message.
     example: 'external-message-123'
   sender_type:
     type: string

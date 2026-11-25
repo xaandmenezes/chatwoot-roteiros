@@ -12526,7 +12526,7 @@
           },
           "source_id": {
             "type": "string",
-            "description": "External message ID, returned as `source_id`. Use it with\n`content_attributes.in_reply_to_external_id` to reference this message in a reply.\n",
+            "description": "External message ID, returned as `source_id`. Use it with\n`content_attributes.in_reply_to_external_id` to reference this message in a reply.\nIn an API inbox, retrying a public incoming text without attachments with the\nsame nonblank external ID in the same conversation returns the original message.\n",
             "example": "external-message-123"
           },
           "sender_type": {

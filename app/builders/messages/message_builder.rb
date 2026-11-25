@@ -22,6 +22,34 @@ class Messages::MessageBuilder
   end
 
   def perform
+    return create_message unless replayable_incoming_text?
+
+    @conversation.with_lock do
+      @message = existing_incoming_text || create_message
+      @message.echo_id = @params[:echo_id]
+      @message
+    end
+  end
+
+  private
+
+  def replayable_incoming_text?
+    return false unless @message_type == 'incoming' && !@private && @conversation.inbox.api?
+    return false unless plain_text_delivery?
+
+    @params[:source_id].is_a?(String) && @params[:source_id].present?
+  end
+
+  def plain_text_delivery?
+    [nil, 'text'].include?(@params[:content_type]) && @attachments.blank? && forwarded_message_id.blank?
+  end
+
+  def existing_incoming_text
+    @conversation.messages.incoming.where(private: false, content_type: :text, source_id: @params[:source_id])
+                 .where.missing(:attachments).reorder(:id).first
+  end
+
+  def create_message
     @message = @conversation.messages.build(message_params)
     process_attachments
     process_emails
@@ -31,8 +59,6 @@ class Messages::MessageBuilder
     @message.save!
     @message
   end
-
-  private
 
   # Extracts content attributes from the given params.
   # - Converts ActionController::Parameters to a regular hash if needed.
