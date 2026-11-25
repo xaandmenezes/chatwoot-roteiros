@@ -561,6 +561,78 @@ describe('#actions', () => {
         ['getConversation', 20],
       ]);
     });
+
+    it('removes revoked message attachments from the gallery', () => {
+      const localCommit = vi.fn();
+      const message = {
+        id: 71,
+        conversation_id: 10,
+        status: 'delivered',
+        content: 'This message was deleted',
+        content_attributes: { deleted: true },
+        attachments: [],
+      };
+
+      actions.updateMessage(
+        {
+          commit: localCommit,
+          dispatch: vi.fn(),
+          state: { allConversations: [] },
+        },
+        message
+      );
+
+      expect(localCommit.mock.calls).toEqual([
+        [types.ADD_MESSAGE, message],
+        [types.DELETE_CONVERSATION_ATTACHMENTS, message],
+      ]);
+    });
+
+    it('retries automatic translation when a newer Ryze edit arrives', () => {
+      const localCommit = vi.fn();
+      const localDispatch = vi.fn();
+      const currentMessage = {
+        id: 71,
+        conversation_id: 10,
+        content: 'Original text',
+        content_attributes: {},
+        additional_attributes: {},
+      };
+      const editedMessage = {
+        ...currentMessage,
+        content: 'Edited text',
+        content_attributes: { edited: true },
+        additional_attributes: {
+          ryze_edited_at: '2026-11-25T22:00:00.000Z',
+        },
+      };
+
+      actions.updateMessage(
+        {
+          commit: localCommit,
+          dispatch: localDispatch,
+          state: {
+            allConversations: [{ id: 10, messages: [currentMessage] }],
+            autoTranslating: { en: { 71: true }, fr: { 71: true } },
+            selectedChatId: 10,
+          },
+        },
+        editedMessage
+      );
+
+      expect(localCommit.mock.calls).toEqual([
+        [types.ADD_MESSAGE, editedMessage],
+        [
+          types.SET_AUTO_TRANSLATING,
+          { locale: 'en', messageIds: [71], translating: undefined },
+        ],
+        [
+          types.SET_AUTO_TRANSLATING,
+          { locale: 'fr', messageIds: [71], translating: undefined },
+        ],
+      ]);
+      expect(localDispatch).toHaveBeenCalledWith('autoTranslateMessages', 10);
+    });
   });
 
   describe('#markMessagesRead', () => {

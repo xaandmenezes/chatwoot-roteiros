@@ -1,7 +1,7 @@
 import types from '../../mutation-types';
 import getters, { getSelectedChatConversation } from './getters';
 import actions from './actions';
-import { findPendingMessageIndex } from './helpers';
+import { findPendingMessageIndex, isOlderRyzeRevision } from './helpers';
 import { MESSAGE_STATUS } from 'shared/constants/messages';
 import wootConstants from 'dashboard/constants/globals';
 import { BUS_EVENTS } from '../../../../shared/constants/busEvents';
@@ -229,6 +229,20 @@ export const mutations = {
     }
 
     const id = message.conversation_id;
+    const [conversation] = getSelectedChatConversation({
+      allConversations: _state.allConversations,
+      selectedChatId: id,
+    });
+    const currentMessage = conversation?.messages?.find(
+      item => item.id === message.id
+    );
+    if (
+      currentMessage?.content_attributes?.deleted ||
+      (currentMessage && isOlderRyzeRevision(currentMessage, message))
+    ) {
+      return;
+    }
+
     const existingAttachments = _state.attachments[id] || [];
 
     const attachmentsToAdd = message.attachments.filter(attachment => {
@@ -244,8 +258,6 @@ export const mutations = {
   },
 
   [types.DELETE_CONVERSATION_ATTACHMENTS](_state, message) {
-    if (message.status !== MESSAGE_STATUS.SENT) return;
-
     const { conversation_id: id } = message;
     const existingAttachments = _state.attachments[id] || [];
     if (!existingAttachments.length) return;
@@ -265,6 +277,16 @@ export const mutations = {
 
     const pendingMessageIndex = findPendingMessageIndex(chat, message);
     if (pendingMessageIndex !== -1) {
+      const existingMessage = chat.messages[pendingMessageIndex];
+      if (
+        existingMessage.id === message.id &&
+        !message.content_attributes?.deleted &&
+        (existingMessage.content_attributes?.deleted ||
+          isOlderRyzeRevision(existingMessage, message))
+      ) {
+        return;
+      }
+
       chat.messages[pendingMessageIndex] = message;
     } else {
       chat.messages.push(message);

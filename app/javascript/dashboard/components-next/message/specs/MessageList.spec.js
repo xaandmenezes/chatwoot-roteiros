@@ -5,12 +5,13 @@ import MessagesView from 'dashboard/components/widgets/conversation/MessagesView
 import { createPendingMessage } from 'dashboard/helper/commons';
 import actions from 'dashboard/store/modules/conversations/actions';
 import MessageList from '../MessageList.vue';
+import Message from '../Message.vue';
 import MessageError from '../MessageError.vue';
 
 const NOW = Math.floor(Date.now() / 1000);
 const CONVERSATION_ID = 71;
 
-const mountConversation = message => {
+const mountConversation = (message, stubs = {}) => {
   const currentChat = { id: CONVERSATION_ID, messages: [message] };
   const store = createStore({
     getters: {
@@ -46,12 +47,13 @@ const mountConversation = message => {
         AudioBubble: true,
         TextBubble: true,
         ContextMenu: true,
+        ...stubs,
       },
     },
   });
 };
 
-describe('retrying audio in a conversation', () => {
+describe('conversation messages', () => {
   const axios = vi.fn();
   axios.post = vi.fn();
 
@@ -146,6 +148,69 @@ describe('retrying audio in a conversation', () => {
     expect(axios.post).toHaveBeenCalledExactlyOnceWith(
       '/api/v1/conversations/71/messages/100/retry'
     );
+    wrapper.unmount();
+  });
+
+  it('updates the same message bubble when the inbox marks it edited', async () => {
+    const wrapper = mountConversation(
+      {
+        id: 101,
+        status: 'sent',
+        message_type: 0,
+        content: 'Incoming message',
+        content_attributes: {},
+        conversation_id: CONVERSATION_ID,
+        created_at: NOW,
+        attachments: [],
+      },
+      { TextBubble: false }
+    );
+    const messageBubble = wrapper.getComponent(Message);
+    const originalBubbleInstance = messageBubble.vm.$.uid;
+
+    expect(messageBubble.props().content).toBe('Incoming message');
+    expect(wrapper.text()).not.toContain('CONVERSATION.EDITED');
+
+    await wrapper.setProps({
+      messages: [
+        {
+          id: 101,
+          status: 'sent',
+          message_type: 0,
+          content: 'Edited incoming message',
+          content_attributes: { edited: true },
+          conversation_id: CONVERSATION_ID,
+          created_at: NOW,
+          attachments: [],
+        },
+      ],
+    });
+    const editedBubble = wrapper.getComponent(Message);
+
+    expect(editedBubble.vm.$.uid).toBe(originalBubbleInstance);
+    expect(editedBubble.props().content).toBe('Edited incoming message');
+    expect(wrapper.text()).toContain('CONVERSATION.EDITED');
+
+    await wrapper.setProps({
+      messages: [
+        {
+          id: 101,
+          status: 'sent',
+          message_type: 0,
+          content: 'This message was deleted',
+          content_attributes: { edited: true, deleted: true },
+          conversation_id: CONVERSATION_ID,
+          created_at: NOW,
+          attachments: [],
+        },
+      ],
+    });
+    const deletedBubble = wrapper.getComponent(Message);
+
+    expect(deletedBubble.vm.$.uid).toBe(originalBubbleInstance);
+    expect(deletedBubble.props().content).toBe('This message was deleted');
+    expect(wrapper.text()).not.toContain('CONVERSATION.EDITED');
+
     wrapper.unmount();
   });
 });

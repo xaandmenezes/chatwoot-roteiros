@@ -22,7 +22,7 @@ import {
   handleVoiceCallUpdated,
   syncConversationCallVisibility,
 } from 'dashboard/helper/voice';
-import { applyRoleFilter } from './helpers';
+import { applyRoleFilter, isNewerRyzeEdit } from './helpers';
 import {
   getUserPermissions,
   getUserRole,
@@ -505,7 +505,35 @@ const actions = {
   },
 
   updateMessage({ commit, dispatch, rootGetters, state }, message) {
+    let isNewRyzeEdit = false;
+    if (message.additional_attributes?.ryze_edited_at) {
+      const conversation = state.allConversations.find(
+        item => item.id === message.conversation_id
+      );
+      const current = conversation?.messages?.find(
+        item => item.id === message.id
+      );
+      isNewRyzeEdit = isNewerRyzeEdit(message, current);
+    }
+
     commit(types.ADD_MESSAGE, message);
+    if (message.content_attributes?.deleted) {
+      commit(types.DELETE_CONVERSATION_ATTACHMENTS, message);
+    }
+    if (isNewRyzeEdit) {
+      Object.entries(state.autoTranslating).forEach(([locale, attempts]) => {
+        if (attempts[message.id] !== undefined) {
+          commit(types.SET_AUTO_TRANSLATING, {
+            locale,
+            messageIds: [message.id],
+            translating: undefined,
+          });
+        }
+      });
+      if (message.conversation_id === state.selectedChatId) {
+        dispatch('autoTranslateMessages', message.conversation_id);
+      }
+    }
 
     const contactInfoRequest =
       message.content_attributes?.whatsapp_contact_info;

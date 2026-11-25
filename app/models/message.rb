@@ -65,7 +65,7 @@ class Message < ApplicationRecord
   }.to_json.freeze
 
   before_validation :ensure_content_type
-  before_validation :prevent_message_flooding
+  before_validation :prevent_message_flooding, if: :will_save_change_to_conversation_id?
   before_save :ensure_processed_message_content
   before_save :ensure_in_reply_to
 
@@ -146,6 +146,20 @@ class Message < ApplicationRecord
 
   after_update_commit :dispatch_update_event
   after_commit :reindex_for_search, if: :should_index?, on: [:create, :update]
+
+  # A translation provider can finish after the contact edits or revokes the source text.
+  def with_current_content(original_content)
+    with_lock { yield if !deleted && content == original_content }
+  end
+
+  def mark_deleted!
+    transaction do
+      # Preserve the forward marker so replies to a deleted forward stay out of this conversation.
+      update!(content: I18n.t('conversations.messages.deleted'), content_type: :text,
+              content_attributes: content_attributes.slice('forwarded_message_id').merge(deleted: true))
+      attachments.destroy_all
+    end
+  end
 
   def channel_token
     @token ||= inbox.channel.try(:page_access_token)
