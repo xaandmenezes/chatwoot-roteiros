@@ -294,6 +294,17 @@
   },
 
   "CONTACTS_LAYOUT": {
+    "UMBLER_LABEL_SYNC": {
+      "ACTION": "Fetch labels from Umbler",
+      "RETRY": "Retry",
+      "LOAD_ERROR": "Could not check the status of the Umbler label sync.",
+      "QUEUED": "Waiting to check contacts…",
+      "RUNNING": "Checking contacts… {processed} checked.",
+      "FAILED": "The check stopped before finishing. Try again to continue.",
+      "START_ERROR": "Could not start the Umbler check. Try again.",
+      "STATUS_ERROR": "Could not refresh the Umbler check. Reconnecting…",
+      "RESULT": "{processed} checked · {updated} updated · {unchanged} already up to date · {noLabels} without labels in Umbler · {unmatched} unmatched · {ambiguous} ambiguous"
+    },
     "HEADER": {
       "TITLE": "Contacts",
       "SEARCH_TITLE": "Search contacts",

@@ -70,6 +70,7 @@ const mountSegment = async id => {
     global: {
       plugins: [router, store],
       stubs: {
+        UmblerLabelSync: true,
         ContactListHeaderWrapper: true,
         ContactsActiveFiltersPreview: true,
         ContactsList: {
@@ -86,6 +87,22 @@ const mountSegment = async id => {
 
 describe('ContactsIndex saved segments', () => {
   afterEach(() => vi.restoreAllMocks());
+
+  it('refreshes the visible segment when the Umbler sync changes labels', async () => {
+    const filter = vi
+      .spyOn(ContactAPI, 'filter')
+      .mockResolvedValue(matchingContacts);
+    const { wrapper } = await mountSegment(validSegment.id);
+    expect(filter).toHaveBeenCalledTimes(1);
+
+    wrapper
+      .findComponent({ name: 'UmblerLabelSync' })
+      .vm.$emit('labelsChanged');
+    await flushPromises();
+
+    expect(filter).toHaveBeenCalledTimes(2);
+    wrapper.unmount();
+  });
 
   it('shows a rejected segment without the previous contacts or count and recovers on navigation', async () => {
     vi.spyOn(ContactAPI, 'filter')

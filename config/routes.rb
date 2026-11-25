@@ -274,6 +274,7 @@ Rails.application.routes.draw do
               resource :enrichment, only: [:create] if ChatwootApp.enterprise?
             end
           end
+          resource :umbler_label_sync, only: [:show, :create]
           resources :contacts, only: [:index, :show, :update, :create, :destroy] do
             collection do
               get :active
