@@ -3,6 +3,29 @@ require 'rails_helper'
 RSpec.describe 'Conversation Messages API', type: :request do
   let!(:account) { create(:account) }
 
+  it 'discards a stale Google translation when the original is revoked during the request' do
+    conversation = create(:conversation, account: account)
+    message = create(:message, conversation: conversation, account: account)
+    agent = create(:user, account: account, role: :administrator)
+    allow(Integrations::GoogleTranslate::CredentialsValidator).to receive(:valid?).and_return(true)
+    create(:integrations_hook, :google_translate, account: account)
+    account.update!(translation_provider: 'google_translate')
+    translator = instance_double(Integrations::GoogleTranslate::ProcessorService)
+    allow(Integrations::GoogleTranslate::ProcessorService).to receive(:new).and_return(translator)
+    allow(translator).to receive(:translate_message) do
+      message.mark_deleted!
+      'obsolete translation'
+    end
+
+    post translate_api_v1_account_conversation_message_url(account_id: account.id, conversation_id: conversation.display_id, id: message.id),
+         params: { target_language: 'en' }, headers: agent.create_new_auth_token, as: :json
+
+    expect(translator).to have_received(:translate_message)
+    expect(response).to have_http_status(:success)
+    expect(response.parsed_body['content']).to be_nil
+    expect(message.reload.translations).to be_nil
+  end
+
   describe 'POST /api/v1/accounts/{account.id}/conversations/<id>/messages' do
     let!(:inbox) { create(:inbox, account: account) }
     let!(:conversation) { create(:conversation, inbox: inbox, account: account) }
@@ -281,6 +304,15 @@ RSpec.describe 'Conversation Messages API', type: :request do
 
       before do
         create(:inbox_member, inbox: conversation.inbox, user: agent)
+      end
+
+      it 'returns the Ryze revision when loading history so late events cannot overwrite a newer edit' do
+        revision = '2026-11-25T18:20:30.000000000Z'
+        create(:message, conversation: conversation, account: account, additional_attributes: { ryze_edited_at: revision, internal: 'unrelated' })
+
+        get api_v1_account_conversation_messages_url(account, conversation.display_id), headers: agent.create_new_auth_token, as: :json
+
+        expect(response.parsed_body.fetch('payload').first['additional_attributes']).to eq('ryze_edited_at' => revision)
       end
 
       it 'shows the conversation' do

@@ -46,6 +46,10 @@ services:
       UMBLER_LABELS_ACCOUNT_ID: ${UMBLER_LABELS_ACCOUNT_ID:-}
       UMBLER_ORGANIZATION_ID: ${UMBLER_ORGANIZATION_ID:-}
       UMBLER_API_TOKEN: ${UMBLER_API_TOKEN:-}
+      RYZE_WEBHOOK_SECRET: ${RYZE_WEBHOOK_SECRET:-}
+      RYZE_INSTANCE_NAME: ${RYZE_INSTANCE_NAME:-}
+      RYZE_INBOX_ID: ${RYZE_INBOX_ID:-}
+      RYZE_PILOT_CHAT_JID: ${RYZE_PILOT_CHAT_JID:-}
     entrypoint: docker/entrypoints/rails.sh
     command: [bundle, exec, rails, s, -p, "3000", -b, 0.0.0.0]
     restart: unless-stopped

@@ -4,13 +4,12 @@ class Captain::Conversation::ContactMessageTranslationService
   def perform
     return if message.translations&.key?(target_language)
 
+    original_content = message.content
     translation = text_in_agent_language
 
     # Two agents with different languages can open the same conversation, so two jobs may translate this message at once.
     # with_lock reloads the message before saving, so the translation the other job saved is kept instead of overwritten.
-    message.with_lock do
-      next if message.deleted
-
+    message.with_current_content(original_content) do
       if translation
         message.assign_attributes(
           translations: message.translations.to_h.merge(target_language => translation), translation_provider: translator.provider,

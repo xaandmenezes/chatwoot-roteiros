@@ -208,6 +208,73 @@ describe('#mutations', () => {
       ]);
       expect(emitter.emit).not.toHaveBeenCalled();
     });
+
+    it('ignores an older Ryze revision for an existing persisted message', () => {
+      const currentMessage = {
+        id: 101,
+        conversation_id: 1,
+        content: 'Latest text',
+        content_attributes: { edited: true },
+        additional_attributes: {
+          ryze_edited_at: '2026-11-25T22:00:00.000Z',
+        },
+        attachments: [],
+      };
+      const state = {
+        allConversations: [{ id: 1, messages: [currentMessage] }],
+        selectedChatId: 1,
+      };
+
+      mutations[types.ADD_MESSAGE](state, {
+        id: 101,
+        conversation_id: 1,
+        content: 'Older text',
+        content_attributes: {},
+        additional_attributes: {
+          ryze_edited_at: '2026-11-25T21:59:00.000Z',
+        },
+        attachments: [{ id: 900, message_id: 101 }],
+      });
+
+      expect(state.allConversations[0].messages).toEqual([currentMessage]);
+      expect(state.allConversations[0].messages[0]).toBe(currentMessage);
+    });
+
+    it('keeps a deleted message terminal when an older create and its attachments arrive', () => {
+      const deletedMessage = {
+        id: 101,
+        conversation_id: 1,
+        content: 'This message was deleted',
+        content_attributes: { deleted: true },
+        additional_attributes: {
+          ryze_edited_at: '2026-11-25T22:00:00.000Z',
+        },
+        attachments: [],
+      };
+      const oldMessage = {
+        id: 101,
+        conversation_id: 1,
+        status: 'sent',
+        content: 'Original text',
+        content_attributes: {},
+        attachments: [{ id: 900, message_id: 101 }],
+      };
+      const state = {
+        allConversations: [{ id: 1, messages: [deletedMessage] }],
+        selectedChatId: 1,
+        attachments: {
+          1: [],
+          2: [{ id: 901, message_id: 202 }],
+        },
+      };
+
+      mutations[types.ADD_MESSAGE](state, oldMessage);
+      mutations[types.ADD_CONVERSATION_ATTACHMENTS](state, oldMessage);
+
+      expect(state.allConversations[0].messages).toEqual([deletedMessage]);
+      expect(state.attachments[1]).toEqual([]);
+      expect(state.attachments[2]).toEqual([{ id: 901, message_id: 202 }]);
+    });
   });
 
   describe('#CHANGE_CONVERSATION_STATUS', () => {
@@ -448,21 +515,26 @@ describe('#mutations', () => {
   });
 
   describe('#DELETE_CONVERSATION_ATTACHMENTS', () => {
-    it('delete conversation attachments', () => {
+    it('deletes only attachments for that message and conversation regardless of status', () => {
       const state = {
         allConversations: [{ id: 1 }],
         attachments: {
-          1: [{ id: 1, message_id: 1 }],
+          1: [
+            { id: 1, message_id: 1 },
+            { id: 2, message_id: 2 },
+          ],
+          2: [{ id: 3, message_id: 1 }],
         },
       };
       const message = {
         conversation_id: 1,
-        status: 'sent',
+        status: 'delivered',
         id: 1,
       };
 
       mutations[types.DELETE_CONVERSATION_ATTACHMENTS](state, message);
-      expect(state.attachments[1]).toHaveLength(0);
+      expect(state.attachments[1]).toEqual([{ id: 2, message_id: 2 }]);
+      expect(state.attachments[2]).toEqual([{ id: 3, message_id: 1 }]);
     });
 
     it('should not delete attachments for non-matching message id', () => {

@@ -37,6 +37,30 @@ export const findPendingMessageIndex = (chat, message) => {
   );
 };
 
+export const isOlderRyzeRevision = (currentMessage, incomingMessage) => {
+  const currentRevision = currentMessage.additional_attributes?.ryze_edited_at;
+  const incomingRevision =
+    incomingMessage.additional_attributes?.ryze_edited_at;
+
+  return Boolean(
+    currentRevision && (!incomingRevision || incomingRevision < currentRevision)
+  );
+};
+
+export const isNewerRyzeEdit = (incomingMessage, currentMessage) => {
+  const incomingRevision =
+    incomingMessage.additional_attributes?.ryze_edited_at;
+  const currentRevision = currentMessage?.additional_attributes?.ryze_edited_at;
+
+  return Boolean(
+    incomingMessage.content_attributes?.edited &&
+      !currentMessage?.content_attributes?.deleted &&
+      !incomingMessage.content_attributes?.deleted &&
+      incomingRevision &&
+      (!currentRevision || incomingRevision > currentRevision)
+  );
+};
+
 export const filterByStatus = (chatStatus, filterStatus) =>
   filterStatus === 'all' ? true : chatStatus === filterStatus;
 

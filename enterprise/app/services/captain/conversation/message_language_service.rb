@@ -12,10 +12,12 @@ class Captain::Conversation::MessageLanguageService
   def perform
     return message.source_language if message.source_language.present?
 
-    language = translator.language(message.content)
+    original_content = message.content
+    language = translator.language(original_content)
     return if language.blank?
 
-    message.with_lock { message.update!(source_language: language) }
+    return unless message.with_current_content(original_content) { message.update!(source_language: language) }
+
     update_conversation_language(language)
     language
   end
