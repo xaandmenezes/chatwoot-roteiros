@@ -25,6 +25,27 @@ RSpec.describe 'Incoming message replay in API inboxes', type: :request do
     expect(conversation.reload).to be_resolved
   end
 
+  it 'preserves the current content when the original text is delivered again after an edit' do
+    original_id = deliver
+    Message.find(original_id).update!(content: 'Edited text')
+
+    expect(deliver).to eq(original_id)
+    expect(response.parsed_body.fetch('content')).to eq('Edited text')
+    expect(conversation.messages.incoming.count).to eq(1)
+  end
+
+  it 'preserves deletion when the original text is delivered again after removal' do
+    original_id = deliver
+    delete api_v1_account_conversation_message_url(account_id: account.id, conversation_id: conversation.display_id, id: original_id),
+           headers: { api_access_token: agent.access_token.token }
+    expect(response).to have_http_status(:success)
+
+    expect(deliver).to eq(original_id)
+    expect(response.parsed_body.fetch('content_attributes')).to include('deleted' => true)
+    expect(response.parsed_body.fetch('content')).to eq(I18n.t('conversations.messages.deleted'))
+    expect(conversation.messages.incoming.count).to eq(1)
+  end
+
   it 'scopes the provider ID to a conversation and preserves distinct events with identical content' do
     other_conversation = create(:conversation, account: account, inbox: inbox)
     ids = [deliver, deliver(other_conversation), deliver(source_id: 'provider-456'), deliver(source_id: nil), deliver(source_id: nil)]
