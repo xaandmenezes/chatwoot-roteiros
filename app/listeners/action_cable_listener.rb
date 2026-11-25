@@ -1,5 +1,6 @@
 class ActionCableListener < BaseListener
   include Events::Types
+  include ActionCableListener::ConversationBroadcasts
 
   def notification_created(event)
     notification, account, unread_count, count = extract_notification_and_account(event)
@@ -105,7 +106,9 @@ class ActionCableListener < BaseListener
   end
 
   def conversation_contact_changed(event)
-    broadcast_to_inbox_members(event, CONVERSATION_CONTACT_CHANGED)
+    conversation = event.data.fetch(:conversation)
+    labels = Conversations::ContactLabels.for_conversation(conversation.account, conversation)
+    broadcast_to_inbox_members(event, CONVERSATION_CONTACT_CHANGED, contact_labels: labels)
   end
 
   def contact_created(event)
@@ -157,15 +160,6 @@ class ActionCableListener < BaseListener
 
     broadcast(conversation.account, inbox_user_tokens(conversation) + client_tokens, event_name, data,
               widget: { tokens: widget_tokens, data: message.widget_push_event_data(data) })
-  end
-
-  def broadcast_conversation_event(conversation, event_name)
-    widget_tokens, client_tokens = split_contact_tokens(session_contact_inboxes(conversation.contact_inbox))
-    # The web widget has no handler for conversation.updated
-    widget_tokens = [] if event_name == CONVERSATION_UPDATED
-
-    broadcast(conversation.account, inbox_user_tokens(conversation) + client_tokens, event_name, conversation.push_event_data,
-              widget: { tokens: widget_tokens, data: conversation.widget_push_event_data })
   end
 
   def broadcast_typing_event(event, event_name)

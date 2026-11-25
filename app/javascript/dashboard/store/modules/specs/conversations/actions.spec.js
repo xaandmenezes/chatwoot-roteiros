@@ -223,7 +223,11 @@ describe('#actions', () => {
         labels: ['support'],
       };
       actions.updateConversation(
-        { commit, rootState: { route: { name: 'home' } }, dispatch },
+        {
+          commit,
+          getters: { getConversationById: () => conversation },
+          dispatch,
+        },
         conversation
       );
       expect(commit.mock.calls).toEqual([
@@ -243,6 +247,86 @@ describe('#actions', () => {
           },
         ],
       ]);
+    });
+  });
+
+  describe('contact labels received after a partial conversation event', () => {
+    const contactEvent = {
+      id: 1,
+      account_id: 1,
+      meta: { sender: { id: 71 } },
+      labels: ['support'],
+    };
+
+    it('reads the contact labels once when the event inserts an incomplete row', () => {
+      const state = { allConversations: [], selectedChatId: null };
+      const mockDispatch = vi.fn();
+      const context = {
+        commit: (type, payload) => mutations[type](state, payload),
+        getters: {
+          getConversationById: id =>
+            state.allConversations.find(conversation => conversation.id === id),
+        },
+        dispatch: mockDispatch,
+      };
+
+      actions.updateConversation(context, contactEvent);
+      actions.updateConversation(context, {
+        ...contactEvent,
+        status: 'resolved',
+      });
+
+      const fetches = mockDispatch.mock.calls.filter(
+        ([action]) => action === 'fetchConversationContactLabels'
+      );
+      expect(fetches).toEqual([['fetchConversationContactLabels', 1]]);
+    });
+
+    it('hydrates only contact labels from the conversation response', async () => {
+      const initialConversation = {
+        ...contactEvent,
+        status: 'open',
+        messages: [{ id: 5 }],
+      };
+      const state = {
+        allConversations: [initialConversation],
+        selectedChatId: 1,
+      };
+      const context = {
+        commit: (type, payload) => mutations[type](state, payload),
+      };
+      const response = {
+        ...contactEvent,
+        status: 'pending',
+        messages: [],
+        contact_labels: ['direct-insta'],
+      };
+      axios.get.mockResolvedValueOnce({ data: response });
+
+      await actions.fetchConversationContactLabels(context, 1);
+
+      expect(state.allConversations[0]).toEqual({
+        ...initialConversation,
+        contact_labels: ['direct-insta'],
+        status: 'open',
+        messages: [{ id: 5 }],
+      });
+    });
+
+    it('ignores a response for a contact previously assigned to the conversation', async () => {
+      const state = {
+        allConversations: [{ ...contactEvent, meta: { sender: { id: 72 } } }],
+      };
+      const context = {
+        commit: (type, payload) => mutations[type](state, payload),
+      };
+      axios.get.mockResolvedValueOnce({
+        data: { ...contactEvent, contact_labels: ['direct-insta'] },
+      });
+
+      await actions.fetchConversationContactLabels(context, 1);
+
+      expect(state.allConversations[0].contact_labels).toBeUndefined();
     });
   });
 
@@ -1094,7 +1178,12 @@ describe('#addMentions', () => {
       const localDispatch = vi.fn();
 
       actions.updateConversation(
-        { commit: vi.fn(), dispatch: localDispatch, rootGetters: {} },
+        {
+          commit: vi.fn(),
+          dispatch: localDispatch,
+          getters: { getConversationById: () => undefined },
+          rootGetters: {},
+        },
         {
           id: 7,
           labels: [],

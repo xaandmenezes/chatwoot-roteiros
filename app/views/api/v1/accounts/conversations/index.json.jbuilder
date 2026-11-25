@@ -1,3 +1,5 @@
+contact_labels_by_id = Conversations::ContactLabels.for_conversations(Current.account, @conversations)
+
 json.data do
   json.meta do
     json.mine_count @conversations_count[:mine_count]
@@ -9,7 +11,8 @@ json.data do
     json.array! @conversations do |conversation|
       json.partial! 'api/v1/conversations/partials/conversation',
                     formats: [:json],
-                    conversation: conversation
+                    conversation: conversation,
+                    contact_labels: contact_labels_by_id.fetch(conversation.contact_id, [])
     end
   end
 end

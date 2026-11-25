@@ -13,6 +13,49 @@ describe ActionCableListener do
     Current.account = nil
   end
 
+  describe '#conversation_created' do
+    it 'includes contact labels on the dashboard event and excludes them from customer events' do
+      api_inbox = create(:inbox, account: account, channel: create(:channel_api, account: account))
+      create(:inbox_member, inbox: api_inbox, user: agent)
+      api_conversation = create(:conversation, account: account, inbox: api_inbox)
+      api_conversation.contact.update_labels(['direct-insta'])
+      api_conversation.contact_inbox.update!(hmac_verified: true)
+      widget_session = create(:contact_inbox, contact: api_conversation.contact, inbox: inbox, hmac_verified: true)
+      event = Events::Base.new(:'conversation.created', Time.current, conversation: api_conversation)
+      allow(ActionCableBroadcastJob).to receive(:perform_later)
+
+      listener.conversation_created(event)
+
+      expect(ActionCableBroadcastJob).to have_received(:perform_later).with(
+        a_collection_containing_exactly(agent.pubsub_token, admin.pubsub_token),
+        'conversation.created',
+        hash_including(contact_labels: ['direct-insta']),
+        widget_members: [widget_session.pubsub_token],
+        widget_data: hash_excluding(:contact_labels)
+      ).once
+      expect(ActionCableBroadcastJob).to have_received(:perform_later).with(
+        [api_conversation.contact_inbox.pubsub_token],
+        'conversation.created',
+        hash_excluding(:contact_labels)
+      ).once
+    end
+  end
+
+  describe '#conversation_contact_changed' do
+    it 'sends the replacement contact labels to inbox agents and account admins' do
+      conversation.contact.update_labels(['direct-insta'])
+      event = Events::Base.new(:'conversation.contact_changed', Time.current, conversation: conversation)
+
+      expect(ActionCableBroadcastJob).to receive(:perform_later).with(
+        a_collection_containing_exactly(agent.pubsub_token, admin.pubsub_token),
+        'conversation.contact_changed',
+        hash_including(contact_labels: ['direct-insta'])
+      )
+
+      listener.conversation_contact_changed(event)
+    end
+  end
+
   describe '#conversation_bot_handoff' do
     let(:event) { Events::Base.new(:'conversation.bot_handoff', Time.zone.now, conversation: conversation) }
 

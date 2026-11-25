@@ -1012,6 +1012,60 @@ describe('#mutations', () => {
     });
   });
 
+  describe('contact labels on conversation updates', () => {
+    it('preserves labels on partial updates and clears them when the contact changes', () => {
+      const state = {
+        allConversations: [
+          {
+            id: 1,
+            meta: { sender: { id: 71 } },
+            contact_labels: ['direct-insta'],
+          },
+        ],
+      };
+
+      mutations[types.UPDATE_CONVERSATION](state, {
+        id: 1,
+        status: 'resolved',
+      });
+      expect(state.allConversations[0].contact_labels).toEqual([
+        'direct-insta',
+      ]);
+
+      mutations[types.UPDATE_CONVERSATION](state, {
+        id: 1,
+        meta: { sender: { id: 72 } },
+      });
+      expect(state.allConversations[0].contact_labels).toBeUndefined();
+    });
+
+    it('stores the new contact labels outside the sender object', () => {
+      const state = {
+        allConversations: [
+          {
+            id: 1,
+            meta: { sender: { id: 71 } },
+            contact_labels: ['direct-insta'],
+          },
+        ],
+      };
+
+      mutations[types.UPDATE_CONVERSATION_CONTACT](state, {
+        conversationId: 1,
+        id: 72,
+        contactLabels: ['agenda'],
+      });
+
+      expect(state.allConversations[0]).toMatchObject({
+        contact_labels: ['agenda'],
+        meta: { sender: { id: 72 } },
+      });
+      expect(
+        state.allConversations[0].meta.sender.contactLabels
+      ).toBeUndefined();
+    });
+  });
+
   describe('#UPDATE_CONVERSATION_CONTACT', () => {
     it('should update conversation contact data', () => {
       const state = {
@@ -1093,6 +1147,30 @@ describe('#mutations', () => {
       const conversation = { id: 1, messages: [] };
       mutations[types.ADD_CONVERSATION](state, conversation);
       expect(state.allConversations).toEqual([conversation]);
+    });
+
+    it('fills missing contact labels when a partial update arrived before creation', () => {
+      const conversation = {
+        id: 1,
+        account_id: 1,
+        meta: { sender: { id: 71 } },
+        status: 'pending',
+      };
+      const state = { allConversations: [conversation] };
+
+      mutations[types.ADD_CONVERSATION](state, {
+        ...conversation,
+        contact_labels: ['direct-insta'],
+        status: 'open',
+      });
+
+      expect(state.allConversations).toEqual([
+        {
+          ...conversation,
+          contact_labels: ['direct-insta'],
+          status: 'pending',
+        },
+      ]);
     });
 
     it('should not add a duplicate conversation', () => {

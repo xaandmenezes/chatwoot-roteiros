@@ -35,7 +35,9 @@ describe('ConversationCard', () => {
   it('does not reserve the labels row when only a persisted SLA policy id is present', () => {
     const wrapper = mountComponent({ sla_policy_id: 1, applied_sla: null });
 
-    expect(wrapper.findComponent({ name: 'CardLabels' }).exists()).toBe(false);
+    expect(wrapper.findComponent({ name: 'ConversationLabels' }).exists()).toBe(
+      false
+    );
   });
 
   it('shows the labels row when an active applied SLA is present', () => {
@@ -44,7 +46,9 @@ describe('ConversationCard', () => {
       applied_sla: { id: 1 },
     });
 
-    expect(wrapper.findComponent({ name: 'CardLabels' }).exists()).toBe(true);
+    expect(wrapper.findComponent({ name: 'ConversationLabels' }).exists()).toBe(
+      true
+    );
   });
 
   it('does not reserve the labels row when the contact is blocked', () => {
@@ -56,7 +60,9 @@ describe('ConversationCard', () => {
       { blocked: true }
     );
 
-    expect(wrapper.findComponent({ name: 'CardLabels' }).exists()).toBe(false);
+    expect(wrapper.findComponent({ name: 'ConversationLabels' }).exists()).toBe(
+      false
+    );
   });
 
   it('uses the bot icon for a Captain assignee', () => {

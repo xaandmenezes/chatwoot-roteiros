@@ -31,6 +31,18 @@ const getConversationById = _state => conversationId => {
   return _state.allConversations.find(c => c.id === conversationId);
 };
 
+const setMissingContactLabels = (chat, accountId, contactId, labels) => {
+  if (
+    chat &&
+    Array.isArray(labels) &&
+    chat.contact_labels === undefined &&
+    chat.account_id === accountId &&
+    chat.meta?.sender?.id === contactId
+  ) {
+    chat.contact_labels = labels;
+  }
+};
+
 const preserveConversationMessageState = (
   conversation,
   existingConversation
@@ -273,9 +285,16 @@ export const mutations = {
   },
 
   [types.ADD_CONVERSATION](_state, conversation) {
-    const exists = _state.allConversations.some(c => c.id === conversation.id);
-    if (!exists) {
+    const existing = getConversationById(_state)(conversation.id);
+    if (!existing) {
       _state.allConversations.push(conversation);
+    } else {
+      setMissingContactLabels(
+        existing,
+        conversation.account_id,
+        conversation.meta?.sender?.id,
+        conversation.contact_labels
+      );
     }
   },
 
@@ -298,7 +317,16 @@ export const mutations = {
       }
 
       const { messages, ...updates } = conversation;
-      allConversations[index] = { ...selectedConversation, ...updates };
+      const updatedConversation = { ...selectedConversation, ...updates };
+      const contactId = updates.meta?.sender?.id;
+      if (
+        contactId &&
+        contactId !== selectedConversation.meta?.sender?.id &&
+        updates.contact_labels === undefined
+      ) {
+        delete updatedConversation.contact_labels;
+      }
+      allConversations[index] = updatedConversation;
       if (_state.selectedChatId === conversation.id) {
         emitter.emit(BUS_EVENTS.SCROLL_TO_MESSAGE);
       }
@@ -345,11 +373,27 @@ export const mutations = {
     }
   },
 
-  [types.UPDATE_CONVERSATION_CONTACT](_state, { conversationId, ...payload }) {
-    const [chat] = _state.allConversations.filter(c => c.id === conversationId);
-    if (chat) {
-      chat.meta.sender = payload;
+  [types.UPDATE_CONVERSATION_CONTACT](
+    _state,
+    { conversationId, contactLabels, ...sender }
+  ) {
+    const chat = getConversationById(_state)(conversationId);
+    if (!chat) return;
+
+    if (contactLabels !== undefined) {
+      chat.contact_labels = contactLabels;
+    } else if (sender.id && sender.id !== chat.meta.sender?.id) {
+      delete chat.contact_labels;
     }
+    chat.meta.sender = sender;
+  },
+
+  [types.SET_CONVERSATION_CONTACT_LABELS](
+    _state,
+    { conversationId, accountId, contactId, labels }
+  ) {
+    const chat = getConversationById(_state)(conversationId);
+    setMissingContactLabels(chat, accountId, contactId, labels);
   },
 
   [types.UPDATE_MESSAGE_CALL_STATUS](

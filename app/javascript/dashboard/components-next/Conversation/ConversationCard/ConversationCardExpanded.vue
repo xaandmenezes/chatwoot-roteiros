@@ -3,7 +3,7 @@ import { computed, useTemplateRef } from 'vue';
 import { getLastMessage } from 'dashboard/helper/conversationHelper';
 import CardAvatar from './CardAvatar.vue';
 import CardContent from './CardContent.vue';
-import CardLabels from './CardLabelsV5.vue';
+import ConversationLabels from 'dashboard/components-next/Conversation/ConversationLabels.vue';
 import CardPriorityIcon from './CardPriorityIcon.vue';
 import InboxName from 'dashboard/components-next/Conversation/InboxName.vue';
 import Avatar from 'next/avatar/Avatar.vue';
@@ -59,7 +59,9 @@ const orderClass = key =>
   props.conversationFirst ? CONVERSATION_FIRST_ORDER[key] : undefined;
 
 const lastMessageInChat = computed(() => getLastMessage(props.chat));
-const showLabelsSection = computed(() => props.chat.labels?.length > 0);
+const showLabelsSection = computed(
+  () => props.chat.labels?.length > 0 || props.chat.contact_labels?.length > 0
+);
 
 const voiceCallData = computed(() => {
   const last = lastMessageInChat.value;
@@ -240,10 +242,11 @@ const selectedModel = computed({
         class="min-w-0 w-full"
         :class="orderClass('labels')"
       >
-        <CardLabels
-          :labels="chat.labels"
-          disable-toggle
-          class="my-0 [&>div]:justify-end justify-end"
+        <ConversationLabels
+          :key="chat.id"
+          :conversation-labels="chat.labels"
+          :contact-labels="chat.contact_labels"
+          align-end
         />
       </div>
 

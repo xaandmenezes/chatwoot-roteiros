@@ -9,6 +9,7 @@ import MoreActions from './MoreActions.vue';
 import Avatar from 'next/avatar/Avatar.vue';
 import SLACardLabel from './components/SLACardLabel.vue';
 import ConversationCallButton from './ConversationCallButton.vue';
+import ConversationLabels from 'dashboard/components-next/Conversation/ConversationLabels.vue';
 import wootConstants from 'dashboard/constants/globals';
 import { conversationListPageURL } from 'dashboard/helper/URLHelper';
 import { snoozedReopenTime } from 'dashboard/helper/snoozeHelpers';
@@ -39,6 +40,9 @@ const currentChat = computed(() => store.getters.getSelectedChat);
 const accountId = computed(() => store.getters.getCurrentAccountId);
 
 const chatMetadata = computed(() => props.chat.meta);
+const hasLabels = computed(
+  () => props.chat.labels?.length > 0 || props.chat.contact_labels?.length > 0
+);
 
 const backButtonUrl = computed(() => {
   const {
@@ -132,10 +136,12 @@ const copyConversationId = async () => {
         :status="currentContact.availability_status"
         hide-offline-status
       />
-      <div class="flex flex-col items-start min-w-0 ms-2 overflow-hidden">
-        <div class="flex flex-row items-center max-w-full gap-1 p-0 m-0">
+      <div
+        class="flex flex-1 flex-col items-start min-w-0 ms-2 overflow-hidden"
+      >
+        <div class="flex flex-row items-center w-full min-w-0 gap-1">
           <span
-            class="text-sm font-medium truncate leading-tight text-n-slate-12"
+            class="min-w-0 text-sm font-medium truncate leading-tight text-n-slate-12"
           >
             {{ currentContact.name }}
           </span>
@@ -145,6 +151,13 @@ const copyConversationId = async () => {
             size="14"
             class="text-n-amber-10 my-0 mx-0 min-w-[14px] flex-shrink-0"
             icon="warning"
+          />
+          <ConversationLabels
+            v-if="hasLabels"
+            :key="chat.id"
+            :conversation-labels="chat.labels"
+            :contact-labels="chat.contact_labels"
+            class="min-w-12 max-w-[55%] flex-1"
           />
         </div>
 

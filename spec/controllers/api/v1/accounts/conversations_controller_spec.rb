@@ -35,6 +35,25 @@ RSpec.describe 'Conversations API', type: :request do
         expect(body[:data][:payload].first[:messages].first[:id]).to eq(message.id)
       end
 
+      it 'returns contact and conversation labels separately for each authorized conversation' do
+        conversation.contact.update_labels(['direct-insta'])
+        conversation.update_labels(['pending-reply'])
+        other = create(:conversation, account: account, inbox: conversation.inbox)
+        restricted = create(:conversation, account: account)
+        restricted.contact.update_labels(['restricted'])
+
+        get "/api/v1/accounts/#{account.id}/conversations",
+            headers: agent.create_new_auth_token,
+            params: { assignee_type: 'all' },
+            as: :json
+
+        expect(response).to have_http_status(:ok)
+        payload = response.parsed_body.dig('data', 'payload').index_by { |item| item['id'] }
+        expect(payload.keys).to contain_exactly(conversation.display_id, other.display_id)
+        expect(payload[conversation.display_id]).to include('contact_labels' => ['direct-insta'], 'labels' => ['pending-reply'])
+        expect(payload[other.display_id]).to include('contact_labels' => [], 'labels' => [])
+      end
+
       it 'lists a conversation whose assignee no longer exists as unassigned' do
         assigned = create(:conversation, account: account, inbox: conversation.inbox, assignee: agent)
         conversation.update_column(:assignee_id, User.maximum(:id) + 1000) # rubocop:disable Rails/SkipsModelValidations
@@ -297,6 +316,19 @@ RSpec.describe 'Conversations API', type: :request do
         expect(response_data.count).to eq(2)
       end
 
+      it 'adds contact labels to the filtered conversation without changing its conversation labels' do
+        conversation = account.conversations.first
+        conversation.contact.update_labels(['direct-insta'])
+
+        post "/api/v1/accounts/#{account.id}/conversations/filter",
+             headers: agent.create_new_auth_token,
+             params: { payload: [{ attribute_key: 'status', filter_operator: 'equal_to', values: ['open'] }] },
+             as: :json
+
+        expect(response).to have_http_status(:ok)
+        expect(response.parsed_body['payload']).to contain_exactly(include('contact_labels' => ['direct-insta'], 'labels' => []))
+      end
+
       it 'returns error if the filters contain invalid attributes' do
         post "/api/v1/accounts/#{account.id}/conversations/filter",
              headers: agent.create_new_auth_token,
@@ -364,6 +396,19 @@ RSpec.describe 'Conversations API', type: :request do
         expect(response).to have_http_status(:success)
         expect(response).to conform_schema(200)
         expect(JSON.parse(response.body, symbolize_names: true)[:id]).to eq(conversation.display_id)
+      end
+
+      it 'includes imported contact labels when opening a conversation directly' do
+        tag = ActsAsTaggableOn::Tag.create!(name: 'direct-insta')
+        conversation.contact.taggings.create!(tag: tag, context: 'labels')
+        create(:inbox_member, user: agent, inbox: conversation.inbox)
+
+        get "/api/v1/accounts/#{account.id}/conversations/#{conversation.display_id}",
+            headers: agent.create_new_auth_token,
+            as: :json
+
+        expect(response).to have_http_status(:ok)
+        expect(response.parsed_body).to include('contact_labels' => ['direct-insta'], 'labels' => [])
       end
 
       it 'shows the conversation if you are an agent with access to inbox' do

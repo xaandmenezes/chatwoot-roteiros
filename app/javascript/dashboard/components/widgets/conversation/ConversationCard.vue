@@ -6,7 +6,7 @@ import Icon from 'dashboard/components-next/icon/Icon.vue';
 import MessagePreview from './MessagePreview.vue';
 import InboxName from '../InboxName.vue';
 import TimeAgo from 'dashboard/components/ui/TimeAgo.vue';
-import CardLabels from './conversationCardComponents/CardLabels.vue';
+import ConversationLabels from 'dashboard/components-next/Conversation/ConversationLabels.vue';
 import CardPriorityIcon from 'dashboard/components-next/Conversation/ConversationCard/CardPriorityIcon.vue';
 import UnreadBadge from 'dashboard/components-next/Conversation/ConversationCard/UnreadBadge.vue';
 import SLACardLabel from './components/SLACardLabel.vue';
@@ -67,7 +67,11 @@ const hasSlaPolicyId = computed(
 );
 
 const showLabelsSection = computed(() => {
-  return props.chat.labels?.length > 0 || hasSlaPolicyId.value;
+  return (
+    props.chat.labels?.length > 0 ||
+    props.chat.contact_labels?.length > 0 ||
+    hasSlaPolicyId.value
+  );
 });
 
 const messagePreviewClass = computed(() => {
@@ -230,15 +234,17 @@ watch(
           class="ltr:ml-auto rtl:mr-auto mt-1"
         />
       </div>
-      <CardLabels
+      <ConversationLabels
         v-if="showLabelsSection"
+        :key="chat.id"
         :conversation-labels="chat.labels"
+        :contact-labels="chat.contact_labels"
         class="mt-0.5 mx-2 mb-0"
       >
         <template v-if="hasSlaPolicyId" #before>
           <SLACardLabel :chat="chat" class="ltr:mr-1 rtl:ml-1" />
         </template>
-      </CardLabels>
+      </ConversationLabels>
     </div>
   </div>
 </template>
