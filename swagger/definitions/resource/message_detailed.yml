@@ -77,6 +77,9 @@ properties:
         thumb_url:
           type: string
           description: The thumbnail URL of the attached file
+        is_voice_message:
+          type: boolean
+          description: Present on audio attachments. True when the audio was marked as a voice note.
         file_size:
           type: number
           description: The size of the attached file in bytes

@@ -14,6 +14,7 @@ class Messages::MessageBuilder
     @message_type = params[:message_type] || 'outgoing'
     @attachments = params[:attachments]
     @is_voice_message = ActiveModel::Type::Boolean.new.cast(params[:is_voice_message])
+    @voice_indices = parse_voice_message_attachment_indices(params[:voice_message_attachment_indices])
     @automation_rule = content_attributes&.dig(:automation_rule_id)
     return unless params.instance_of?(ActionController::Parameters)
 
@@ -75,14 +76,14 @@ class Messages::MessageBuilder
   end
 
   def process_attachments
-    (Array(@attachments) + forwarded_attachments).each do |uploaded_attachment|
+    (Array(@attachments) + forwarded_attachments).each_with_index do |uploaded_attachment, index|
       attachment = @message.attachments.build(
         account_id: @message.account_id,
         file: uploaded_attachment
       )
 
       attachment.file_type = attachment_file_type(uploaded_attachment)
-      tag_voice_message(attachment)
+      tag_voice_message(attachment, index)
     end
   end
 
@@ -94,8 +95,22 @@ class Messages::MessageBuilder
     end
   end
 
-  def tag_voice_message(attachment)
-    return unless @is_voice_message && attachment.file_type == 'audio'
+  def parse_voice_message_attachment_indices(indices)
+    return if indices.nil?
+
+    valid_positions = Array(@attachments).each_index.map(&:to_s)
+    unless indices.is_a?(Array) && (indices.map(&:to_s) - valid_positions).empty?
+      raise ArgumentError, 'voice_message_attachment_indices must be an array of valid attachment positions'
+    end
+
+    indices.to_set(&:to_i)
+  end
+
+  def tag_voice_message(attachment, index)
+    return unless attachment.audio?
+
+    recorded = @voice_indices ? @voice_indices.include?(index) : @is_voice_message
+    return unless recorded
 
     attachment.meta = (attachment.meta || {}).merge('is_voice_message' => true)
   end

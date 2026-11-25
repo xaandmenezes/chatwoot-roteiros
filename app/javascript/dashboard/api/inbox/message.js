@@ -14,6 +14,7 @@ export const buildCreatePayload = ({
   subject,
   templateParams,
   isVoiceMessage = false,
+  voiceMessageAttachmentIndices,
   emailHtmlContent,
   forwardedAttachmentIds,
 }) => {
@@ -43,6 +44,9 @@ export const buildCreatePayload = ({
     if (isVoiceMessage) {
       payload.append('is_voice_message', true);
     }
+    voiceMessageAttachmentIndices?.forEach(index => {
+      payload.append('voice_message_attachment_indices[]', index);
+    });
     if (emailHtmlContent) {
       payload.append('email_html_content', emailHtmlContent);
     }
@@ -85,6 +89,7 @@ class MessageApi extends ApiClient {
     subject,
     templateParams,
     isVoiceMessage = false,
+    voiceMessageAttachmentIndices,
     emailHtmlContent,
     forwardedAttachmentIds,
   }) {
@@ -103,6 +108,7 @@ class MessageApi extends ApiClient {
         subject,
         templateParams,
         isVoiceMessage,
+        voiceMessageAttachmentIndices,
         emailHtmlContent,
         forwardedAttachmentIds,
       }),

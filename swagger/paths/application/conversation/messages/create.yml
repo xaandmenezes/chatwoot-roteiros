@@ -134,6 +134,15 @@ requestBody:
             type: object
             description: Attributes based on the content type
             example: {}
+          is_voice_message:
+            type: boolean
+            description: Marks the audio attachments in this message as recorded voice notes.
+          'voice_message_attachment_indices[]':
+            type: array
+            description: Zero-based positions of recorded audio in attachments[]. When provided, this selection takes precedence over is_voice_message.
+            items:
+              type: integer
+              minimum: 0
           'attachments[]':
             type: array
             description: Files to attach to the message
@@ -141,6 +150,9 @@ requestBody:
               type: string
               format: binary
       encoding:
+        'voice_message_attachment_indices[]':
+          style: form
+          explode: true
         'attachments[]':
           style: form
           explode: true

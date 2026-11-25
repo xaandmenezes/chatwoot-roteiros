@@ -98,6 +98,32 @@ RSpec.describe 'Conversation Messages API', type: :request do
         expect(conversation.messages.last.attachments.first.file_type).to eq('image')
       end
 
+      context 'when a multipart message specifies which attachments are voice notes' do
+        let(:inbox) { create(:channel_api, account: account).inbox }
+        let(:audio) { fixture_file_upload('spec/assets/sample.ogg', 'audio/ogg') }
+        let(:url) { api_v1_account_conversation_messages_url(account_id: account.id, conversation_id: conversation.display_id) }
+
+        it 'marks only the selected audio even if the message-wide flag is set' do
+          signed_audio = get_blob_for('spec/assets/sample.mp3', 'audio/mpeg').signed_id
+          image = fixture_file_upload('spec/assets/avatar.png', 'image/png')
+          post url, headers: agent.create_new_auth_token,
+                    params: { attachments: [audio, signed_audio, image], is_voice_message: true, voice_message_attachment_indices: ['1'] }
+
+          expect(response).to have_http_status(:ok)
+          ordinary, recording, picture = response.parsed_body.fetch('attachments').sort_by { |item| item.fetch('id') }
+          expect(ordinary).to include('file_type' => 'audio', 'is_voice_message' => false)
+          expect(recording).to include('file_type' => 'audio', 'is_voice_message' => true)
+          expect(picture).not_to have_key('is_voice_message')
+        end
+
+        it 'rejects a position outside the submitted attachments' do
+          post url, headers: agent.create_new_auth_token, params: { attachments: [audio], voice_message_attachment_indices: ['1'] }
+
+          expect(response).to have_http_status(:unprocessable_entity)
+          expect(conversation.messages.reload).to be_empty
+        end
+      end
+
       context 'when forwarding an email' do
         let(:inbox) { create(:channel_email, account: account).inbox }
         let(:forwarded_message) { create(:message, conversation: conversation, account: account, message_type: :incoming) }

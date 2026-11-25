@@ -195,6 +195,7 @@ const getInReplyToMessage = parentMessage => {
       <Message
         v-else
         v-bind="entry.message"
+        :has-pending-files="!!entry.message.files?.length"
         :is-email-inbox="isAnEmailChannel"
         :in-reply-to="getInReplyToMessage(entry.message)"
         :group-with-next="
@@ -203,7 +204,7 @@ const getInReplyToMessage = parentMessage => {
         :inbox-supports-reply-to="inboxSupportsReplyTo"
         :current-user-id="currentUserId"
         data-clarity-mask="True"
-        @retry="emit('retry', entry.message)"
+        @retry="emit('retry', entry.message.id)"
       />
     </template>
     <slot name="after" />

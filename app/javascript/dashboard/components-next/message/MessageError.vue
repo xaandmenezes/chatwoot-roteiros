@@ -6,8 +6,9 @@ import { useMessageContext } from './provider.js';
 import { hasOneDayPassed } from 'shared/helpers/timeHelper';
 import { ORIENTATION, MESSAGE_STATUS } from './constants';
 
-defineProps({
+const props = defineProps({
   error: { type: String, required: true },
+  hasPendingFiles: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(['retry']);
@@ -20,7 +21,10 @@ const { t } = useI18n();
 const canRetry = computed(() => {
   const hasContent = content.value !== null;
   const hasAttachments = attachments.value && attachments.value.length > 0;
-  return !hasOneDayPassed(createdAt.value) && (hasContent || hasAttachments);
+  return (
+    !hasOneDayPassed(createdAt.value) &&
+    (hasContent || hasAttachments || props.hasPendingFiles)
+  );
 });
 </script>
 

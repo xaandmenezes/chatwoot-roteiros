@@ -94,7 +94,7 @@ import { useTranslations } from 'dashboard/composables/useTranslations';
  * @property {number|null} [senderId=null] - The ID of the sender
  * @property {number} createdAt - Timestamp when the message was created
  * @property {number} currentUserId - The ID of the current user
- * @property {number} id - The unique identifier for the message
+ * @property {number|string} id - The persisted ID or temporary ID of the message
  * @property {number} messageType - The type of message (must be one of MESSAGE_TYPES)
  * @property {string|null} [error=null] - Error message if the message failed to send
  * @property {string|null} [senderType=null] - The type of the sender
@@ -108,7 +108,7 @@ import { useTranslations } from 'dashboard/composables/useTranslations';
 
 // eslint-disable-next-line vue/define-macros-order
 const props = defineProps({
-  id: { type: Number, required: true },
+  id: { type: [Number, String], required: true },
   messageType: {
     type: Number,
     required: true,
@@ -120,6 +120,7 @@ const props = defineProps({
     validator: value => Object.values(MESSAGE_STATUS).includes(value),
   },
   attachments: { type: Array, default: () => [] },
+  hasPendingFiles: { type: Boolean, default: false },
   call: { type: Object, default: null }, // eslint-disable-line vue/no-unused-properties
   content: { type: String, default: null },
   contentAttributes: { type: Object, default: () => ({}) },
@@ -650,10 +651,16 @@ provideMessageContext({
         <Component :is="componentToRender" />
       </div>
       <MessageError
-        v-if="contentAttributes.externalError"
+        v-if="
+          contentAttributes.externalError ||
+          (status === MESSAGE_STATUS.FAILED && hasPendingFiles)
+        "
         class="[grid-area:meta]"
         :class="flexOrientationClass"
-        :error="contentAttributes.externalError"
+        :error="
+          contentAttributes.externalError || t('CONVERSATION.MESSAGE_ERROR')
+        "
+        :has-pending-files="hasPendingFiles"
         @retry="emit('retry')"
       />
     </div>

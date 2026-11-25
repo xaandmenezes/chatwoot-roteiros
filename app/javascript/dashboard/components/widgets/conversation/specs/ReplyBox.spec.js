@@ -45,6 +45,7 @@ const buildStore = ({
   isMetaMessageSendingDisabled = false,
   uiSettings = {},
   signature = '',
+  globalConfig = {},
 }) =>
   createStore({
     state: {
@@ -75,7 +76,7 @@ const buildStore = ({
       getMessageSignature: () => signature,
       getUISettings: () => uiSettings,
       getLastEmailInSelectedChat: () => null,
-      'globalConfig/get': () => ({}),
+      'globalConfig/get': () => globalConfig,
       'globalConfig/isMetaMessageSendingDisabled': () =>
         isMetaMessageSendingDisabled,
       'inboxes/getInbox': () => inboxId => ({
@@ -102,6 +103,7 @@ const mountWith = ({
   isMetaMessageSendingDisabled,
   uiSettings,
   signature,
+  globalConfig,
 }) => {
   const store = buildStore({
     inbox,
@@ -112,6 +114,7 @@ const mountWith = ({
     isMetaMessageSendingDisabled,
     uiSettings,
     signature,
+    globalConfig,
   });
   const wrapper = shallowMount(ReplyBox, {
     global: {
@@ -133,6 +136,81 @@ const editor = wrapper =>
   wrapper.findComponent({ name: 'WootMessageEditor' }).props();
 
 describe('ReplyBox', () => {
+  describe.each([false, true])(
+    'sending audio in an API inbox with direct uploads set to %s',
+    directUploadsEnabled => {
+      const mountApiReplyBox = () =>
+        mountWith({
+          inbox: { channel_type: 'Channel::Api' },
+          globalConfig: { directUploadsEnabled },
+        }).wrapper;
+
+      const audioAttachment = (name, isVoiceMessage) => ({
+        resource: { file: new File(['audio'], name, { type: 'audio/ogg' }) },
+        blobSignedId: `signed-${name}`,
+        isVoiceMessage,
+      });
+
+      const attachmentFile = attachment =>
+        directUploadsEnabled
+          ? attachment.blobSignedId
+          : attachment.resource.file;
+
+      it('sends a microphone recording as a voice message', () => {
+        const wrapper = mountApiReplyBox();
+        const recording = audioAttachment('recording.ogg', true);
+        wrapper.vm.attachedFiles = [recording];
+
+        const payload = wrapper.vm.getMessagePayload('');
+
+        expect(payload).toMatchObject({
+          files: [attachmentFile(recording)],
+          isVoiceMessage: true,
+        });
+        wrapper.unmount();
+      });
+
+      it('sends an uploaded OGG as an ordinary audio attachment', () => {
+        const wrapper = mountApiReplyBox();
+        const upload = audioAttachment('uploaded.ogg', false);
+        wrapper.vm.attachedFiles = [upload];
+
+        const payload = wrapper.vm.getMessagePayload('Caption');
+
+        expect(payload.files).toEqual([attachmentFile(upload)]);
+        expect(payload.isVoiceMessage).toBeUndefined();
+        expect(payload.voiceMessageAttachmentIndices).toBeUndefined();
+        wrapper.unmount();
+      });
+
+      it('keeps mixed audio in one reply with only the recording marked', () => {
+        const wrapper = mountApiReplyBox();
+        const upload = audioAttachment('uploaded.ogg', false);
+        const recording = audioAttachment('recording.ogg', true);
+        wrapper.vm.attachedFiles = [upload, recording];
+        wrapper.vm.inReplyTo = { id: 15 };
+        wrapper.vm.message = 'Caption';
+        const sendMessage = vi
+          .spyOn(wrapper.vm, 'sendMessage')
+          .mockImplementation(() => {});
+
+        wrapper.vm.confirmOnSendReply();
+
+        expect(sendMessage).toHaveBeenCalledTimes(1);
+        const [payload] = sendMessage.mock.calls[0];
+        expect(payload).toMatchObject({
+          files: [attachmentFile(upload), attachmentFile(recording)],
+          message: 'Caption',
+          private: false,
+          contentAttributes: { in_reply_to: 15 },
+          voiceMessageAttachmentIndices: [1],
+        });
+        expect(payload.isVoiceMessage).toBeUndefined();
+        wrapper.unmount();
+      });
+    }
+  );
+
   describe('Instagram incident restriction', () => {
     it('opens in note mode and restores only the private-note draft', async () => {
       const { wrapper, store } = mountWith({
