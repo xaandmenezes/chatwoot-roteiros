@@ -277,6 +277,41 @@ describe('#mutations', () => {
     });
   });
 
+  describe('customer revocation', () => {
+    it('preserves the archive and deletion flag after a delayed edit of the same revision', () => {
+      const edit = {
+        id: 101,
+        conversation_id: 1,
+        content: 'Archived text',
+        content_attributes: { edited: true },
+        additional_attributes: { ryze_edited_at: '2026-11-25T22:00:00.000Z' },
+        attachments: [{ id: 900, message_id: 101 }],
+      };
+      const revoked = {
+        ...edit,
+        content_attributes: {
+          edited: true,
+          deleted: true,
+          deleted_by_customer: true,
+        },
+        attachments: [],
+      };
+      const state = {
+        allConversations: [{ id: 1, messages: [edit] }],
+        selectedChatId: 1,
+        attachments: { 1: edit.attachments },
+      };
+
+      mutations[types.ADD_MESSAGE](state, revoked);
+      mutations[types.DELETE_CONVERSATION_ATTACHMENTS](state, revoked);
+      mutations[types.ADD_MESSAGE](state, edit);
+      mutations[types.ADD_CONVERSATION_ATTACHMENTS](state, edit);
+
+      expect(state.allConversations[0].messages).toEqual([revoked]);
+      expect(state.attachments[1]).toEqual([]);
+    });
+  });
+
   describe('#CHANGE_CONVERSATION_STATUS', () => {
     it('updates the conversation status correctly', () => {
       const state = {

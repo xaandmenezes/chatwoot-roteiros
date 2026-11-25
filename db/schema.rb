@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_11_25_174749) do
+ActiveRecord::Schema[7.1].define(version: 2026_11_25_230411) do
   # These extensions should be enabled to support this database
   enable_extension "pg_stat_statements"
   enable_extension "pg_trgm"
@@ -1508,6 +1508,15 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_25_174749) do
     t.index ["user_id"], name: "index_mentions_on_user_id"
   end
 
+  create_table "message_revocations", force: :cascade do |t|
+    t.integer "message_id", null: false
+    t.text "content", null: false
+    t.boolean "edited", default: false, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["message_id"], name: "index_message_revocations_on_message_id", unique: true
+  end
+
   create_table "messages", id: :serial, force: :cascade do |t|
     t.text "content"
     t.integer "account_id", null: false
@@ -1912,6 +1921,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_25_174749) do
   add_foreign_key "data_exports", "accounts"
   add_foreign_key "data_exports", "users", column: "initiated_by_id", on_delete: :nullify
   add_foreign_key "inboxes", "portals"
+  add_foreign_key "message_revocations", "messages", on_delete: :cascade
   add_foreign_key "shopify_custom_apps", "accounts"
   add_foreign_key "umbler_label_syncs", "accounts", on_delete: :cascade
   add_foreign_key "user_sessions", "users"

@@ -139,6 +139,7 @@ class Message < ApplicationRecord
   belongs_to :sender, polymorphic: true, optional: true
 
   has_many :attachments, dependent: :destroy, autosave: true, before_add: :validate_attachments_limit
+  has_one :customer_revocation, class_name: 'MessageRevocation', inverse_of: :message, dependent: :destroy
   has_one :csat_survey_response, dependent: :destroy_async
   has_many :notifications, as: :primary_actor, dependent: :destroy_async
 
@@ -152,11 +153,16 @@ class Message < ApplicationRecord
     with_lock { yield if !deleted && content == original_content }
   end
 
-  def mark_deleted!
-    transaction do
+  def mark_deleted!(by_customer: false)
+    with_lock do
+      return if by_customer && deleted
+
+      update_customer_revocation_archive(by_customer)
+
       # Preserve the forward marker so replies to a deleted forward stay out of this conversation.
-      update!(content: I18n.t('conversations.messages.deleted'), content_type: :text,
-              content_attributes: content_attributes.slice('forwarded_message_id').merge(deleted: true))
+      attributes = content_attributes.slice('forwarded_message_id').merge(deleted: true)
+      attributes[:deleted_by_customer] = true if by_customer
+      update!(content: I18n.t('conversations.messages.deleted'), content_type: :text, content_attributes: attributes)
       attachments.destroy_all
     end
   end
@@ -175,6 +181,25 @@ class Message < ApplicationRecord
     data[:echo_id] = echo_id if echo_id.present?
     data[:attachments] = attachments.map(&:push_event_data) if attachments.present?
     merge_sender_attributes(data)
+  end
+
+  def deleted_by_customer?
+    content_attributes['deleted_by_customer'] == true
+  end
+
+  def agent_view_data(data)
+    return data unless deleted_by_customer?
+
+    revocation = customer_revocation
+    return data unless revocation
+
+    attributes = (data[:content_attributes] || content_attributes).slice('forwarded_message_id', :forwarded_message_id)
+    attributes['deleted'] = true
+    attributes['deleted_by_customer'] = true
+    attributes['edited'] = true if revocation.edited?
+
+    data.merge(content: revocation.content, processed_message_content: revocation.content, content_type: 'text',
+               content_attributes: attributes)
   end
 
   def conversation_push_event_data
@@ -324,6 +349,14 @@ class Message < ApplicationRecord
   end
 
   private
+
+  def update_customer_revocation_archive(by_customer)
+    if by_customer
+      create_customer_revocation!(content: content, edited: content_attributes['edited'] == true) if content.present?
+    elsif deleted_by_customer?
+      customer_revocation&.destroy!
+    end
+  end
 
   def prevent_message_flooding
     # Added this to cover the validation specs in messages

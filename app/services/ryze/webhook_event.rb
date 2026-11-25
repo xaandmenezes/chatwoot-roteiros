@@ -6,9 +6,22 @@ class Ryze::WebhookEvent
   end
 
   def message_change?
-    @params[:event] == 'message.exchange' && @data.is_a?(ActionController::Parameters) &&
-      @message.is_a?(ActionController::Parameters) && @data[:direction] == 'incoming' &&
+    message_exchange? && @data[:direction] == 'incoming' &&
       (edited_message? || revoked_message?)
+  end
+
+  def message_exchange?
+    @params[:event] == 'message.exchange' && @message.is_a?(ActionController::Parameters)
+  end
+
+  def pilot_log_line
+    type = @message[:type]
+    direction = @data[:direction]
+    type = 'other' unless %w[text message_edit message_revoke protocol_message].include?(type)
+    direction = 'unknown' unless %w[incoming outgoing].include?(direction)
+    id_hash = source_id.is_a?(String) && source_id.present? ? Digest::SHA256.hexdigest(source_id).first(16) : 'missing'
+
+    "Ryze pilot type=#{type} direction=#{direction} id_hash=#{id_hash}"
   end
 
   def instance_name
@@ -17,8 +30,14 @@ class Ryze::WebhookEvent
   end
 
   def valid?
-    source_id.is_a?(String) && source_id.present? && chat_ids.any? &&
-      (!edited_message? || (content.is_a?(String) && edited_at.present?))
+    return false unless source_id.is_a?(String) && source_id.present? && chat_ids.any?
+    return content.is_a?(String) && edited_at.present? if edited_message?
+
+    %w[sender_revoke admin_revoke].include?(revoke_type)
+  end
+
+  def customer_revoked?
+    revoked_message? && revoke_type == 'sender_revoke'
   end
 
   def source_id
@@ -54,6 +73,11 @@ class Ryze::WebhookEvent
 
   def revoked_message?
     @message.is_a?(ActionController::Parameters) && @message[:type] == 'message_revoke'
+  end
+
+  def revoke_type
+    revoke = @message[:revoke]
+    revoke[:revokeType] if revoke.is_a?(ActionController::Parameters)
   end
 
   def parse_timestamp(value)

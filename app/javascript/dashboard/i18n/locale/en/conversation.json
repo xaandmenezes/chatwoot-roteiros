@@ -9,6 +9,7 @@
     },
     "SELECT_A_CONVERSATION": "Please select a conversation from left pane",
     "CSAT_REPLY_MESSAGE": "Please rate the conversation",
+    "DELETED_BY_CUSTOMER": "Message deleted by customer",
     "EDITED": "Edited",
     "404": "Sorry, we cannot find the conversation. Please try again",
     "SWITCH_VIEW_LAYOUT": "Switch the layout",

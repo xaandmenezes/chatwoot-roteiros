@@ -203,6 +203,49 @@ describe ActionCableListener do
     end
   end
 
+  describe '#message_updated' do
+    it 'keeps customer-revoked text and the before-value out of every contact session' do
+      api_inbox = create(:inbox, account: account, channel: create(:channel_api, account: account))
+      create(:inbox_member, inbox: api_inbox, user: agent)
+      chat_id = '5511111111111@s.whatsapp.net'
+      api_conversation = create(:conversation, account: account, inbox: api_inbox, additional_attributes: { whatsapp_jid: chat_id })
+      api_conversation.contact_inbox.update!(hmac_verified: true)
+      widget_session = create(:contact_inbox, contact: api_conversation.contact, inbox: inbox, hmac_verified: true)
+      original_content = 'Retained text'
+      message = create(:message, message_type: 'incoming', sender: api_conversation.contact,
+                                 account: account, inbox: api_inbox, conversation: api_conversation, content: original_content,
+                                 source_id: 'test-customer-revocation')
+      message.mark_deleted!(by_customer: true)
+      deleted_content = I18n.t('conversations.messages.deleted', locale: account.locale)
+      event = Events::Base.new(:'message.updated', Time.current, message: message.reload,
+                                                                 previous_changes: { 'content' => [original_content, deleted_content] })
+      allow(ActionCableBroadcastJob).to receive(:perform_later)
+
+      listener.message_updated(event)
+
+      expect(ActionCableBroadcastJob).to have_received(:perform_later).with(
+        a_collection_containing_exactly(agent.pubsub_token, admin.pubsub_token),
+        'message.updated',
+        hash_including(id: message.id, content: original_content, processed_message_content: original_content,
+                       content_attributes: hash_including('deleted' => true, 'deleted_by_customer' => true))
+      ).once
+
+      tombstone = satisfy do |data|
+        data[:id] == message.id && data[:content] == deleted_content &&
+          data[:content_attributes]['deleted'] == true && !data.key?(:previous_changes) &&
+          data.to_json.exclude?(original_content)
+      end
+      expect(ActionCableBroadcastJob).to have_received(:perform_later).with(
+        [api_conversation.contact_inbox.pubsub_token],
+        'message.updated',
+        tombstone,
+        widget_members: [widget_session.pubsub_token],
+        widget_data: tombstone
+      ).once
+      expect(ActionCableBroadcastJob).to have_received(:perform_later).exactly(2).times
+    end
+  end
+
   describe '#typing_on' do
     let(:event_name) { :'conversation.typing_on' }
     let!(:event) { Events::Base.new(event_name, Time.zone.now, conversation: conversation, user: agent, is_private: false) }

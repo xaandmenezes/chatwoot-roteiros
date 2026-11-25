@@ -156,9 +156,17 @@ class ActionCableListener < BaseListener
   def broadcast_message_event(message, event_name, **extra)
     conversation = message.conversation
     widget_tokens, client_tokens = split_contact_tokens(message_contact_inboxes(conversation, message))
-    data = message.push_event_data.merge(extra)
+    data = message.push_event_data
+    agent_tokens = inbox_user_tokens(conversation)
+    if message.deleted_by_customer?
+      # Only agents receive the retained body. previous_changes can also contain that body.
+      broadcast(conversation.account, agent_tokens, event_name, message.agent_view_data(data))
+    else
+      client_tokens = agent_tokens + client_tokens
+      data.merge!(extra)
+    end
 
-    broadcast(conversation.account, inbox_user_tokens(conversation) + client_tokens, event_name, data,
+    broadcast(conversation.account, client_tokens, event_name, data,
               widget: { tokens: widget_tokens, data: message.widget_push_event_data(data) })
   end
 

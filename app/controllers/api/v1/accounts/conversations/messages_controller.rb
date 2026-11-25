@@ -3,6 +3,8 @@ class Api::V1::Accounts::Conversations::MessagesController < Api::V1::Accounts::
 
   def index
     @messages = message_finder.perform
+    @agent_history = Current.user.is_a?(User)
+    preload_customer_revocations if @agent_history
   end
 
   def create
@@ -43,6 +45,13 @@ class Api::V1::Accounts::Conversations::MessagesController < Api::V1::Accounts::
   end
 
   private
+
+  def preload_customer_revocations
+    revoked = @messages.select(&:deleted_by_customer?)
+    return if revoked.empty?
+
+    ActiveRecord::Associations::Preloader.new(records: revoked, associations: :customer_revocation).call
+  end
 
   def save_translation(original_content, translation)
     message.with_current_content(original_content) do

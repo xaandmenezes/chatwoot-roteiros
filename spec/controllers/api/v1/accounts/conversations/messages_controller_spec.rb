@@ -306,6 +306,30 @@ RSpec.describe 'Conversation Messages API', type: :request do
         create(:inbox_member, inbox: conversation.inbox, user: agent)
       end
 
+      it 'shows the retained text on the same message only in the agent history' do
+        api_inbox = create(:channel_api, account: account).inbox
+        create(:inbox_member, inbox: api_inbox, user: agent)
+        chat_id = 'test@lid'
+        chat = create(:conversation, inbox: api_inbox, account: account, additional_attributes: { whatsapp_jid: chat_id })
+        message = create(:message, conversation: chat, account: account, content: 'Last customer text', source_id: 'revoked-id')
+        message.mark_deleted!(by_customer: true)
+
+        get api_v1_account_conversation_messages_url(account_id: account.id, conversation_id: chat.display_id),
+            headers: agent.create_new_auth_token, as: :json
+
+        expect(response).to have_http_status(:ok)
+        entry = response.parsed_body.fetch('payload').sole
+        expect(entry).to include('content' => 'Last customer text', 'id' => message.id, 'created_at' => message.created_at.to_i)
+        expect(entry.fetch('content_attributes')).to include('deleted_by_customer' => true)
+        expect(entry.fetch('content_attributes')).to include('deleted' => true)
+
+        get public_api_v1_inbox_contact_conversation_messages_path(api_inbox.channel.identifier, chat.contact_inbox.source_id, chat.display_id)
+
+        expect(response).to have_http_status(:ok)
+        expect(response.parsed_body.sole.fetch('content_attributes')).to include('deleted' => true)
+        expect(response.body).not_to include('Last customer text')
+      end
+
       it 'returns the Ryze revision when loading history so late events cannot overwrite a newer edit' do
         revision = '2026-11-25T18:20:30.000000000Z'
         create(:message, conversation: conversation, account: account, additional_attributes: { ryze_edited_at: revision, internal: 'unrelated' })

@@ -10,5 +10,6 @@ end
 json.payload do
   json.array! @messages do |message|
     json.partial! 'api/v1/models/message', message: message
+    json.merge! message.agent_view_data({}) if @agent_history && message.deleted_by_customer?
   end
 end
