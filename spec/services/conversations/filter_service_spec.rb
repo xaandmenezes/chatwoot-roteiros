@@ -488,6 +488,22 @@ describe Conversations::FilterService do
     context 'with query present' do
       let!(:params) { { payload: [], page: 1 } }
 
+      it 'uses the persisted legacy attribute name for comparisons and missing values' do
+        legacy_key = 'billing:region'
+        definition = account.custom_attribute_definitions.find_by!(attribute_key: 'conversation_additional_information')
+        definition.update_column(:attribute_key, legacy_key)
+        en_conversation_1.update!(custom_attributes: { legacy_key => 'West' })
+        en_conversation_2.update!(custom_attributes: { legacy_key => 'East' })
+        create(:conversation, account: account)
+        params[:payload] = [
+          { attribute_key: legacy_key, filter_operator: 'not_equal_to', values: ['West'], query_operator: nil }.with_indifferent_access
+        ]
+
+        result = filter_service.new(params, user_1, account).perform
+
+        expect(result[:conversations]).to match_array(inbox.conversations.where.not(id: en_conversation_1.id))
+      end
+
       it 'filters custom date attributes by days before' do
         en_conversation_1.update!(
           custom_attributes: en_conversation_1.custom_attributes.merge('conversation_created' => (Time.zone.today - 4.days).to_s)

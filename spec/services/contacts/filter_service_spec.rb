@@ -354,6 +354,22 @@ describe Contacts::FilterService do
     end
 
     context 'with custom attributes' do
+      it 'matches the full name of a persisted legacy attribute' do
+        legacy_key = 'billing:region'
+        definition = account.custom_attribute_definitions.find_by!(attribute_key: 'contact_additional_information')
+        definition.update_column(:attribute_key, legacy_key)
+        el_contact.update!(custom_attributes: el_contact.custom_attributes.merge(legacy_key => 'West'))
+        en_contact.update!(custom_attributes: en_contact.custom_attributes.merge(legacy_key => 'East'))
+        params[:payload] = [
+          { attribute_key: legacy_key, filter_operator: 'equal_to', values: ['West'], query_operator: 'AND' },
+          { attribute_key: 'customer_type', filter_operator: 'equal_to', values: ['platinum'], query_operator: nil }
+        ].map(&:with_indifferent_access)
+
+        result = filter_service.new(account, first_user, params).perform
+
+        expect(result[:contacts]).to contain_exactly(el_contact)
+      end
+
       it 'filter by custom_attributes and labels' do
         params[:payload] = [
           {

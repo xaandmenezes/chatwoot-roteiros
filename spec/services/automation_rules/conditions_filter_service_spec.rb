@@ -18,6 +18,23 @@ RSpec.describe AutomationRules::ConditionsFilterService do
   end
 
   describe '#perform' do
+    it 'matches saved conditions on a persisted legacy attribute' do
+      legacy_key = 'billing:region'
+      definition = create(:custom_attribute_definition,
+                          account: account,
+                          attribute_key: 'billing_region',
+                          attribute_model: 'conversation_attribute',
+                          attribute_display_type: 'text')
+      definition.update_column(:attribute_key, legacy_key)
+      conversation.update!(custom_attributes: { legacy_key => 'West' })
+      rule.update!(conditions: [
+                     { attribute_key: legacy_key, custom_attribute_type: 'conversation_attribute',
+                       filter_operator: 'equal_to', values: ['West'], query_operator: nil }
+                   ])
+
+      expect(described_class.new(rule, conversation).perform).to be(true)
+    end
+
     context 'when conditions based on filter_operator equal_to' do
       before do
         rule.conditions = [{ 'values': ['open'], 'attribute_key': 'status', 'query_operator': nil, 'filter_operator': 'equal_to' }]
