@@ -63,6 +63,144 @@ describe('#hasMessageFailedWithExternalError', () => {
 });
 
 describe('#actions', () => {
+  describe('delayed edit confirmation', () => {
+    const current = { id: 5, conversation_id: 71, content: 'Original' };
+    const row = {
+      ...current,
+      content: 'Edited',
+      content_attributes: { edited: true },
+      additional_attributes: { ryze_edited_at: '2026-11-26T10:00:00Z' },
+    };
+    let state;
+    beforeEach(() => {
+      vi.useFakeTimers();
+      state = {
+        selectedChatId: 71,
+        allConversations: [{ id: 71, messages: [{ ...current }] }],
+      };
+    });
+    afterEach(() => vi.useRealTimers());
+    const refresh = () =>
+      actions.refreshPendingEdit(
+        { state, dispatch },
+        {
+          conversationId: 71,
+          messageId: 5,
+          content: 'Edited',
+          accountUrl: '/api/v1/conversations',
+        }
+      );
+
+    it('waits for the submitted version and reads only the original message', async () => {
+      axios.get
+        .mockResolvedValueOnce({ data: { payload: [current] } })
+        .mockResolvedValueOnce({ data: { payload: [row] } });
+      const done = refresh();
+      await vi.runAllTimersAsync();
+      await done;
+      expect(axios.get).toHaveBeenCalledTimes(2);
+      expect(axios.get).toHaveBeenCalledWith(
+        '/api/v1/conversations/71/messages',
+        {
+          params: { after: 5, before: 6 },
+        }
+      );
+      expect(dispatch).toHaveBeenCalledExactlyOnceWith('updateMessage', row);
+    });
+
+    it('does not overwrite a newer visible revision while a read is in flight', async () => {
+      let resolve;
+      axios.get.mockReturnValue(
+        new Promise(done => {
+          resolve = done;
+        })
+      );
+      const done = refresh();
+      await vi.advanceTimersByTimeAsync(4000);
+      state.allConversations[0].messages[0] = {
+        ...row,
+        content: 'Newer',
+        additional_attributes: { ryze_edited_at: '2026-11-26T11:00:00Z' },
+      };
+      resolve({ data: { payload: [row] } });
+      await vi.runAllTimersAsync();
+      await done;
+      expect(dispatch).not.toHaveBeenCalled();
+    });
+
+    it('confirms two consecutive revisions without resubmitting', async () => {
+      axios.get.mockResolvedValueOnce({ data: { payload: [row] } });
+      const first = refresh();
+      await vi.runAllTimersAsync();
+      await first;
+      state.allConversations[0].messages[0] = row;
+      const secondRow = {
+        ...row,
+        content: 'Second edit',
+        additional_attributes: { ryze_edited_at: '2026-11-26T10:01:00Z' },
+      };
+      axios.get
+        .mockResolvedValueOnce({ data: { payload: [row] } })
+        .mockResolvedValueOnce({ data: { payload: [secondRow] } });
+      const second = actions.refreshPendingEdit(
+        { state, dispatch },
+        {
+          conversationId: 71,
+          messageId: 5,
+          content: 'Second edit',
+          accountUrl: '/api/v1/conversations',
+        }
+      );
+      await vi.runAllTimersAsync();
+      await second;
+      expect(dispatch).toHaveBeenNthCalledWith(1, 'updateMessage', row);
+      expect(dispatch).toHaveBeenNthCalledWith(2, 'updateMessage', secondRow);
+      expect(axios.post).not.toHaveBeenCalled();
+    });
+
+    it('ignores an in-flight response after switching accounts', async () => {
+      window.history.replaceState({}, '', '/app/accounts/1/dashboard');
+      let resolve;
+      axios.get.mockReturnValue(
+        new Promise(done => {
+          resolve = done;
+        })
+      );
+      const done = actions.refreshPendingEdit(
+        { state, dispatch },
+        {
+          conversationId: 71,
+          messageId: 5,
+          content: 'Edited',
+          accountUrl: '/api/v1/accounts/1/conversations',
+        }
+      );
+      await vi.advanceTimersByTimeAsync(4000);
+      window.history.replaceState({}, '', '/app/accounts/2/dashboard');
+      resolve({ data: { payload: [row] } });
+      await done;
+      expect(dispatch).not.toHaveBeenCalled();
+      window.history.replaceState({}, '', '/');
+    });
+
+    it('stops after three unsuccessful reads', async () => {
+      axios.get.mockRejectedValue(new Error('network'));
+      const done = refresh();
+      await vi.runAllTimersAsync();
+      await done;
+      expect(axios.get).toHaveBeenCalledTimes(3);
+      expect(dispatch).not.toHaveBeenCalled();
+    });
+
+    it('stops after leaving the conversation', async () => {
+      const done = refresh();
+      state.selectedChatId = 10;
+      await vi.runAllTimersAsync();
+      await done;
+      expect(axios.get).not.toHaveBeenCalled();
+    });
+  });
+
   describe('delayed deletion confirmation', () => {
     const row = {
       id: 5,

@@ -66,6 +66,8 @@ Após instalar uma skill, confira o `SKILL.md` e a descoberta pelo executor em u
 
 Cada issue tem responsável e branch/worktree própria baseada em `develop` atualizado. Trabalho incompleto permanece na branch ou desativado. Abra PR da branch para `develop` vinculado à issue; outra pessoa revisa e os checks obrigatórios devem passar. A release segue de `develop` para `prod` por PR que lista todas as issues e nomeia o responsável. Push direto é proibido em ambas.
 
+PRs para `develop` seguem sem build de imagem. A homologação e a publicação no GHCR rodam no push em `develop` após o merge. O check de imagem continua no PR da release para `prod`.
+
 Antes do merge em `prod`, obtenha autorização de deploy, verifique a imagem construída fora da VPS e do Mac de 8 GB, preserve-a em registry autorizado e publique pelo digest exatamente a imagem testada. Confira versão ativa, painel e Sidekiq; registre digest e resultado. O registry atual do runner é efêmero. O enforcement das proteções GitHub depende de administrador e não deve ser presumido ativo.
 
 Em emergência, crie hotfix a partir de `prod` e abra PR para `prod`, com revisão, verificações e autorização. Depois abra PR de `prod` para `develop`.

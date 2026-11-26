@@ -19,9 +19,10 @@ class Webhooks::RyzeController < ActionController::API
     reaction = event.reaction if Ryze::MessageReactions.enabled?
     return process_reaction(reaction) if reaction
     return process_outgoing(event) if event.outgoing_change?
-    return head :ok unless event.message_change?
+    return process_event(event) if event.message_change?
 
-    process_event(event)
+    Ryze::SyncProfileAvatarJob.enqueue_for(event)
+    head :ok
   end
 
   def process_action(*args)
