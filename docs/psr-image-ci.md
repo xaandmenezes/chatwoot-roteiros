@@ -1,13 +1,19 @@
-# Validar a imagem de um PR com o Compose do Dokploy
+# Homologação e publicação da imagem PSR
 
-Ao abrir, reabrir ou atualizar um PR, o GitHub Actions executa **Deploy Check → Check Deployment** para o commit da branch de origem. Consulte o resumo da execução para ver o SHA e o digest da imagem validada. O teste roda em um runner descartável e não publica uma versão na VPS.
+Ao abrir, reabrir ou atualizar um PR, **Deploy Check → Check Deployment** constrói a imagem para o SHA da branch de origem em um runner descartável. Em um PR deste repositório para `prod`, a etiqueta `verify-psr-image` permite repetir o check em **Actions → Verify PSR image by digest**. Se a etiqueta já estiver presente, remova-a e aplique-a novamente.
 
-Abra o PR de release de `develop` para `prod` com as issues incluídas e o responsável. Confira o SHA, as mudanças no Dockerfile, no Compose e no workflow, e obtenha autorização de deploy antes do merge.
+Os checks usam o Dockerfile de produção para `linux/amd64` e baixam o resultado pelo digest a partir do registry local do runner. O Compose do Dokploy prepara um banco novo, sobe o Rails e o Sidekiq com a imagem baixada e usa PostgreSQL e Redis isolados. O check valida o HTTP 200 com `woot` em `/health`, o heartbeat do Sidekiq no Redis e o ID da imagem dos dois contêineres. Consulte o resumo da execução para ver o SHA e o digest. O registry local desaparece ao final do job.
 
-Em um PR deste repositório para `prod`, a etiqueta `verify-psr-image` permite repetir a homologação do commit atual. Abra **Actions → Verify PSR image by digest** para consultar essa execução. Se a etiqueta já estiver presente, remova-a e aplique-a novamente para repetir o teste.
+## Publicação no GHCR
 
-A homologação usa o Dockerfile de produção e o Compose do Dokploy em um runner GitHub descartável. O Compose prepara um banco novo e inicia o Rails com a imagem baixada, usando PostgreSQL e Redis isolados. O check aguarda a resposta HTTP 200 com `woot` em `/health` e compara o ID da imagem do contêiner saudável com o da imagem baixada.
+No repositório `xaandmenezes/chatwoot-roteiros`, cada push em `develop` executa **Publish verified PSR image**. O workflow repete a homologação para o SHA do push. Se ela passar, usa o `GITHUB_TOKEN` do job para copiar o manifesto ou índice OCI completo para `ghcr.io/xaandmenezes/chatwoot-roteiros:<SHA completo>`. Em seguida, confirma o digest da tag, confere o hash do manifesto publicado e baixa a imagem do GHCR por digest. A referência `ghcr.io/xaandmenezes/chatwoot-roteiros@sha256:…` aparece no resumo da execução.
 
-O registry escuta em `127.0.0.1:5000` no runner e desaparece ao final do job. O digest registrado identifica a imagem daquela execução. Distribuir essa mesma imagem para outro ambiente requer preservá-la em um registry autorizado. Uma nova compilação pode gerar outro digest, pois o Dockerfile também consome pacotes e imagens-base atualizáveis.
+A publicação usa somente a tag do SHA e recusa sobrescrevê-la com um digest diferente. Uma nova compilação do mesmo SHA pode gerar outro digest, pois o Dockerfile consome pacotes e imagens-base atualizáveis. Consulte a execução que publicou a tag para obter o digest já homologado.
 
-Antes de publicar, preserve a imagem verificada em um registry autorizado e referencie seu digest para publicar exatamente a imagem testada. Após o deploy, confira a versão ativa, a saúde do painel e o processamento do Sidekiq; registre o digest e os resultados. O registry efêmero deste workflow não fornece essa distribuição.
+Os checks de PR têm token somente de leitura e usam apenas o registry descartável. Os workflows de publicação do Chatwoot CE e EE no Docker Hub rodam somente em `chatwoot/chatwoot`.
+
+## Uso na release
+
+Abra o PR de `develop` para `prod` com as issues incluídas e o responsável. No resumo de **Publish verified PSR image**, confirme que o SHA publicado corresponde ao head atual do PR e registre a referência completa por digest. Obtenha autorização de deploy e verifique a disponibilidade da imagem anterior para rollback antes do merge.
+
+O deploy é uma etapa separada. O host de produção precisa de acesso de leitura para baixar a imagem homologada pelo digest antes de ativá-la no Dokploy, que executa o Compose com `--pull never`. Após o deploy, confira a versão ativa, a saúde do painel e o processamento do Sidekiq. Registre o digest e os resultados na issue da release.
