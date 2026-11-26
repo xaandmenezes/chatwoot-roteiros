@@ -13,8 +13,9 @@ class Ryze::MessageDeletion
     attributes&.fetch(LOCAL_KEY, false) || attributes&.dig(REMOTE_KEY, 'state') == 'confirmed'
   end
 
-  def initialize(message)
+  def initialize(message, remote_ip: nil)
     @message = message
+    @remote_ip = remote_ip
     @eligibility = Ryze::OutgoingEditEligibility.new(message)
   end
 
@@ -35,14 +36,14 @@ class Ryze::MessageDeletion
     :delete_failed
   end
 
-  def local
+  def local(actor:)
     @message.with_lock do
       next :delete_unavailable unless Ryze::OutgoingEditEligibility.pilot_conversation?(@message.conversation)
       next :delete_unavailable unless Ryze::OutboundDelivery.bridge_user_id
       next :delete_busy if Ryze::OutboundDelivery.pending?(@message) || busy?
       next :confirmed if @message.deleted && !@message.deleted_by_customer?
 
-      @message.mark_deleted!(additional_attributes: attributes.merge(LOCAL_KEY => true))
+      @message.mark_deleted_by_agent!(actor: actor, remote_ip: @remote_ip, additional_attributes: attributes.merge(LOCAL_KEY => true))
       :confirmed
     end
   end
@@ -52,7 +53,9 @@ class Ryze::MessageDeletion
     return unless bound?(source_id) && self.class.pending?(@message) && remote['source_id'] == source_id
 
     confirmed = attributes.merge(REMOTE_KEY => remote.merge('state' => 'confirmed'))
-    I18n.with_locale(@message.account.locale) { @message.mark_deleted!(additional_attributes: confirmed) }
+    I18n.with_locale(@message.account.locale) do
+      @message.mark_deleted_by_agent!(actor: @message.sender, remote_ip: @remote_ip, additional_attributes: confirmed)
+    end
     :confirmed
   end
 

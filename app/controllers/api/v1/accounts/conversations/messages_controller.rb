@@ -42,19 +42,22 @@ class Api::V1::Accounts::Conversations::MessagesController < Api::V1::Accounts::
   def delete_for_everyone
     return render json: { error_code: 'delete_unavailable' }, status: :forbidden unless own_message?
 
-    render_message_action_result(Ryze::MessageDeletion.new(message).everyone)
+    render_message_action_result(Ryze::MessageDeletion.new(message, remote_ip: request.remote_ip).everyone)
   end
 
   def delete_only_in_chatwoot
     return render json: { error_code: 'delete_unavailable' }, status: :forbidden unless Current.user.is_a?(User)
 
-    render_message_action_result(Ryze::MessageDeletion.new(message).local)
+    render_message_action_result(Ryze::MessageDeletion.new(message, remote_ip: request.remote_ip).local(actor: Current.user))
   end
 
   def destroy
-    return message.mark_deleted! unless Ryze::OutgoingEditEligibility.pilot_conversation?(@conversation)
+    unless Ryze::OutgoingEditEligibility.pilot_conversation?(@conversation)
+      return message.mark_deleted_by_agent!(actor: Current.user,
+                                            remote_ip: request.remote_ip)
+    end
 
-    result = Ryze::MessageDeletion.new(message).local
+    result = Ryze::MessageDeletion.new(message, remote_ip: request.remote_ip).local(actor: Current.user)
     render_message_action_result(result) unless result == :confirmed
   end
 

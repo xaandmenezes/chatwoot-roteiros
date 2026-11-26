@@ -163,6 +163,11 @@ class Message < ApplicationRecord
     with_lock { yield if !deleted && content == original_content }
   end
 
+  # Enterprise records the actor and request address for dashboard deletions.
+  def mark_deleted_by_agent!(additional_attributes: nil, **_audit_context)
+    mark_deleted!(additional_attributes: additional_attributes)
+  end
+
   def mark_deleted!(by_customer: false, additional_attributes: nil)
     with_lock do
       return if by_customer && deleted
