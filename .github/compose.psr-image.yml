@@ -1,0 +1,10 @@
+# Apply only to the disposable CI project.
+services:
+  prepare:
+    image: ${PSR_IMAGE:?Set the registry reference with its digest}
+  rails:
+    image: ${PSR_IMAGE:?Set the registry reference with its digest}
+
+networks:
+  default:
+    internal: true
