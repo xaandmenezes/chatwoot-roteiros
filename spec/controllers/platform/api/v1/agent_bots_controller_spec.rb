@@ -213,6 +213,19 @@ RSpec.describe 'Platform Agent Bot API', type: :request do
         expect(account_bot.reload.name).to eq('test123')
       end
 
+      it 'keeps an account bot scoped to its account when the association is cleared' do
+        account = create(:account)
+        account_bot = create(:agent_bot, account: account)
+        create(:platform_app_permissible, platform_app: platform_app, permissible: account_bot)
+        create(:platform_app_permissible, platform_app: platform_app, permissible: account)
+
+        patch "/platform/api/v1/agent_bots/#{account_bot.id}", params: { account_id: nil },
+                                                               headers: { api_access_token: platform_app.access_token.token }, as: :json
+
+        expect(response).to have_http_status(:unauthorized)
+        expect(account_bot.reload.account_id).to eq(account.id)
+      end
+
       it 'updates avatar' do
         # no avatar before upload
         create(:platform_app_permissible, platform_app: platform_app, permissible: agent_bot)

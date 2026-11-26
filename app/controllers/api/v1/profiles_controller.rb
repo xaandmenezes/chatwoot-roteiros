@@ -41,7 +41,8 @@ class Api::V1::ProfilesController < Api::BaseController
   end
 
   def set_active_account
-    @user.account_users.find_by(account_id: profile_params[:account_id]).update(active_at: Time.now.utc)
+    account_id = params.expect(profile: [:account_id]).require(:account_id)
+    @user.account_users.find_by!(account_id: account_id).update(active_at: Time.now.utc)
     head :ok
   end
 
@@ -90,7 +91,6 @@ class Api::V1::ProfilesController < Api::BaseController
       :display_name,
       :avatar,
       :message_signature,
-      :account_id,
       ui_settings: {}
     )
   end

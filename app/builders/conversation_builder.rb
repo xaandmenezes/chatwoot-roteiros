@@ -1,6 +1,13 @@
 class ConversationBuilder
   pattr_initialize [:params!, :contact_inbox!]
 
+  SERVER_MANAGED_ADDITIONAL_ATTRIBUTES = %w[auto_reply captain_waiting_resolved_at].freeze
+  CHANNEL_MANAGED_ADDITIONAL_ATTRIBUTES = {
+    'Channel::Telegram' => %w[chat_id business_connection_id].freeze,
+    'Channel::Tiktok' => %w[conversation_id tiktok_capabilities].freeze,
+    'Channel::Whatsapp' => %w[call_permission_requests call_permission_requested_at call_permission_request_message_id].freeze
+  }.freeze
+
   def perform
     look_up_exising_conversation || create_new_conversation
   end
@@ -18,7 +25,6 @@ class ConversationBuilder
   end
 
   def conversation_params
-    additional_attributes = params[:additional_attributes]&.permit! || {}
     custom_attributes = params[:custom_attributes]&.permit! || {}
     status = params[:status].present? ? { status: params[:status] } : {}
 
@@ -36,5 +42,13 @@ class ConversationBuilder
       assignee_id: params[:assignee_id],
       team_id: params[:team_id]
     }.merge(status)
+  end
+
+  def additional_attributes
+    return {} unless params.key?(:additional_attributes)
+
+    attributes = params.slice(:additional_attributes).permit(additional_attributes: {})[:additional_attributes]
+    channel_attributes = CHANNEL_MANAGED_ADDITIONAL_ATTRIBUTES.fetch(@contact_inbox.inbox.channel_type, [])
+    attributes.to_h.except(*SERVER_MANAGED_ADDITIONAL_ATTRIBUTES, *channel_attributes)
   end
 end

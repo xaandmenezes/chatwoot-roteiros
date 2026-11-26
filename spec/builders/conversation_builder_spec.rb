@@ -29,6 +29,52 @@ describe ConversationBuilder do
       expect(conversation.contact_inbox_id).to eq(contact_api_inbox.id)
     end
 
+    it 'preserves caller metadata and leaves internal conversation state to the server' do
+      params = ActionController::Parameters.new(
+        additional_attributes: { browser: { name: 'Fixture' }, mail_subject: 'Fixture subject', auto_reply: true,
+                                 captain_waiting_resolved_at: Time.current.iso8601 },
+        custom_attributes: { reference: 'fixture' }
+      )
+
+      conversation = described_class.new(contact_inbox: contact_api_inbox, params: params).perform.reload
+
+      expect(conversation.additional_attributes).to eq('browser' => { 'name' => 'Fixture' }, 'mail_subject' => 'Fixture subject')
+      expect(conversation.custom_attributes).to eq('reference' => 'fixture')
+    end
+
+    it 'leaves Telegram routing fields to the channel' do
+      channel = create(:channel_telegram, account: account)
+      contact_inbox = create(:contact_inbox, contact: contact, inbox: channel.inbox)
+      params = ActionController::Parameters.new(additional_attributes: { chat_id: 'fixture', business_connection_id: 'fixture' })
+
+      conversation = described_class.new(contact_inbox: contact_inbox, params: params).perform.reload
+
+      expect(conversation.additional_attributes).to be_empty
+    end
+
+    it 'leaves TikTok routing and capabilities to the channel' do
+      channel = create(:channel_tiktok, account: account)
+      contact_inbox = create(:contact_inbox, contact: contact, inbox: channel.inbox)
+      params = ActionController::Parameters.new(additional_attributes: { conversation_id: 'fixture', tiktok_capabilities: { image_send: true } })
+
+      conversation = described_class.new(contact_inbox: contact_inbox, params: params).perform.reload
+
+      expect(conversation.additional_attributes).to be_empty
+    end
+
+    it 'leaves WhatsApp call permission tracking to the channel' do
+      channel = create(:channel_whatsapp, account: account, sync_templates: false, validate_provider_config: false)
+      contact_inbox = create(:contact_inbox, contact: contact, inbox: channel.inbox)
+      params = ActionController::Parameters.new(
+        additional_attributes: { call_permission_requests: { 'fixture' => {} }, call_permission_requested_at: Time.current.iso8601,
+                                 call_permission_request_message_id: 'fixture' }
+      )
+
+      conversation = described_class.new(contact_inbox: contact_inbox, params: params).perform.reload
+
+      expect(conversation.additional_attributes).to be_empty
+    end
+
     context 'when lock_to_single_conversation is true for sms inbox' do
       before do
         sms_inbox.update!(lock_to_single_conversation: true)
