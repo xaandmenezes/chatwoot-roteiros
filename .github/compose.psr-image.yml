@@ -4,6 +4,8 @@ services:
     image: ${PSR_IMAGE:?Set the registry reference with its digest}
   rails:
     image: ${PSR_IMAGE:?Set the registry reference with its digest}
+  sidekiq:
+    image: ${PSR_IMAGE:?Set the registry reference with its digest}
 
 networks:
   default:
