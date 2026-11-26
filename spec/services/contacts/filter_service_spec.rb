@@ -354,6 +354,20 @@ describe Contacts::FilterService do
     end
 
     context 'with custom attributes' do
+      it 'matches the full name of a persisted legacy attribute' do
+        legacy_key = create(:custom_attribute_definition, :legacy_colon_key, account: account, attribute_model: :contact_attribute).attribute_key
+        el_contact.update!(custom_attributes: el_contact.custom_attributes.merge(legacy_key => 'West'))
+        en_contact.update!(custom_attributes: en_contact.custom_attributes.merge(legacy_key => 'East'))
+        params[:payload] = [
+          { attribute_key: legacy_key, filter_operator: 'equal_to', values: ['West'], query_operator: 'AND' },
+          { attribute_key: 'customer_type', filter_operator: 'equal_to', values: ['platinum'], query_operator: nil }
+        ].map(&:with_indifferent_access)
+
+        result = filter_service.new(account, first_user, params).perform
+
+        expect(result[:contacts]).to contain_exactly(el_contact)
+      end
+
       it 'filter by custom_attributes and labels' do
         params[:payload] = [
           {
@@ -463,8 +477,11 @@ describe Contacts::FilterService do
         filters = service.instance_variable_get(:@filters)['contacts']
         condition_query = service.send(:build_condition_query, filters, params[:payload].first, 0)
 
-        expect(condition_query).to include("(contacts.custom_attributes ->> 'signed_in_at')::date < :value_0")
-        expect(service.instance_variable_get(:@filter_values)['value_0']).to eq(Date.iso8601(date_value))
+        expect(condition_query).to include('(contacts.custom_attributes ->> :custom_attribute_key_0::text)::date < :value_0')
+        expect(service.instance_variable_get(:@filter_values)).to include(
+          'custom_attribute_key_0' => 'signed_in_at',
+          'value_0' => Date.iso8601(date_value)
+        )
       end
 
       it 'binds custom numeric comparison values as decimals' do
@@ -481,8 +498,11 @@ describe Contacts::FilterService do
         filters = service.instance_variable_get(:@filters)['contacts']
         condition_query = service.send(:build_condition_query, filters, params[:payload].first, 0)
 
-        expect(condition_query).to include("(contacts.custom_attributes ->> 'lifetime_value')::numeric > :value_0")
-        expect(service.instance_variable_get(:@filter_values)['value_0']).to eq(BigDecimal('100.25'))
+        expect(condition_query).to include('(contacts.custom_attributes ->> :custom_attribute_key_0::text)::numeric > :value_0')
+        expect(service.instance_variable_get(:@filter_values)).to include(
+          'custom_attribute_key_0' => 'lifetime_value',
+          'value_0' => BigDecimal('100.25')
+        )
       end
 
       it 'filters by custom numeric attributes' do

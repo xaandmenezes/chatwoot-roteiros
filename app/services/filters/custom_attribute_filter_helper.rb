@@ -27,18 +27,18 @@ module Filters::CustomAttributeFilterHelper
     filter_operator_value = filter_operation(query_hash, current_index)
     query_operator = query_hash[:query_operator]
     table_name = attribute_model == 'conversation_attribute' ? 'conversations' : 'contacts'
+    data_type = @attribute_data_type
 
-    query = if attribute_data_type == 'text'
-              ActiveRecord::Base.sanitize_sql_array(
-                ["LOWER(#{table_name}.custom_attributes ->> ?)::#{attribute_data_type} #{filter_operator_value} #{query_operator} ", @attribute_key]
-              )
-            else
-              ActiveRecord::Base.sanitize_sql_array(
-                ["(#{table_name}.custom_attributes ->> ?)::#{attribute_data_type} #{filter_operator_value} #{query_operator} ", @attribute_key]
-              )
-            end
+    # A legacy key can contain a colon that Rails would parse as part of a named parameter.
+    key_parameter = "custom_attribute_key_#{current_index}"
+    @filter_values[key_parameter] = @attribute_key
 
-    query + not_in_custom_attr_query(table_name, query_hash, attribute_data_type)
+    attribute_value = "#{table_name}.custom_attributes ->> :#{key_parameter}::text"
+    filter_expression = data_type == 'text' ? "LOWER(#{attribute_value})" : "(#{attribute_value})"
+    query = "#{filter_expression}::#{data_type} #{filter_operator_value} #{query_operator} "
+    return query unless query_hash[:filter_operator] == 'not_equal_to'
+
+    "#{query}OR (#{attribute_value})::#{data_type} IS NULL "
   end
 
   def validate_numeric_filter_operator!(filter_operator)
@@ -64,13 +64,5 @@ module Filters::CustomAttributeFilterHelper
     @custom_attribute = current_account.custom_attribute_definitions.where(
       attribute_model: attribute_model
     ).find_by(attribute_key: attribute_key)
-  end
-
-  def not_in_custom_attr_query(table_name, query_hash, attribute_data_type)
-    return '' unless query_hash[:filter_operator] == 'not_equal_to'
-
-    ActiveRecord::Base.sanitize_sql_array(
-      [" OR (#{table_name}.custom_attributes ->> ?)::#{attribute_data_type} IS NULL ", @attribute_key]
-    )
   end
 end
