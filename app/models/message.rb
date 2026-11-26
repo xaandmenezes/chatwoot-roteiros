@@ -148,6 +148,16 @@ class Message < ApplicationRecord
   after_update_commit :dispatch_update_event
   after_commit :reindex_for_search, if: :should_index?, on: [:create, :update]
 
+  # Only confirmed channel edits use this path. Status receipts and internal
+  # updates continue to publish their ordinary message update event.
+  def update_edited_content!(revision:, **attributes)
+    update!(**attributes)
+    if saved_change_to_content? && !deleted && !Current.executed_by.is_a?(AutomationRule)
+      AutomationRules::MessageEditedJob.perform_later(self, revision, content, Time.current)
+    end
+    true
+  end
+
   # A translation provider can finish after the contact edits or revokes the source text.
   def with_current_content(original_content)
     with_lock { yield if !deleted && content == original_content }

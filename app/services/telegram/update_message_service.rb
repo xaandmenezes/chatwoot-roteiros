@@ -31,11 +31,10 @@ class Telegram::UpdateMessageService
   def update_message
     edited_message = params[:edited_message]
 
-    if edited_message[:text].present?
-      @message.update!(content: edited_message[:text])
-    elsif edited_message[:caption].present?
-      @message.update!(content: edited_message[:caption])
-    end
+    content = edited_message[:text].presence || edited_message[:caption].presence
+    return unless content
+
+    @message.update_edited_content!(revision: params.fetch(:update_id), content: content)
   end
 
   def transform_business_message!

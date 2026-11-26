@@ -2,6 +2,15 @@ require 'rails_helper'
 require Rails.root.join 'spec/models/concerns/reauthorizable_shared.rb'
 
 RSpec.describe AutomationRule do
+  it 'allows instant edit rules and rejects a wait even with a status-only condition' do
+    rule = build(:automation_rule, account: create(:account), event_name: 'message_edited')
+    expect(rule).to be_valid
+
+    rule.execution_delay = 10
+    expect(rule).not_to be_valid
+    expect(rule.errors[:execution_delay]).to be_present
+  end
+
   describe 'concerns' do
     it_behaves_like 'reauthorizable'
   end

@@ -201,15 +201,11 @@ describe('useAutomation', () => {
 
   it('manifests custom attributes correctly', () => {
     const { manifestCustomAttributes, automationTypes } = useAutomation();
-    automationTypes.message_created = { conditions: [] };
-    automationTypes.conversation_created = { conditions: [] };
-    automationTypes.conversation_updated = { conditions: [] };
-    automationTypes.conversation_opened = { conditions: [] };
-    automationTypes.conversation_resolved = { conditions: [] };
-    automationTypes.monitor_matched = { conditions: [] };
-
+    const customCondition = { key: 'booking', customAttributeType: 'text' };
     automationHelper.generateCustomAttributeTypes.mockReturnValue([]);
-    automationHelper.generateCustomAttributes.mockReturnValue([]);
+    automationHelper.generateCustomAttributes.mockReturnValue([
+      customCondition,
+    ]);
 
     manifestCustomAttributes();
 
@@ -218,7 +214,7 @@ describe('useAutomation', () => {
     );
     expect(automationHelper.generateCustomAttributes).toHaveBeenCalledTimes(1);
     Object.values(automationTypes).forEach(type => {
-      expect(type.conditions).toHaveLength(0);
+      expect(type.conditions).toContainEqual(customCondition);
     });
   });
 
