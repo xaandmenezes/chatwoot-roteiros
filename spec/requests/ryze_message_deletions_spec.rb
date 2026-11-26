@@ -58,6 +58,73 @@ RSpec.describe 'Ryze pilot message deletion', type: :request do
     expect(revoke).to have_been_requested.once
   end
 
+  context 'when Ryze acknowledges a revoke with a different ID' do
+    let(:missing) { { status: 404, body: { success: false, error: { message: 'Mensagem não encontrada' } }.to_json } }
+    let(:ack_chat) { jid }
+
+    def snapshot
+      @snapshot ||= stub_request(:get, "#{provider}/getMessage/pilot").with(query: { messageId: source_id })
+    end
+
+    before do
+      stub_status
+      revoke.to_return(body: confirmation.merge(message_id: 'WA-REVOKE-1', chat_jid: ack_chat).to_json)
+    end
+
+    it 'confirms the original, including after reopening, with one delete and a read of the original ID' do
+      snapshot.to_return(missing)
+      2.times { delete_message }
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body).to include('id' => message.id, 'content_attributes' => include('deleted' => true))
+      get api_v1_account_conversation_messages_path(account, conversation.display_id), headers: agent.create_new_auth_token
+      expect(response.parsed_body.fetch('payload')).to include(include('id' => message.id, 'content_attributes' => include('deleted' => true)))
+      expect(snapshot).to have_been_requested.once
+      expect(revoke).to have_been_requested.once
+    end
+
+    it 'rechecks a temporarily visible original using only reads' do
+      snapshot.to_return(body: { success: true, messageId: source_id, data: { type: 'text', content: 'original' } }.to_json).then.to_return(missing)
+      delete_message
+      expect(response).to have_http_status(:accepted)
+      expect(message.reload.content).to eq('original')
+      perform_enqueued_jobs(only: Ryze::ConfirmOutgoingDeletionJob)
+      expect(message.reload.deleted).to be(true)
+      expect(snapshot).to have_been_requested.twice
+      expect(revoke).to have_been_requested.once
+    end
+
+    it 'keeps the content if the read returns a generic 404' do
+      snapshot.to_return(status: 404, body: 'Not Found')
+      perform_enqueued_jobs(only: Ryze::ConfirmOutgoingDeletionJob) { delete_message }
+      expect(response).to have_http_status(:accepted)
+      expect(snapshot).to have_been_requested.times(3)
+      expect(message.reload.content).to eq('original')
+      expect(revoke).to have_been_requested.once
+    end
+
+    it 'skips a deferred read once an authenticated webhook confirmed the original' do
+      snapshot.to_return(status: 503)
+      delete_message
+      expect(response).to have_http_status(:accepted)
+      webhook
+      perform_enqueued_jobs(only: Ryze::ConfirmOutgoingDeletionJob)
+      expect(snapshot).to have_been_requested.once
+      expect(revoke).to have_been_requested.once
+      expect(message.reload.deleted).to be(true)
+    end
+
+    context 'with another chat in the acknowledgement' do
+      let(:ack_chat) { 'another@lid' }
+
+      it 'ignores an acknowledgement for another chat without starting readback' do
+        delete_message
+        expect(response).to have_http_status(:accepted)
+        expect(message.reload.content).to eq('original')
+        expect(WebMock).not_to have_requested(:get, %r{/chat/getMessage/})
+      end
+    end
+  end
+
   context 'with a pending remote deletion' do
     before do
       stub_status

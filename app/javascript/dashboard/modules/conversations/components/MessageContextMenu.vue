@@ -162,6 +162,12 @@ export default {
     updateMessage(message) {
       this.$store.dispatch('updateMessage', message);
     },
+    refreshPendingDeletion() {
+      this.$store.dispatch('refreshPendingDeletion', {
+        conversationId: this.conversationId,
+        messageId: this.messageId,
+      });
+    },
     openDeleteModal() {
       this.handleClose();
       this.showDeleteModal = true;
@@ -218,6 +224,7 @@ export default {
       :can-delete-for-everyone="!!enabledOptions.edit"
       @close="closeDeleteModal"
       @confirmed="updateMessage"
+      @pending="refreshPendingDeletion"
     />
     <woot-delete-modal
       v-else-if="showDeleteModal && enabledOptions.delete"

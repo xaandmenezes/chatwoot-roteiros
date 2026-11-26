@@ -11,7 +11,7 @@ const props = defineProps({
   createdAt: { type: Number, required: true },
   canDeleteForEveryone: { type: Boolean, required: true },
 });
-const emit = defineEmits(['close', 'confirmed']);
+const emit = defineEmits(['close', 'confirmed', 'pending']);
 const { t } = useI18n();
 const DELETE_WINDOW_MS = 15 * 60 * 1000;
 const deadline = computed(() => props.createdAt * 1000 + DELETE_WINDOW_MS);
@@ -80,6 +80,7 @@ async function remove() {
           : t('CONVERSATION.CONTEXT_MENU.DELETE_SCOPE.EVERYONE_DONE')
       );
     } else if (!local && status === 202) {
+      emit('pending');
       useAlert(t('CONVERSATION.CONTEXT_MENU.DELETE_SCOPE.PENDING'));
     } else {
       error.value = t('CONVERSATION.CONTEXT_MENU.DELETE_SCOPE.UNKNOWN');
