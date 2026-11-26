@@ -1,5 +1,10 @@
 <script>
-import { defineAsyncComponent, getCurrentInstance, useTemplateRef } from 'vue';
+import {
+  defineAsyncComponent,
+  getCurrentInstance,
+  ref,
+  useTemplateRef,
+} from 'vue';
 import { mapGetters } from 'vuex';
 import { useAlert } from 'dashboard/composables';
 import { useUISettings } from 'dashboard/composables/useUISettings';
@@ -49,6 +54,7 @@ import {
   stripUnsupportedMarkdown,
 } from 'dashboard/helper/editorHelper';
 import { useCopilotReply } from 'dashboard/composables/useCopilotReply';
+import { useRyzePresence } from 'dashboard/composables/useRyzePresence';
 import { useMacroExecution } from 'dashboard/composables/useMacroExecution';
 import ConversationResolveAttributesModal from 'dashboard/components-next/ConversationWorkflow/ConversationResolveAttributesModal.vue';
 import { useKbd } from 'dashboard/composables/utils/useKbd';
@@ -102,6 +108,8 @@ export default {
 
     // Options API state and methods live on the instance proxy
     const { proxy } = getCurrentInstance();
+    const activePresenceDestination = ref(null);
+    const ryzePresence = useRyzePresence(activePresenceDestination);
     useKeyboardEvents({
       Escape: {
         action: () => proxy.hideEmojiPicker(),
@@ -161,6 +169,8 @@ export default {
       copilot,
       shortcutKey,
       macroExecution,
+      ryzePresence,
+      activePresenceDestination,
     };
   },
   data() {
@@ -472,6 +482,29 @@ export default {
     conversationIdByRoute() {
       return this.conversationId;
     },
+    ryzePresenceDestination() {
+      const {
+        id,
+        account_id: accountId,
+        ryze_presence_enabled: enabled,
+      } = this.currentChat;
+      const route = this.$route?.params;
+      const routeConversationId =
+        route?.conversation_id || route?.conversationId;
+      if (
+        !enabled ||
+        !id ||
+        !accountId ||
+        this.isPrivate ||
+        this.isOnPrivateNote ||
+        this.isEditorDisabled ||
+        String(route?.accountId) !== String(accountId) ||
+        String(routeConversationId) !== String(id)
+      ) {
+        return null;
+      }
+      return `${accountId}/${id}`;
+    },
     editorStateId() {
       return `draft-${this.conversationIdByRoute}-${this.effectiveReplyMode}`;
     },
@@ -601,6 +634,19 @@ export default {
     },
     showContentTemplates(isAvailable) {
       if (!isAvailable) this.hideContentTemplatesModal();
+    },
+    ryzePresenceDestination: {
+      immediate: true,
+      flush: 'sync',
+      handler(destination) {
+        this.activePresenceDestination = destination;
+      },
+    },
+    isDefaultEditorMode(isDefault) {
+      if (!isDefault) this.ryzePresence.stop('typing');
+    },
+    showAudioRecorderEditor(show) {
+      if (!show) this.ryzePresence.stop('recording');
     },
     effectiveReplyMode(updatedReplyType) {
       this.$store.dispatch('draftMessages/setReplyEditorMode', {
@@ -1055,6 +1101,7 @@ export default {
       this.copilot.execute(action, data);
     },
     clearMessage() {
+      this.ryzePresence.stop();
       this.message = '';
       this.clearCopilotAcceptedMessage();
       if (this.sendWithSignature && !this.isPrivate) {
@@ -1102,6 +1149,15 @@ export default {
         this.toggleEmojiPicker();
       }
     },
+    onTypingActivity() {
+      if (this.isDefaultEditorMode) this.ryzePresence.typing();
+    },
+    onRecordingStarted() {
+      if (this.showAudioRecorderEditor) this.ryzePresence.recording();
+    },
+    onRecordingStopped() {
+      this.ryzePresence.stop('recording');
+    },
     onTypingOn() {
       this.toggleTyping('on');
     },
@@ -1109,6 +1165,7 @@ export default {
       this.toggleTyping('off');
     },
     onBlur() {
+      this.ryzePresence.stop('typing');
       this.isFocused = false;
       this.saveDraft(this.conversationIdByRoute, this.effectiveReplyMode);
     },
@@ -1452,6 +1509,8 @@ export default {
           v-if="showAudioRecorderEditor"
           ref="audioRecorderInput"
           :audio-record-format="audioRecordFormat"
+          @recording-started="onRecordingStarted"
+          @recording-stopped="onRecordingStopped"
           @recorder-progress-changed="onRecordProgressChanged"
           @finish-record="onFinishRecorder"
           @record-error="onRecordError"
@@ -1493,6 +1552,7 @@ export default {
           :medium="inbox.medium"
           @typing-off="onTypingOff"
           @typing-on="onTypingOn"
+          @typing-activity="onTypingActivity"
           @focus="onFocus"
           @blur="onBlur"
           @toggle-user-mention="toggleUserMention"

@@ -1,6 +1,8 @@
 /* global axios */
 import ApiClient from './ApiClient';
 
+const RYZE_PRESENCE_TIMEOUT = 3000;
+
 class ConversationApi extends ApiClient {
   constructor() {
     super('conversations', { accountScoped: true });
@@ -23,6 +25,15 @@ class ConversationApi extends ApiClient {
 
   getSuggestions(conversationID, type) {
     return axios.get(`${this.url}/${conversationID}/suggestions/${type}`);
+  }
+
+  publishRyzePresence(destination, composerId, state) {
+    const [accountId, conversationId] = destination.split('/');
+    return axios.post(
+      `${this.apiVersion}/accounts/${accountId}/conversations/${conversationId}/ryze_presence`,
+      { state, composer_id: composerId },
+      { timeout: RYZE_PRESENCE_TIMEOUT }
+    );
   }
 
   getUnreadCounts() {
