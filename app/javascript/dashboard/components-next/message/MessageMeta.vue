@@ -1,7 +1,6 @@
 <script setup>
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { messageTimestamp } from 'shared/helpers/timeHelper';
 import { useExactTimestamp } from 'shared/composables/useExactTimestamp';
 
 import MessageStatus from './MessageStatus.vue';
@@ -12,6 +11,7 @@ import { useMessageContext } from './provider.js';
 import { MESSAGE_STATUS, MESSAGE_TYPES } from './constants';
 
 const exactTimestamp = useExactTimestamp();
+const inlineTimestamp = useExactTimestamp({ omitCurrentYear: true });
 
 const {
   isAFacebookInbox,
@@ -42,9 +42,7 @@ const isEdited = computed(
   () => contentAttributes.value?.edited && !contentAttributes.value?.deleted
 );
 
-const readableTime = computed(() =>
-  messageTimestamp(createdAt.value, 'LLL d, h:mm a')
-);
+const readableTime = computed(() => inlineTimestamp(createdAt.value));
 
 const exactTime = computed(() => exactTimestamp(createdAt.value));
 

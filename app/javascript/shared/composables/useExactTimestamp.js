@@ -4,20 +4,27 @@ import { useLocale } from './useLocale';
 // Cache formatters by locale since this runs in the render path.
 const formatters = new Map();
 
-const formatterFor = locale => {
-  if (!formatters.has(locale)) {
+const formatterFor = (locale, omitYear) => {
+  const key = omitYear ? `${locale}/compact` : locale;
+  if (!formatters.has(key)) {
     formatters.set(
-      locale,
+      key,
       new Intl.DateTimeFormat(locale, {
-        dateStyle: 'medium',
-        timeStyle: 'short',
+        ...(omitYear
+          ? {
+              month: 'short',
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+            }
+          : { dateStyle: 'medium', timeStyle: 'short' }),
         // `fa` and `th` would otherwise use the Solar Hijri and Buddhist
         // calendars, dating this differently to the relative time it annotates.
         calendar: 'gregory',
       })
     );
   }
-  return formatters.get(locale);
+  return formatters.get(key);
 };
 
 // Only used to pick out the localized zone label; `dateStyle`/`timeStyle`
@@ -39,6 +46,7 @@ const zoneFormatterFor = locale => {
  * language, so the month name, field order and clock convention read natively.
  *
  * @param {Object} [options]
+ * @param {boolean} [options.omitCurrentYear=false] - Shorten inline message timestamps for this year.
  * @param {boolean} [options.showTimeZone=false] - Append the user's timezone
  *   label in parentheses, e.g. "(GMT+5:30)", for values whose zone would
  *   otherwise be ambiguous.
@@ -49,14 +57,19 @@ const zoneFormatterFor = locale => {
  * const exactTimestamp = useExactTimestamp();
  * exactTimestamp(1770000000); // "Feb 2, 2026, 8:10 AM" / "2 févr. 2026, 08:10"
  */
-export function useExactTimestamp({ showTimeZone = false } = {}) {
+export function useExactTimestamp({
+  showTimeZone = false,
+  omitCurrentYear = false,
+} = {}) {
   const { resolvedLocale } = useLocale();
 
   return time => {
     if (!time) return '';
 
     const date = fromUnixTime(time);
-    const formatted = formatterFor(resolvedLocale.value).format(date);
+    const omitYear =
+      omitCurrentYear && date.getFullYear() === new Date().getFullYear();
+    const formatted = formatterFor(resolvedLocale.value, omitYear).format(date);
     if (!showTimeZone) return formatted;
 
     const zone = zoneFormatterFor(resolvedLocale.value)
