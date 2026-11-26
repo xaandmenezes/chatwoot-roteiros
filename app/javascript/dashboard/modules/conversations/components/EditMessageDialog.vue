@@ -12,7 +12,7 @@ const props = defineProps({
   originalContent: { type: String, default: '' },
 });
 
-const emit = defineEmits(['close', 'confirmed']);
+const emit = defineEmits(['close', 'confirmed', 'pending']);
 
 const { t } = useI18n();
 const fieldId = useId();
@@ -55,17 +55,21 @@ const save = async () => {
   if (cannotSave.value) return;
   errorCode.value = '';
   isSaving.value = true;
+  const accountUrl = MessageApi.url;
+  const { conversationId, messageId } = props;
+  const content = draft.value;
   try {
     const { status, data } = await MessageApi.editContent(
-      props.conversationId,
-      props.messageId,
-      draft.value
+      conversationId,
+      messageId,
+      content
     );
     if (status === 200) {
       emit('confirmed', data);
       dialog.value?.close();
       useAlert(t('CONVERSATION.CONTEXT_MENU.EDIT_MESSAGE.SUCCESS'));
     } else if (status === 202) {
+      emit('pending', { conversationId, messageId, content, accountUrl });
       dialog.value?.close();
       useAlert(t('CONVERSATION.CONTEXT_MENU.EDIT_MESSAGE.PENDING'));
     } else {

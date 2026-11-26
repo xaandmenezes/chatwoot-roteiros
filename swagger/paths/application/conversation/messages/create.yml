@@ -13,6 +13,13 @@ description: |
   Send files with the `attachments[]` form field. `curl -F` sets the
   `multipart/form-data` content type and boundary automatically.
 
+  In an API inbox, retry a public incoming delivery with the same nonblank
+  `source_id` in the same conversation and resend the complete ordered attachment
+  list. Matching compares file checksums, sizes, metadata, and voice-note flags.
+  A matching retry returns the original message with its stored caption and
+  reply reference. If a new upload fails, retry with all files. Complete any
+  direct upload before referencing its signed blob ID.
+
   ```bash
   curl -X POST "https://app.chatwoot.com/api/v1/accounts/{account_id}/conversations/{conversation_id}/messages" \
     -H "Authorization: Bearer <your-api-token>" \
@@ -134,6 +141,9 @@ requestBody:
             type: object
             description: Attributes based on the content type
             example: {}
+          source_id:
+            type: string
+            description: External message ID. Reuse it when retrying the same incoming delivery in an API inbox.
           is_voice_message:
             type: boolean
             description: Marks the audio attachments in this message as recorded voice notes.
@@ -186,3 +196,12 @@ responses:
       application/json:
         schema:
           $ref: '#/components/schemas/bad_request_error'
+  '422':
+    description: Message could not be created, including when an attachment upload is incomplete.
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            error:
+              type: string

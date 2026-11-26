@@ -11,9 +11,10 @@ class Webhooks::RyzeController < ActionController::API
 
     log_pilot_event(event)
     return process_outgoing(event) if event.outgoing_change?
-    return head :ok unless event.message_change?
+    return process_event(event) if event.message_change?
 
-    process_event(event)
+    Ryze::SyncProfileAvatarJob.enqueue_for(event)
+    head :ok
   end
 
   private

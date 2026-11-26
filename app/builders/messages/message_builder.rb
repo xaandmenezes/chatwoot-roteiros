@@ -23,9 +23,10 @@ class Messages::MessageBuilder
     @items = content_attributes&.dig(:items)
   end
 
-  def perform
+  def perform(replay_incoming_attachments: false)
     return receive_native_mirror if native_mirror?
-    return create_message unless replayable_incoming_text?
+    return create_message unless replayable_incoming_delivery?
+    return replay_incoming_attachments ? receive_incoming_attachments : create_message if @attachments.present?
 
     @conversation.with_lock do
       @message = existing_incoming_text || create_message
@@ -69,31 +70,55 @@ class Messages::MessageBuilder
     end
   end
 
-  def replayable_incoming_text?
+  def replayable_incoming_delivery?
     return false unless @message_type == 'incoming' && !@private && @conversation.inbox.api?
-    return false unless plain_text_delivery?
+    return false unless text_content_delivery?
 
     @params[:source_id].is_a?(String) && @params[:source_id].present?
   end
 
+  def text_content_delivery?
+    [nil, 'text'].include?(@params[:content_type]) && forwarded_message_id.blank?
+  end
+
   def plain_text_delivery?
-    [nil, 'text'].include?(@params[:content_type]) && @attachments.blank? && forwarded_message_id.blank?
+    @attachments.blank? && text_content_delivery?
   end
 
   def existing_incoming_text
+    incoming_delivery_candidates.where.missing(:attachments)
+                                .where(Messages::IncomingAttachmentReplay.fingerprint_attribute.eq(nil)).reorder(:id).first
+  end
+
+  def incoming_delivery_candidates
     @conversation.messages.incoming.where(private: false, content_type: :text, source_id: @params[:source_id])
-                 .where.missing(:attachments).reorder(:id).first
+  end
+
+  def receive_incoming_attachments
+    uploads = Array(@attachments)
+    raise ArgumentError, 'attachments exceeded maximum allowed' if uploads.size > Message::NUMBER_OF_PERMITTED_ATTACHMENTS
+
+    message = build_message
+    candidates = incoming_delivery_candidates.where(account_id: message.account_id, inbox_id: message.inbox_id)
+    @message = Messages::IncomingAttachmentReplay.new(message, uploads, candidates).perform
+    @message.echo_id = @params[:echo_id]
+    @message
   end
 
   def create_message(native_mirror: false)
+    build_message
+    mark_ryze_delivery(native_mirror)
+    @message.save!
+    @message
+  end
+
+  def build_message
     @message = @conversation.messages.build(message_params)
     process_attachments
     process_emails
     # When the message has no quoted content, it will just be rendered as a regular message
     # The frontend is equipped to handle this case
     process_email_content
-    mark_ryze_delivery(native_mirror)
-    @message.save!
     @message
   end
 

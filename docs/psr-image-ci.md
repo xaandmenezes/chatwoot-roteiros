@@ -1,8 +1,12 @@
 # Homologação e publicação da imagem PSR
 
-Ao abrir, reabrir ou atualizar um PR, **Deploy Check → Check Deployment** constrói a imagem para o SHA da branch de origem em um runner descartável. Em um PR deste repositório para `prod`, a etiqueta `verify-psr-image` permite repetir o check em **Actions → Verify PSR image by digest**. Se a etiqueta já estiver presente, remova-a e aplique-a novamente.
+PRs com base `develop` seguem sem build de imagem. A homologação e a publicação no GHCR ocorrem após o merge, no push em `develop`.
 
-Os checks usam o Dockerfile de produção para `linux/amd64` e baixam o resultado pelo digest a partir do registry local do runner. O Compose do Dokploy prepara um banco novo, sobe o Rails e o Sidekiq com a imagem baixada e usa PostgreSQL e Redis isolados. O check valida o HTTP 200 com `woot` em `/health`, o heartbeat do Sidekiq no Redis e o ID da imagem dos dois contêineres. Consulte o resumo da execução para ver o SHA e o digest. O registry local desaparece ao final do job.
+Ao abrir, reabrir ou atualizar um PR com outra base, incluindo `prod`, **Deploy Check → Check Deployment** constrói a imagem para o SHA da branch de origem em um runner descartável. Em um PR deste repositório para `prod`, a etiqueta `verify-psr-image` permite repetir o check em **Actions → Verify PSR image by digest**. Se a etiqueta já estiver presente, remova-a e aplique-a novamente.
+
+**Test Docker Build** roda para PRs com base `master` e por disparo manual, com a matriz `linux/amd64` e `linux/arm64`.
+
+A homologação do Dokploy usa o Dockerfile de produção para `linux/amd64` e baixa o resultado pelo digest a partir do registry local do runner. O Compose do Dokploy prepara um banco novo, sobe o Rails e o Sidekiq com a imagem baixada e usa PostgreSQL e Redis isolados. O check valida o HTTP 200 com `woot` em `/health`, o heartbeat do Sidekiq no Redis e o ID da imagem dos dois contêineres. Consulte o resumo da execução para ver o SHA e o digest. O registry local desaparece ao final do job.
 
 ## Publicação no GHCR
 
