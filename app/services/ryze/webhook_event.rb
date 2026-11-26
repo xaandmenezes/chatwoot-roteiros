@@ -29,11 +29,16 @@ class Ryze::WebhookEvent
     instance_data[:instance] if instance_data.is_a?(ActionController::Parameters)
   end
 
-  def valid?
-    return false unless source_id.is_a?(String) && source_id.present? && chat_ids.any?
+  def valid?(require_chat: true)
+    return false unless source_id.is_a?(String) && source_id.present?
+    return false if require_chat && chat_ids.empty?
     return content.is_a?(String) && edited_at.present? if edited_message?
 
     %w[sender_revoke admin_revoke].include?(revoke_type)
+  end
+
+  def outside_pilot?(pilot_chat_id)
+    pilot_chat_id.present? && chat_ids.exclude?(pilot_chat_id)
   end
 
   def customer_revoked?

@@ -167,6 +167,86 @@ RSpec.describe 'Ryze inbound message changes', type: :request do
     expect(Ryze::IncomingMessageChange).not_to have_received(:new)
   end
 
+  context 'when a sender revocation carries a different chat identifier during the pilot' do
+    let(:revocation) do
+      payload.deep_merge(data: { chat: { jid: lid, lid: nil }, message: { type: 'message_revoke', revoke: { revokeType: 'sender_revoke' } } })
+    end
+    let(:pilot_conversation) { create(:conversation, account: account, inbox: inbox, additional_attributes: { whatsapp_jid: jid }) }
+    let(:other_conversation) { create(:conversation, account: account, inbox: inbox, additional_attributes: { whatsapp_jid: 'other@lid' }) }
+
+    around { |example| with_modified_env(RYZE_PILOT_CHAT_JID: jid) { example.run } }
+
+    def incoming_in(conversation)
+      create(:message, conversation: conversation, account: account, inbox: inbox, message_type: :incoming, source_id: source_id, content: 'Original')
+    end
+
+    it 'retains the agent copy and marks only the original once, including on redelivery' do
+      original = incoming_in(pilot_conversation)
+
+      expect { 2.times { post_event(revocation) } }.to change(MessageRevocation, :count).by(1)
+
+      expect(response).to have_http_status(:ok)
+      expect(original.reload).to be_deleted_by_customer
+      expect(original.customer_revocation.content).to eq('Original')
+    end
+
+    it 'also resolves an incoming sender revocation with no chat identifiers' do
+      original = incoming_in(pilot_conversation)
+      revocation[:data].delete(:chat)
+      post_event(revocation)
+
+      expect(response).to have_http_status(:ok)
+      expect(original.reload).to be_deleted_by_customer
+    end
+
+    it 'acknowledges a revocation for a stored message outside the pilot without marking it' do
+      other = incoming_in(other_conversation)
+      post_event(revocation)
+
+      expect(response).to have_http_status(:ok)
+      expect(other.reload.deleted).to be_nil
+    end
+
+    it 'requests redelivery if the original is late and succeeds once it arrives' do
+      post_event(revocation)
+      expect(response).to have_http_status(:service_unavailable)
+      expect(response.headers['Retry-After']).to be_present
+
+      original = incoming_in(pilot_conversation)
+      post_event(revocation)
+      expect(response).to have_http_status(:ok)
+      expect(original.reload).to be_deleted_by_customer
+    end
+
+    it 'keeps matching either supplied alias when the event explicitly names the pilot' do
+      pilot_conversation.update!(additional_attributes: { whatsapp_jid: lid })
+      original = incoming_in(pilot_conversation)
+      post_event(revocation.deep_merge(data: { chat: { jid: jid, lid: lid } }))
+
+      expect(response).to have_http_status(:ok)
+      expect(original.reload).to be_deleted_by_customer
+    end
+
+    it 'leaves both conversations untouched on a source ID collision' do
+      original = incoming_in(pilot_conversation)
+      other = incoming_in(other_conversation)
+      post_event(revocation)
+
+      expect(response).to have_http_status(:conflict)
+      expect(original.reload.deleted).to be_nil
+      expect(other.reload.deleted).to be_nil
+    end
+
+    it 'does not apply this fallback to administrator revocations' do
+      original = incoming_in(pilot_conversation)
+      revocation[:data][:message][:revoke][:revokeType] = 'admin_revoke'
+      post_event(revocation)
+
+      expect(response).to have_http_status(:ok)
+      expect(original.reload.deleted).to be_nil
+    end
+  end
+
   it 'records a safe correlation for an ignored pilot event without logging other chats' do
     logs = []
     allow(Rails.logger).to receive(:info).and_call_original
