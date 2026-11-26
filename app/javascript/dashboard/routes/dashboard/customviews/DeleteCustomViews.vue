@@ -79,16 +79,14 @@ export default {
         useTrack(CONTACTS_EVENTS.DELETE_FILTER, {
           type: this.filterType === 0 ? 'folder' : 'segment',
         });
-      } catch (error) {
-        const errorMessage =
-          error?.response?.message || this.activeFilterType === 0
-            ? this.$t('FILTER.CUSTOM_VIEWS.DELETE.API_FOLDERS.SUCCESS_MESSAGE')
-            : this.$t(
-                'FILTER.CUSTOM_VIEWS.DELETE.API_SEGMENTS.SUCCESS_MESSAGE'
-              );
-        useAlert(errorMessage);
+        this.openLastItemAfterDelete();
+      } catch {
+        useAlert(
+          this.activeFilterType === 0
+            ? this.$t('FILTER.CUSTOM_VIEWS.DELETE.API_FOLDERS.ERROR_MESSAGE')
+            : this.$t('FILTER.CUSTOM_VIEWS.DELETE.API_SEGMENTS.ERROR_MESSAGE')
+        );
       }
-      this.openLastItemAfterDelete();
     },
     closeDeletePopup() {
       this.$emit('close');

@@ -12,6 +12,7 @@ const props = defineProps({
   pageTitle: { type: String, required: true },
   contactFilter: { type: Object, default: null },
   hasAppliedFilters: { type: Boolean, required: true },
+  canManageFolder: { type: Boolean, default: true },
   hasActiveFolders: { type: Boolean, required: true },
   activeStatus: { type: String, required: true },
   isOnExpandedLayout: { type: Boolean, required: true },
@@ -126,7 +127,7 @@ const toggleConversationLayout = () => {
           />
         </div>
       </template>
-      <template v-if="hasActiveFolders">
+      <template v-if="hasActiveFolders && canManageFolder">
         <div class="relative">
           <NextButton
             id="toggleConversationFilterButton"
@@ -153,7 +154,7 @@ const toggleConversationLayout = () => {
           @click="emit('deleteFolders')"
         />
       </template>
-      <div v-else-if="!isContactScoped" class="relative">
+      <div v-else-if="!hasActiveFolders && !isContactScoped" class="relative">
         <NextButton
           id="toggleConversationFilterButton"
           v-tooltip.right="$t('FILTER.TOOLTIP_LABEL')"

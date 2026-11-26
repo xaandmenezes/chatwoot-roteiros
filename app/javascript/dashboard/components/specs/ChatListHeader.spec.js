@@ -69,6 +69,19 @@ describe('ChatListHeader', () => {
     );
   });
 
+  it('hides mutation controls and the filter editor for a read-only team folder', () => {
+    const wrapper = mountHeader({
+      hasActiveFolders: true,
+      canManageFolder: false,
+    });
+
+    expect(wrapper.find('[icon="i-lucide-pen-line"]').exists()).toBe(false);
+    expect(wrapper.find('[icon="i-lucide-trash-2"]').exists()).toBe(false);
+    expect(wrapper.find('#toggleConversationFilterButton').exists()).toBe(
+      false
+    );
+  });
+
   it('keeps the folder controls when a folder is active', () => {
     const wrapper = mountHeader({
       hasAppliedFilters: true,
