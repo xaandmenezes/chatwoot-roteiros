@@ -79,7 +79,7 @@ describe('conversation messages', () => {
         content: 'Hello',
         content_attributes: {},
         conversation_id: CONVERSATION_ID,
-        created_at: new Date(2021, 1, 10, 23, 9).getTime() / 1000,
+        created_at: new Date(2021, 10, 25, 23, 9).getTime() / 1000,
         attachments: [],
       },
       { TextBubble: false }
@@ -89,7 +89,7 @@ describe('conversation messages', () => {
     try {
       $i18n.locale = 'pt_BR';
       await wrapper.vm.$nextTick();
-      expect(wrapper.get('time').text()).toContain('23:09');
+      expect(wrapper.get('time').text()).toMatch(/25 de nov.*2021.*23:09/);
     } finally {
       $i18n.locale = previousLocale;
       wrapper.unmount();
