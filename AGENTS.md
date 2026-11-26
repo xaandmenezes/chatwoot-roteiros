@@ -2,6 +2,37 @@
 
 `CLAUDE.md` is a symlink to this file. Keep shared, repository-wide instructions here and detailed procedures in linked docs. Add nested `AGENTS.md` files only for subtree-specific differences; avoid duplicating root rules.
 
+## Regras para IA da PSR
+
+Projeto: https://linear.app/porto-seguro-roteiros/project/implementacao-chatwoot-roteiros-fe7deb79accd
+
+### Orquestração e escolha de modelo
+
+O Orchestrator é o agente do chat principal no T3. Use **Astra High, com Fast desligado**, para coordenar o trabalho e responder pelo resultado. Resolva tarefas simples diretamente. Em cada delegação, escolha o papel conforme a entrega, informe explicitamente o modelo e o nível de raciocínio, e ative **Fast** (prioridade). Use o preset OMO Slim `codex-rails` como base e a distribuição abaixo para este projeto.
+
+| Papel | Modelo e raciocínio | Quando chamar |
+| --- | --- | --- |
+| Explorer | Luna 6 · baixo | Localizar código, rotas, configurações e a origem de um comportamento. |
+| Fixer | Terra 6.1 · médio | Implementar correções, preparar PRs e executar deploys com procedimento conhecido. |
+| Designer | Luna 6 · médio | Avaliar a aparência e a interação no painel. |
+| Observer | Luna 6 · médio | Conferir o que aparece na tela e registrar evidência visual. |
+| Validator | Terra 6.1 · alto | Executar testes e verificar a imagem, a saúde dos serviços e o resultado do deploy. |
+| Hunter | Sol 6.2 · médio | Investigar falhas silenciosas, como um webhook aceito que deixa a mensagem pendente ou uma reentrega que duplica uma ação. |
+| Paladin | Sol 6.1 · alto | Revisar riscos envolvendo permissões, tokens, webhooks ou dados de clientes. |
+| Oracle | Astra · alto | Avaliar arquitetura, recuperação de produção ou diagnóstico que os demais agentes não conseguiram resolver. Ao chamar, registre qual decisão precisa dele. |
+
+### Skills e validação
+
+- **`verification-planning`** — Antes de alterar um fluxo entre Chatwoot, Ryze e WhatsApp, defina o que comprova sucesso em cada sistema. Em “Excluir só no Chatwoot”, a equipe deve ver a exclusão ao reabrir a conversa e o cliente deve continuar vendo o original no WhatsApp.
+- **`step-back`** — Se o mesmo defeito voltar após uma correção, o Orchestrator revisa a hipótese e identifica qual evidência falta antes de aplicar outro ajuste.
+- **Proctor** fica como opção futura para revisar a cobertura de testes em mudanças de maior alcance, como expandir o piloto para outras caixas.
+
+### PR, deploy e testes em produção
+
+- Toda alteração de código passa por PR vinculado à issue do Linear antes de entrar em `prod`.
+- Faça o build da imagem fora da VPS e do Mac de 8 GB. Após o deploy, confira a versão ativa, a saúde do painel e o processamento do Sidekiq.
+- Restrinja os testes de envio, edição, reação ou exclusão à conversa e às ações autorizadas para aquela rodada. Registre na issue o que foi confirmado e o que ainda depende de teste real.
+
 ## Build, Test, and Lint
 
 - **Ruby setup**: Use the version in `.ruby-version` through `rbenv`. Before Ruby commands, run `eval "$(rbenv init -)"`; use `bundle exec` for Rails, RSpec, and RuboCop.
