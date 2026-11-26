@@ -43,7 +43,9 @@ last_message = conversation.messages.where(account_id: conversation.account_id)
 if last_message.blank?
   json.messages []
 else
-  json.messages [last_message.try(:push_event_data)]
+  data = last_message.push_event_data
+  data = last_message.agent_view_data(data) if Current.user.is_a?(User)
+  json.messages [data]
 end
 
 json.account_id conversation.account_id
