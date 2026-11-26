@@ -219,11 +219,11 @@ class Message < ApplicationRecord
     deleted_by_customer? ? agent_revocation_data(data) : data
   end
 
-  def ryze_reaction_data(conversation: self.conversation)
+  def ryze_reaction_data(conversation: self.conversation, unique_source_ids: nil)
     return {} unless Ryze::MessageReactions.pilot?(conversation) && Ryze::MessageReactions.target?(self)
 
     reactions = Ryze::MessageReactions.new(self)
-    data = { can_react: Ryze::MessageReactions.sendable?(self, conversation: conversation) }
+    data = { can_react: Ryze::MessageReactions.sendable?(self, conversation: conversation, unique_source_ids: unique_source_ids) }
     data[:ryze_reactions] = reactions.payload.fetch(:ryze_reactions) if reactions.state.present?
     data
   end

@@ -133,6 +133,17 @@ RSpec.describe 'Ryze message reactions', type: :request do
     expect(response).to have_http_status(:conflict)
   end
 
+  it 'disables reactions when another original with the same provider ID is outside the history page' do
+    duplicate = create(:message, account: account, inbox: inbox, conversation: conversation, sender: conversation.contact,
+                                 message_type: :incoming, source_id: message.source_id)
+    get messages_path, params: { after: duplicate.id, before: duplicate.id + 1 }, headers: agent.create_new_auth_token
+
+    expect(response.parsed_body.fetch('payload')).to contain_exactly(include('id' => duplicate.id, 'can_react' => false))
+    expect(message.agent_view_data({})).to include(can_react: false)
+    submit_reaction('👍', target: duplicate)
+    expect(response).to have_http_status(:unprocessable_content)
+  end
+
   it 'sends a single command for each desired state and displays the agent who sent it' do
     addition = provider_accepts(id: 'ADD_ID', emoji: '👍', at: '2026-11-26T18:00:00Z')
     submit_reaction('👍')

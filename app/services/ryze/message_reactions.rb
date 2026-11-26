@@ -25,12 +25,26 @@ class Ryze::MessageReactions
                                 private: false, message_type: %i[incoming outgoing], source_id: source_id)
   end
 
-  def self.sendable?(message, conversation: message.conversation)
+  def self.unique_source_ids(conversation, source_ids)
+    counts = originals(conversation, source_ids).unscope(:order).group(:source_id).count
+    counts.filter_map { |source_id, count| source_id if count == 1 }.to_set
+  end
+
+  def self.sendable?(message, conversation: message.conversation, unique_source_ids: nil)
     return false unless target?(message) && message.account_id == conversation.account_id && message.inbox_id == conversation.inbox_id
+    return false unless unique_target?(message, conversation, unique_source_ids)
+
     return message.sender_type == 'Contact' && message.sender_id == conversation.contact_id if message.incoming?
 
     verified_outgoing?(message)
   end
+
+  def self.unique_target?(message, conversation, unique_source_ids)
+    return unique_source_ids.include?(message.source_id) if unique_source_ids
+
+    !originals(conversation, message.source_id).where.not(id: message.id).exists?
+  end
+  private_class_method :unique_target?
 
   def self.verified_outgoing?(message)
     message.additional_attributes&.fetch(Ryze::OutboundDelivery::VERIFIED_ID_KEY, nil) == message.source_id ||

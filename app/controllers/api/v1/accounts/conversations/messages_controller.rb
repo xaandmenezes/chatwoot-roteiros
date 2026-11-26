@@ -23,6 +23,10 @@ class Api::V1::Accounts::Conversations::MessagesController < Api::V1::Accounts::
     @messages = message_finder.perform
     @agent_history = Current.user.is_a?(User)
     preload_customer_revocations if @agent_history
+    return unless @agent_history && Ryze::MessageReactions.pilot?(@conversation)
+
+    source_ids = @messages.filter_map { |message| message.source_id if Ryze::MessageReactions.target?(message) }
+    @unique_reaction_source_ids = Ryze::MessageReactions.unique_source_ids(@conversation, source_ids)
   end
 
   def create

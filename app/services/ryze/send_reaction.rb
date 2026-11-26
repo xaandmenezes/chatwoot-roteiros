@@ -41,8 +41,7 @@ class Ryze::SendReaction
 
   def eligible_target?
     conversation = @message.conversation
-    Ryze::MessageReactions.pilot?(conversation) && Ryze::MessageReactions.sendable?(@message, conversation: conversation) &&
-      !Ryze::MessageReactions.originals(conversation, @message.source_id).where.not(id: @message.id).exists?
+    Ryze::MessageReactions.pilot?(conversation) && Ryze::MessageReactions.sendable?(@message, conversation: conversation)
   end
 
   def request_reaction
