@@ -263,7 +263,10 @@ describe('MessageContextMenu', () => {
     await wrapper.get('input[value="everyone"]').setValue();
     await wrapper.get('form').trigger('submit');
     await flushPromises();
-    expect(dispatch).not.toHaveBeenCalled();
+    expect(dispatch).toHaveBeenCalledExactlyOnceWith('refreshPendingDeletion', {
+      conversationId: 2,
+      messageId: 1,
+    });
     expect(post).toHaveBeenCalledTimes(1);
     wrapper.unmount();
   });

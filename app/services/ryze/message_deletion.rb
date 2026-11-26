@@ -31,9 +31,16 @@ class Ryze::MessageDeletion
     return result if result
 
     outcome = @eligibility.expired? ? :delete_expired : provider.request_delete(source_id)
-    @message.with_lock { finish(outcome, source_id) }
+    finish_request(outcome, source_id)
   rescue Ryze::Client::ConnectionError
     :delete_failed
+  end
+
+  def confirm_by_readback(source_id)
+    return unless acknowledged_pending?(source_id)
+    return :pending unless Ryze::MessageProvider.new.original_absent?(source_id)
+
+    @message.with_lock { confirm_pending!(source_id) if acknowledged_pending?(source_id) }
   end
 
   def local(actor:)
@@ -78,11 +85,24 @@ class Ryze::MessageDeletion
     nil
   end
 
+  def finish_request(outcome, source_id)
+    result = @message.with_lock { finish(outcome, source_id) }
+    return result unless result == :readback_pending
+
+    Ryze::ConfirmOutgoingDeletionJob.set(wait: 3.seconds).perform_later(@message.id, source_id)
+    :pending
+  end
+
+  def acknowledged_pending?(source_id)
+    bound?(source_id) && self.class.pending?(@message) && remote['source_id'] == source_id && remote['acknowledged'] == true
+  end
+
   def finish(outcome, source_id)
-    return :delete_unavailable unless bound?(source_id) && remote&.fetch('source_id') == source_id
+    return :delete_unavailable unless bound?(source_id) && attributes.dig(REMOTE_KEY, 'source_id') == source_id
     return :confirmed if remote['state'] == 'confirmed'
     return confirm_pending!(source_id) if outcome == :confirmed
 
+    @message.update!(additional_attributes: attributes.merge(REMOTE_KEY => remote.merge('acknowledged' => true))) if outcome == :readback_pending
     @message.update!(additional_attributes: attributes.except(REMOTE_KEY)) if [:delete_failed, :delete_expired].include?(outcome)
     outcome
   end

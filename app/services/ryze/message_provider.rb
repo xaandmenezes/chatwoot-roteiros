@@ -25,13 +25,23 @@ class Ryze::MessageProvider
   def request_delete(source_id)
     response = @client.delete('chat/delete', messageId: source_id, deleteForEveryone: true)
     data = response_json(response)
-    return :confirmed if response.code == '200' && confirmed_revoke?(data, source_id)
+    return revoke_result(data, source_id) if response.code == '200'
     return :delete_failed if %w[400 401 403 404 422 429].include?(response.code)
     return :delete_failed if response.code == '503' && disconnected?(data)
 
     :pending
   rescue Ryze::Client::ConnectionError
     :pending
+  end
+
+  def original_absent?(source_id)
+    response = @client.get('chat/getMessage', messageId: source_id)
+    return false unless response.code == '404'
+
+    data = response_json(response)
+    data['success'] == false && data['error'].is_a?(Hash) && ['Mensagem não encontrada', 'Message not found'].include?(data.dig('error', 'message'))
+  rescue Ryze::Client::ConnectionError
+    false
   end
 
   def request_edit(source_id, content)
@@ -53,9 +63,16 @@ class Ryze::MessageProvider
     data['status'] == 'disconnected' || (data['error'].is_a?(Hash) && data.dig('error', 'message') == 'Instance is not connected to WhatsApp')
   end
 
-  def confirmed_revoke?(data, source_id)
-    data['success'] == true && data['message_id'] == source_id && data['chat_jid'] == ENV.fetch('RYZE_PILOT_CHAT_JID') &&
-      data['delete_type'] == 'revoke' && data['deleted_for_everyone'] == true
+  def revoke_result(data, source_id)
+    return :pending unless revoke_acknowledged?(data)
+    return :confirmed if data['message_id'] == source_id || original_absent?(source_id)
+
+    :readback_pending
+  end
+
+  def revoke_acknowledged?(data)
+    data['success'] == true && data['message_id'].is_a?(String) && data['message_id'].present? &&
+      data['chat_jid'] == ENV.fetch('RYZE_PILOT_CHAT_JID') && data['delete_type'] == 'revoke' && data['deleted_for_everyone'] == true
   end
 
   def lookup(path, source_id)

@@ -63,6 +63,63 @@ describe('#hasMessageFailedWithExternalError', () => {
 });
 
 describe('#actions', () => {
+  describe('delayed deletion confirmation', () => {
+    const row = {
+      id: 5,
+      conversation_id: 71,
+      content_attributes: { deleted: true },
+    };
+    const state = { selectedChatId: 71 };
+    const refresh = () =>
+      actions.refreshPendingDeletion(
+        { state, dispatch },
+        { conversationId: 71, messageId: 5 }
+      );
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      state.selectedChatId = 71;
+    });
+    afterEach(() => vi.useRealTimers());
+
+    it('refreshes just the original row when it becomes deleted', async () => {
+      axios.get
+        .mockResolvedValueOnce({
+          data: { payload: [{ ...row, content_attributes: {} }] },
+        })
+        .mockResolvedValueOnce({ data: { payload: [row] } });
+      const done = refresh();
+      await vi.runAllTimersAsync();
+      await done;
+      expect(axios.get).toHaveBeenCalledTimes(2);
+      expect(axios.get).toHaveBeenCalledWith(
+        '/api/v1/conversations/71/messages',
+        { params: { after: 5, before: 6 } }
+      );
+      expect(dispatch).toHaveBeenCalledExactlyOnceWith('updateMessage', row);
+    });
+
+    it('stops after bounded reads that cannot confirm the original', async () => {
+      axios.get
+        .mockRejectedValueOnce(new Error('timeout'))
+        .mockResolvedValue({ data: { payload: [{ ...row, id: 6 }] } });
+      const done = refresh();
+      await vi.runAllTimersAsync();
+      await done;
+      expect(axios.get).toHaveBeenCalledTimes(3);
+      expect(dispatch).not.toHaveBeenCalled();
+    });
+
+    it('stops when the agent leaves the conversation', async () => {
+      const done = refresh();
+      state.selectedChatId = 10;
+      await vi.runAllTimersAsync();
+      await done;
+      expect(axios.get).not.toHaveBeenCalled();
+      expect(dispatch).not.toHaveBeenCalled();
+    });
+  });
+
   describe('conversation history loading', () => {
     let store;
     let conversationA;
