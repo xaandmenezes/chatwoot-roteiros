@@ -28,6 +28,7 @@ const {
   status,
   showingOriginal,
   isCaptainMessage,
+  isDeletedByCustomer,
 } = useMessageContext();
 
 const { hasTranslations, translationContent } = useTranslations(
@@ -89,7 +90,10 @@ const morphHeight = () => {
 
 <template>
   <BaseBubble class="px-4 py-3" data-bubble-name="text">
-    <div class="gap-3 flex flex-col">
+    <div
+      class="gap-3 flex flex-col"
+      :class="{ 'opacity-70': isDeletedByCustomer }"
+    >
       <span v-if="isEmpty" class="text-n-slate-11">
         {{ $t('CONVERSATION.NO_CONTENT') }}
       </span>

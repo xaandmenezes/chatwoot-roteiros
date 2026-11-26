@@ -168,6 +168,9 @@ describe('conversation messages', () => {
     const bubble = wrapper.getComponent(Message);
     const initialTime = bubble.get('time').text();
 
+    expect(bubble.get('[data-bubble-name="text"]').classes()).toContain(
+      'bg-n-slate-4'
+    );
     expect(bubble.text()).not.toContain('CONVERSATION.DELETED_BY_CUSTOMER');
 
     const revoked = {
@@ -189,6 +192,15 @@ describe('conversation messages', () => {
     expect(updatedBubble.get('time + span').text()).toBe(
       'CONVERSATION.DELETED_BY_CUSTOMER'
     );
+    expect(updatedBubble.get('[data-bubble-name="text"]').classes()).toContain(
+      'bg-n-slate-3'
+    );
+    const notice = updatedBubble.get('time + span');
+    expect(notice.classes()).toContain('text-n-ruby-11');
+    expect(
+      updatedBubble.get('.prose-bubble').element.closest('.opacity-70')
+    ).toBeTruthy();
+    expect(notice.element.closest('.opacity-70')).toBeNull();
     expect(updatedBubble.text()).not.toContain('CONVERSATION.EDITED');
     wrapper.unmount();
 
