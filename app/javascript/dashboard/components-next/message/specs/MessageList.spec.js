@@ -119,6 +119,34 @@ describe('conversation messages', () => {
     }
   );
 
+  it('keeps the delete menu available on pilot messages after editing expires', async () => {
+    const message = {
+      id: 101,
+      status: 'sent',
+      message_type: 1,
+      sender: { id: 1, type: 'user' },
+      content: 'Old team text',
+      content_attributes: {},
+      conversation_id: CONVERSATION_ID,
+      created_at: NOW - 3600,
+      attachments: [],
+    };
+    const wrapper = mountConversation(message);
+    const menu = wrapper.getComponent({ name: 'ContextMenu' });
+    expect(menu.props('enabledOptions').ryzeDeleteScopes).toBe(false);
+    await wrapper.setProps({
+      messages: [{ ...message, ryze_delete_scopes: true }],
+    });
+    expect(menu.props('enabledOptions')).toMatchObject({
+      ryzeDeleteScopes: true,
+      edit: false,
+      delete: true,
+    });
+    expect(menu.props('hideButton')).toBe(false);
+    expect(menu.props('message').createdAt).toBe(message.created_at);
+    wrapper.unmount();
+  });
+
   it('keeps the action trigger in the bubble gutter when a sent message becomes editable', async () => {
     const message = {
       id: 101,
@@ -156,12 +184,15 @@ describe('conversation messages', () => {
       message_type: 1,
       content: 'Team text',
       content_attributes: {},
+      ryze_delete_scopes: true,
       ryze_delivery_pending: true,
       conversation_id: CONVERSATION_ID,
       created_at: NOW,
       attachments: [],
     };
     const wrapper = mountConversation(pending, { TextBubble: false });
+    const menu = wrapper.getComponent({ name: 'ContextMenu' });
+    expect(menu.props('enabledOptions').delete).toBe(false);
     expect(wrapper.getComponent(MessageStatus).props('status')).toBe(
       'progress'
     );
@@ -172,6 +203,7 @@ describe('conversation messages', () => {
       ],
     });
     expect(wrapper.getComponent(MessageStatus).props('status')).toBe('sent');
+    expect(menu.props('enabledOptions').delete).toBe(true);
     wrapper.unmount();
   });
 

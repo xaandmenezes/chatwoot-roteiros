@@ -6802,6 +6802,142 @@
         }
       }
     },
+    "/api/v1/accounts/{account_id}/conversations/{conversation_id}/messages/{message_id}/delete_for_everyone": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/account_id"
+        },
+        {
+          "$ref": "#/components/parameters/conversation_id"
+        },
+        {
+          "$ref": "#/components/parameters/message_id"
+        }
+      ],
+      "post": {
+        "tags": [
+          "Messages"
+        ],
+        "operationId": "delete-ryze-message-for-everyone",
+        "summary": "Revoke a sent Ryze pilot message for everyone",
+        "security": [
+          {
+            "userBearerAuth": []
+          },
+          {
+            "userApiKey": []
+          }
+        ],
+        "description": "Only the original agent can revoke an eligible public text message less than 15 minutes old.\nConfirmation must identify the same WhatsApp message and pilot chat. While confirmation is\npending, the original remains visible and repeated requests do not resend the command.\n",
+        "responses": {
+          "200": {
+            "description": "Updated Chatwoot message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/message"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Awaiting a correlated provider confirmation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "pending"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "The caller cannot perform this action"
+          },
+          "404": {
+            "description": "Conversation or message unavailable"
+          },
+          "409": {
+            "description": "Another message operation is in progress"
+          },
+          "422": {
+            "description": "Ineligible message or conversation"
+          },
+          "502": {
+            "description": "Provider lookup failed or the provider rejected the request"
+          }
+        }
+      }
+    },
+    "/api/v1/accounts/{account_id}/conversations/{conversation_id}/messages/{message_id}/delete_only_in_chatwoot": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/account_id"
+        },
+        {
+          "$ref": "#/components/parameters/conversation_id"
+        },
+        {
+          "$ref": "#/components/parameters/message_id"
+        }
+      ],
+      "post": {
+        "tags": [
+          "Messages"
+        ],
+        "operationId": "delete-ryze-message-only-in-chatwoot",
+        "summary": "Remove a Ryze pilot message only in Chatwoot",
+        "security": [
+          {
+            "userBearerAuth": []
+          },
+          {
+            "userApiKey": []
+          }
+        ],
+        "description": "An agent with access to the pilot conversation can remove a message from its Chatwoot\nhistory at any age. The action suppresses notification of the deletion to the native Ryze bridge.\n",
+        "responses": {
+          "200": {
+            "description": "Updated Chatwoot message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/message"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "The caller cannot perform this action"
+          },
+          "404": {
+            "description": "Conversation or message unavailable"
+          },
+          "409": {
+            "description": "Another message operation is in progress"
+          },
+          "422": {
+            "description": "Ineligible message or conversation"
+          }
+        }
+      }
+    },
     "/api/v1/accounts/{account_id}/integrations/apps": {
       "parameters": [
         {

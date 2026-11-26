@@ -405,6 +405,20 @@
     },
     "CONTEXT_MENU": {
       "MESSAGE_ACTIONS": "Message actions",
+      "DELETE_SCOPE": {
+        "TITLE": "Delete message",
+        "LOCAL": "Delete only in Chatwoot",
+        "LOCAL_DESCRIPTION": "Removes the message from the conversation for the whole team. The customer keeps it on WhatsApp.",
+        "EVERYONE": "Delete for everyone",
+        "EVERYONE_DESCRIPTION": "Removes the message from Chatwoot and WhatsApp. Available for 15 minutes after sending.",
+        "EXPIRED": "The 15-minute window for deleting on WhatsApp has ended.",
+        "UNAVAILABLE": "This message cannot be deleted on WhatsApp.",
+        "LOCAL_DONE": "Message deleted for the team in Chatwoot.",
+        "EVERYONE_DONE": "Message deleted in Chatwoot and on WhatsApp.",
+        "PENDING": "Waiting for WhatsApp to confirm deletion.",
+        "CONFLICT": "Another change is in progress. Check the message before trying again.",
+        "UNKNOWN": "Could not confirm deletion. Check the conversation before trying again."
+      },
       "EDIT_MESSAGE": {
         "ACTION": "Edit",
         "TITLE": "Edit message",

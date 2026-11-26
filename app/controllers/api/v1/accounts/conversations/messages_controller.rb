@@ -1,5 +1,9 @@
 class Api::V1::Accounts::Conversations::MessagesController < Api::V1::Accounts::Conversations::BaseController
-  EDIT_ERRORS = {
+  MESSAGE_ACTION_ERRORS = {
+    delete_busy: :conflict,
+    delete_expired: :unprocessable_entity,
+    delete_failed: :bad_gateway,
+    delete_unavailable: :unprocessable_entity,
     edit_expired: :unprocessable_entity,
     edit_failed: :bad_gateway,
     edit_unavailable: :unprocessable_entity,
@@ -29,16 +33,32 @@ class Api::V1::Accounts::Conversations::MessagesController < Api::V1::Accounts::
   end
 
   def edit_content
-    unless Current.user.is_a?(User) && message.sender_type == 'User' && message.sender_id == Current.user.id
-      return render json: { error_code: 'edit_unavailable' }, status: :forbidden
-    end
+    return render json: { error_code: 'edit_unavailable' }, status: :forbidden unless own_message?
 
     result = Ryze::EditOutgoingMessage.new(message: message, conversation: @conversation, content: params[:content]).perform
-    render_edit_result(result)
+    render_message_action_result(result)
+  end
+
+  def delete_for_everyone
+    return render json: { error_code: 'delete_unavailable' }, status: :forbidden unless own_message?
+
+    render_message_action_result(Ryze::MessageDeletion.new(message, remote_ip: request.remote_ip).everyone)
+  end
+
+  def delete_only_in_chatwoot
+    return render json: { error_code: 'delete_unavailable' }, status: :forbidden unless Current.user.is_a?(User)
+
+    render_message_action_result(Ryze::MessageDeletion.new(message, remote_ip: request.remote_ip).local(actor: Current.user))
   end
 
   def destroy
-    message.mark_deleted!
+    unless Ryze::OutgoingEditEligibility.pilot_conversation?(@conversation)
+      return message.mark_deleted_by_agent!(actor: Current.user,
+                                            remote_ip: request.remote_ip)
+    end
+
+    result = Ryze::MessageDeletion.new(message, remote_ip: request.remote_ip).local(actor: Current.user)
+    render_message_action_result(result) unless result == :confirmed
   end
 
   def retry
@@ -63,11 +83,15 @@ class Api::V1::Accounts::Conversations::MessagesController < Api::V1::Accounts::
 
   private
 
-  def render_edit_result(result)
+  def own_message?
+    Current.user.is_a?(User) && message.sender_type == 'User' && message.sender_id == Current.user.id
+  end
+
+  def render_message_action_result(result)
     case result
     when :confirmed then render json: message.agent_view_data(message.push_event_data)
     when :pending then render json: { status: 'pending' }, status: :accepted
-    else render json: { error_code: result }, status: EDIT_ERRORS.fetch(result)
+    else render json: { error_code: result }, status: MESSAGE_ACTION_ERRORS.fetch(result)
     end
   end
 

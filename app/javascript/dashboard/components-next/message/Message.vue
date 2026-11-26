@@ -120,6 +120,7 @@ const props = defineProps({
     validator: value => Object.values(MESSAGE_STATUS).includes(value),
   },
   attachments: { type: Array, default: () => [] },
+  ryzeDeleteScopes: { type: Boolean, default: false },
   canEditContent: { type: Boolean, default: false },
   ryzeDeliveryPending: { type: Boolean, default: false },
   hasPendingFiles: { type: Boolean, default: false },
@@ -441,8 +442,16 @@ const payloadForContextMenu = computed(() => {
     content_attributes: props.contentAttributes,
     content: displayedContent.value,
     originalContent: props.content,
+    createdAt: props.createdAt,
     conversation_id: props.conversationId,
   };
+});
+
+const deliveryStatus = computed(() => {
+  const state = props.additionalAttributes?.ryzeOutboundDelivery?.state;
+  const isWaiting =
+    props.ryzeDeliveryPending || ['queued', 'sending'].includes(state);
+  return isWaiting ? MESSAGE_STATUS.PROGRESS : props.status;
 });
 
 const contextMenuEnabledOptions = computed(() => {
@@ -459,6 +468,7 @@ const contextMenuEnabledOptions = computed(() => {
     props.status === MESSAGE_STATUS.PROGRESS;
 
   return {
+    ryzeDeleteScopes: props.ryzeDeleteScopes,
     copy: hasText,
     edit:
       props.canEditContent &&
@@ -470,6 +480,10 @@ const contextMenuEnabledOptions = computed(() => {
       !isFailedOrProcessing,
     delete:
       (hasText || hasAttachments) &&
+      !(
+        props.ryzeDeleteScopes &&
+        deliveryStatus.value === MESSAGE_STATUS.PROGRESS
+      ) &&
       !isFailedOrProcessing &&
       !isMessageDeleted.value,
     cannedResponse: isOutgoing && hasText && !isMessageDeleted.value,
@@ -620,13 +634,6 @@ const setupHighlightTimer = () => {
 
 onMounted(setupHighlightTimer);
 
-const deliveryStatus = computed(() => {
-  const state = props.additionalAttributes?.ryzeOutboundDelivery?.state;
-  const isWaiting =
-    props.ryzeDeliveryPending || ['queued', 'sending'].includes(state);
-  return isWaiting ? MESSAGE_STATUS.PROGRESS : props.status;
-});
-
 provideMessageContext({
   ...toRefs(props),
   status: deliveryStatus,
@@ -719,7 +726,14 @@ provideMessageContext({
           :is-open="showContextMenu"
           :enabled-options="contextMenuEnabledOptions"
           :message="payloadForContextMenu"
-          :hide-button="!contextMenuEnabledOptions.edit"
+          :hide-button="
+            !contextMenuEnabledOptions.edit &&
+            !(
+              ryzeDeleteScopes &&
+              contextMenuEnabledOptions.delete &&
+              orientation === ORIENTATION.RIGHT
+            )
+          "
           @open="openContextMenu"
           @close="closeContextMenu"
           @reply-to="handleReplyTo"

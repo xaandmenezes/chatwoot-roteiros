@@ -1,12 +1,10 @@
-class Ryze::EditProvider
+class Ryze::MessageProvider
   def initialize
     @client = Ryze::Client.new(instance: ENV.fetch('RYZE_INSTANCE_NAME'), token: ENV.fetch('RYZE_EDIT_API_TOKEN'))
   end
 
   def text(source_id)
-    status = lookup('chat/status', source_id)
-    return :edit_failed unless status
-    return :edit_unavailable unless remote_status_matches?(status, source_id)
+    return :edit_unavailable unless delivered_to_pilot?(source_id)
 
     snapshot = lookup('chat/getMessage', source_id)
     return :edit_failed unless snapshot
@@ -15,6 +13,25 @@ class Ryze::EditProvider
     snapshot.dig('data', 'content')
   rescue Ryze::Client::ConnectionError
     :edit_failed
+  end
+
+  def delivered_to_pilot?(source_id)
+    status = lookup('chat/status', source_id)
+    raise Ryze::Client::ConnectionError unless status
+
+    remote_status_matches?(status, source_id)
+  end
+
+  def request_delete(source_id)
+    response = @client.delete('chat/delete', messageId: source_id, deleteForEveryone: true)
+    data = response_json(response)
+    return :confirmed if response.code == '200' && confirmed_revoke?(data, source_id)
+    return :delete_failed if %w[400 401 403 404 422 429].include?(response.code)
+    return :delete_failed if response.code == '503' && disconnected?(data)
+
+    :pending
+  rescue Ryze::Client::ConnectionError
+    :pending
   end
 
   def request_edit(source_id, content)
@@ -29,6 +46,17 @@ class Ryze::EditProvider
   end
 
   private
+
+  def disconnected?(data)
+    return false unless data['success'] == false
+
+    data['status'] == 'disconnected' || (data['error'].is_a?(Hash) && data.dig('error', 'message') == 'Instance is not connected to WhatsApp')
+  end
+
+  def confirmed_revoke?(data, source_id)
+    data['success'] == true && data['message_id'] == source_id && data['chat_jid'] == ENV.fetch('RYZE_PILOT_CHAT_JID') &&
+      data['delete_type'] == 'revoke' && data['deleted_for_everyone'] == true
+  end
 
   def lookup(path, source_id)
     response = @client.get(path, messageId: source_id)

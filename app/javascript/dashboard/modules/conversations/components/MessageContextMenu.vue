@@ -18,10 +18,13 @@ import NextButton from 'dashboard/components-next/button/Button.vue';
 import ReportCaptainMessageDialog from './ReportCaptainMessageDialog.vue';
 import EditMessageDialog from './EditMessageDialog.vue';
 
+import RyzeDeleteMessageDialog from './RyzeDeleteMessageDialog.vue';
+
 export default {
   components: {
     AddCannedModal,
     EditMessageDialog,
+    RyzeDeleteMessageDialog,
     MenuItem,
     ContextMenu,
     NextButton,
@@ -156,12 +159,13 @@ export default {
       this.isEditDialogOpen = false;
       this.$nextTick(() => this.$refs.menuButton?.$el?.focus());
     },
-    updateEditedMessage(message) {
+    updateMessage(message) {
       this.$store.dispatch('updateMessage', message);
     },
     openDeleteModal() {
       this.handleClose();
       this.showDeleteModal = true;
+      this.$nextTick(() => this.$refs.ryzeDeleteDialog?.open());
     },
     async confirmDeletion() {
       try {
@@ -177,6 +181,7 @@ export default {
     },
     closeDeleteModal() {
       this.showDeleteModal = false;
+      this.$nextTick(() => this.$refs.menuButton?.$el?.focus());
     },
     openReportDialog() {
       this.handleClose();
@@ -200,8 +205,22 @@ export default {
       />
     </woot-modal>
     <!-- Confirm Deletion -->
+    <RyzeDeleteMessageDialog
+      v-if="
+        showDeleteModal &&
+        enabledOptions.delete &&
+        enabledOptions.ryzeDeleteScopes
+      "
+      ref="ryzeDeleteDialog"
+      :message-id="messageId"
+      :conversation-id="conversationId"
+      :created-at="message.createdAt"
+      :can-delete-for-everyone="!!enabledOptions.edit"
+      @close="closeDeleteModal"
+      @confirmed="updateMessage"
+    />
     <woot-delete-modal
-      v-if="showDeleteModal && enabledOptions['delete']"
+      v-else-if="showDeleteModal && enabledOptions.delete"
       v-model:show="showDeleteModal"
       class="context-menu--delete-modal"
       :on-close="closeDeleteModal"
@@ -316,6 +335,9 @@ export default {
             label: $t('CONVERSATION.CONTEXT_MENU.DELETE'),
           }"
           variant="icon"
+          tabindex="0"
+          @keydown.enter.stop.prevent="openDeleteModal"
+          @keydown.space.stop.prevent="openDeleteModal"
           @click.stop="openDeleteModal"
         />
       </div>
@@ -327,7 +349,7 @@ export default {
       :conversation-id="conversationId"
       :original-content="message.originalContent"
       @close="closeEditDialog"
-      @confirmed="updateEditedMessage"
+      @confirmed="updateMessage"
     />
     <ReportCaptainMessageDialog
       v-if="enabledOptions['report']"

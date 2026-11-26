@@ -228,9 +228,9 @@ describe ActionCableListener do
       expect(ActionCableBroadcastJob).to have_received(:perform_later).with(
         a_collection_containing_exactly(agent.pubsub_token, admin.pubsub_token),
         'message.updated',
-        hash_including(id: reply.id, can_edit_content: true)
+        hash_including(id: reply.id, can_edit_content: true, ryze_delete_scopes: true)
       ).once
-      public_payload = satisfy { |data| data[:id] == reply.id && !data.key?(:can_edit_content) }
+      public_payload = satisfy { |data| data[:id] == reply.id && !data.key?(:can_edit_content) && !data.key?(:ryze_delete_scopes) }
       expect(ActionCableBroadcastJob).to have_received(:perform_later).with(
         [api_conversation.contact_inbox.pubsub_token], 'message.updated', public_payload,
         widget_members: [widget_session.pubsub_token], widget_data: public_payload

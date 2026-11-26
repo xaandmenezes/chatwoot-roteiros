@@ -163,10 +163,16 @@ class Message < ApplicationRecord
     with_lock { yield if !deleted && content == original_content }
   end
 
-  def mark_deleted!(by_customer: false)
+  # Enterprise records the actor and request address for dashboard deletions.
+  def mark_deleted_by_agent!(additional_attributes: nil, **_audit_context)
+    mark_deleted!(additional_attributes: additional_attributes)
+  end
+
+  def mark_deleted!(by_customer: false, additional_attributes: nil)
     with_lock do
       return if by_customer && deleted
 
+      self.additional_attributes = additional_attributes if additional_attributes
       update_customer_revocation_archive(by_customer)
 
       # Preserve the forward marker so replies to a deleted forward stay out of this conversation.
@@ -202,10 +208,16 @@ class Message < ApplicationRecord
     eligibility.permitted? && !eligibility.expired?
   end
 
-  def agent_view_data(data)
-    return data.merge(can_edit_content: true) if ryze_editable?
-    return data unless deleted_by_customer?
+  def agent_view_data(data, conversation: self.conversation, viewer: nil)
+    data = data.merge(ryze_delete_scopes: true) if Ryze::OutgoingEditEligibility.pilot_conversation?(conversation)
+    if data[:ryze_delete_scopes] && (!viewer || sender_id == viewer.id) && ryze_editable?(conversation: conversation)
+      return data.merge(can_edit_content: true)
+    end
 
+    deleted_by_customer? ? agent_revocation_data(data) : data
+  end
+
+  def agent_revocation_data(data)
     revocation = customer_revocation
     return data unless revocation
 

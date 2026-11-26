@@ -525,6 +525,20 @@
     - $ref: '#/components/parameters/message_id'
   post:
     $ref: ./application/conversation/messages/edit_content.yml
+/api/v1/accounts/{account_id}/conversations/{conversation_id}/messages/{message_id}/delete_for_everyone:
+  parameters:
+    - $ref: '#/components/parameters/account_id'
+    - $ref: '#/components/parameters/conversation_id'
+    - $ref: '#/components/parameters/message_id'
+  post:
+    $ref: ./application/conversation/messages/delete_for_everyone.yml
+/api/v1/accounts/{account_id}/conversations/{conversation_id}/messages/{message_id}/delete_only_in_chatwoot:
+  parameters:
+    - $ref: '#/components/parameters/account_id'
+    - $ref: '#/components/parameters/conversation_id'
+    - $ref: '#/components/parameters/message_id'
+  post:
+    $ref: ./application/conversation/messages/delete_only_in_chatwoot.yml
 
 # Integrations
 /api/v1/accounts/{account_id}/integrations/apps:
