@@ -24,6 +24,7 @@ const {
   shouldGroupWithNext,
   id,
   isCaptainMessage,
+  isDeletedByCustomer,
   showingOriginal,
 } = useMessageContext();
 const { t } = useI18n();
@@ -71,7 +72,10 @@ const flexOrientationClass = computed(() => {
 });
 
 const messageClass = computed(() => {
-  const classToApply = [varaintBaseMap[variant.value]];
+  const baseClass = isDeletedByCustomer.value
+    ? 'bg-n-slate-3 text-n-slate-12'
+    : varaintBaseMap[variant.value];
+  const classToApply = [baseClass];
 
   if (variant.value !== MESSAGE_VARIANTS.ACTIVITY) {
     classToApply.push(orientationMap[orientation.value]);
