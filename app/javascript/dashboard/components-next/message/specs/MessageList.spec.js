@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import VueDOMPurifyHTML from 'vue-dompurify-html';
 import { domPurifyConfig } from 'shared/helpers/HTMLSanitizer';
 import { createStore } from 'vuex';
+import { withFullI18n } from 'test-i18n';
 import { routeLocationKey } from 'vue-router';
 import MessagesView from 'dashboard/components/widgets/conversation/MessagesView.vue';
 import { createPendingMessage } from 'dashboard/helper/commons';
@@ -9,6 +10,8 @@ import actions from 'dashboard/store/modules/conversations/actions';
 import MessageList from '../MessageList.vue';
 import Message from '../Message.vue';
 import MessageError from '../MessageError.vue';
+
+withFullI18n('pt_BR');
 
 const NOW = Math.floor(Date.now() / 1000);
 const CONVERSATION_ID = 71;
@@ -171,7 +174,7 @@ describe('conversation messages', () => {
     expect(bubble.get('[data-bubble-name="text"]').classes()).toContain(
       'bg-n-slate-4'
     );
-    expect(bubble.text()).not.toContain('CONVERSATION.DELETED_BY_CUSTOMER');
+    expect(bubble.text()).not.toContain('Mensagem deletada pelo cliente');
 
     const revoked = {
       ...incoming,
@@ -190,7 +193,7 @@ describe('conversation messages', () => {
     expect(updatedBubble.text()).toContain(incoming.content);
     expect(updatedBubble.get('time').text()).toBe(initialTime);
     expect(updatedBubble.get('time + span').text()).toBe(
-      'CONVERSATION.DELETED_BY_CUSTOMER'
+      'Mensagem deletada pelo cliente'
     );
     expect(updatedBubble.get('[data-bubble-name="text"]').classes()).toContain(
       'bg-n-slate-3'
@@ -201,14 +204,14 @@ describe('conversation messages', () => {
       updatedBubble.get('.prose-bubble').element.closest('.opacity-70')
     ).toBeTruthy();
     expect(notice.element.closest('.opacity-70')).toBeNull();
-    expect(updatedBubble.text()).not.toContain('CONVERSATION.EDITED');
+    expect(updatedBubble.text()).not.toContain('Editada');
     wrapper.unmount();
 
     const reloaded = mountConversation(revoked, { TextBubble: false });
     expect(reloaded.text()).toContain(incoming.content);
     expect(reloaded.get('time').text()).toBe(initialTime);
     expect(reloaded.get('time + span').text()).toBe(
-      'CONVERSATION.DELETED_BY_CUSTOMER'
+      'Mensagem deletada pelo cliente'
     );
     reloaded.unmount();
   });
@@ -228,7 +231,7 @@ describe('conversation messages', () => {
       { TextBubble: false }
     );
 
-    expect(wrapper.text()).not.toContain('CONVERSATION.DELETED_BY_CUSTOMER');
+    expect(wrapper.text()).not.toContain('Mensagem deletada pelo cliente');
     wrapper.unmount();
   });
 
@@ -250,7 +253,7 @@ describe('conversation messages', () => {
     const originalBubbleInstance = messageBubble.vm.$.uid;
 
     expect(messageBubble.props().content).toBe('Incoming message');
-    expect(wrapper.text()).not.toContain('CONVERSATION.EDITED');
+    expect(wrapper.text()).not.toContain('Editada');
 
     await wrapper.setProps({
       messages: [
@@ -270,7 +273,11 @@ describe('conversation messages', () => {
 
     expect(editedBubble.vm.$.uid).toBe(originalBubbleInstance);
     expect(editedBubble.props().content).toBe('Edited incoming message');
-    expect(wrapper.text()).toContain('CONVERSATION.EDITED');
+    const editedLabel = editedBubble.get('time + span');
+    expect(editedLabel.text()).toBe('Editada');
+    expect(editedLabel.classes()).toEqual(
+      expect.arrayContaining(['text-n-blue-12', 'dark:text-n-blue-11'])
+    );
 
     await wrapper.setProps({
       messages: [
@@ -290,8 +297,8 @@ describe('conversation messages', () => {
 
     expect(deletedBubble.vm.$.uid).toBe(originalBubbleInstance);
     expect(deletedBubble.props().content).toBe('This message was deleted');
-    expect(wrapper.text()).not.toContain('CONVERSATION.EDITED');
-    expect(wrapper.text()).not.toContain('CONVERSATION.DELETED_BY_CUSTOMER');
+    expect(wrapper.text()).not.toContain('Editada');
+    expect(wrapper.text()).not.toContain('Mensagem deletada pelo cliente');
 
     wrapper.unmount();
   });

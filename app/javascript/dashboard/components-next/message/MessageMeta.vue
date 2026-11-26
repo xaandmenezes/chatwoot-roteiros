@@ -158,7 +158,10 @@ const statusToShow = computed(() => {
       <span v-if="isDeletedByCustomer" class="ms-1 text-n-ruby-11">
         {{ t('CONVERSATION.DELETED_BY_CUSTOMER') }}
       </span>
-      <span v-else-if="isEdited" class="ms-1">
+      <span
+        v-else-if="isEdited"
+        class="ms-1 text-n-blue-12 dark:text-n-blue-11"
+      >
         {{ t('CONVERSATION.EDITED') }}
       </span>
     </div>
