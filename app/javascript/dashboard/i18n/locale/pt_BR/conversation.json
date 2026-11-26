@@ -394,6 +394,20 @@
     },
     "CONTEXT_MENU": {
       "MESSAGE_ACTIONS": "Ações da mensagem",
+      "DELETE_SCOPE": {
+        "TITLE": "Excluir mensagem",
+        "LOCAL": "Excluir só no Chatwoot",
+        "LOCAL_DESCRIPTION": "Remove a mensagem da conversa para toda a equipe. O cliente continua vendo a mensagem no WhatsApp.",
+        "EVERYONE": "Excluir para todos",
+        "EVERYONE_DESCRIPTION": "Remove a mensagem do Chatwoot e do WhatsApp. Disponível por 15 minutos após o envio.",
+        "EXPIRED": "O prazo de 15 minutos para excluir no WhatsApp terminou.",
+        "UNAVAILABLE": "Esta mensagem não pode ser excluída no WhatsApp.",
+        "LOCAL_DONE": "Mensagem excluída para a equipe no Chatwoot.",
+        "EVERYONE_DONE": "Mensagem excluída no Chatwoot e no WhatsApp.",
+        "PENDING": "Aguardando o WhatsApp confirmar a exclusão.",
+        "CONFLICT": "Outra alteração está em andamento. Confira a mensagem antes de tentar novamente.",
+        "UNKNOWN": "Não foi possível confirmar a exclusão. Confira a conversa antes de tentar novamente."
+      },
       "EDIT_MESSAGE": {
         "ACTION": "Editar",
         "TITLE": "Editar mensagem",

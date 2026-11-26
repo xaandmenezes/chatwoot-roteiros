@@ -9,7 +9,7 @@ class Ryze::ConfirmOutgoingEditJob < ApplicationJob
     @message = Message.find(message_id)
     return unless original_eligible?
 
-    text = Ryze::EditProvider.new.text(@message.source_id)
+    text = Ryze::MessageProvider.new.text(@message.source_id)
     if @claim.requested?(text)
       confirm(text, submitted_at)
     elsif !last_attempt && text != :edit_unavailable && @claim.active?

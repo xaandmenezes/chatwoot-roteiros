@@ -7,17 +7,24 @@ class Ryze::OutgoingMessageChange
   def perform(pilot_chat_id:)
     return if pilot_chat_id.blank? || @event.outside_pilot?(pilot_chat_id)
 
-    confirmed_id = Message.transaction do
-      original = bound_original
-      next unless original && !original.deleted
-
-      changed = Ryze::MessageEdit.apply(original, content: @event.content, edited_at: @event.edited_at)
-      original.id if changed
-    end
-    Ryze::EditClaim.new(confirmed_id).confirm(@event.content, edited_at: @event.edited_at) if confirmed_id
+    edited_id = Message.transaction { apply_change(bound_original) }
+    Ryze::EditClaim.new(edited_id).confirm(@event.content, edited_at: @event.edited_at) if edited_id
   end
 
   private
+
+  def apply_change(original)
+    return unless original
+
+    if @event.outgoing_revoke?
+      Ryze::MessageDeletion.new(original).confirm_pending!(@event.source_id)
+      return
+    end
+    return if original.deleted
+
+    changed = Ryze::MessageEdit.apply(original, content: @event.content, edited_at: @event.edited_at)
+    original.id if changed
+  end
 
   def bound_original
     candidates = @inbox.messages.outgoing.where(account_id: @inbox.account_id, private: false, content_type: :text,

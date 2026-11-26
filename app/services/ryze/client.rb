@@ -19,14 +19,22 @@ class Ryze::Client
   end
 
   def post(path, payload)
+    send_json(path, Net::HTTP::Post, payload)
+  end
+
+  def delete(path, payload)
+    send_json(path, Net::HTTP::Delete, payload)
+  end
+
+  private
+
+  def send_json(path, request_class, payload)
     uri = endpoint(path)
-    http_request = Net::HTTP::Post.new(uri)
+    http_request = request_class.new(uri)
     http_request['Content-Type'] = 'application/json'
     http_request.body = JSON.generate(payload)
     request(uri, http_request)
   end
-
-  private
 
   def endpoint(path)
     URI("https://ryzeapi.cloud/api/#{path}/#{@instance}")

@@ -11,7 +11,11 @@ class Ryze::WebhookEvent
   end
 
   def outgoing_change?
-    outgoing_edit? || tracked_delivery?
+    outgoing_edit? || outgoing_revoke? || tracked_delivery?
+  end
+
+  def outgoing_revoke?
+    @data[:direction] == 'outgoing' && revoked_message? && revoke_type == 'sender_revoke'
   end
 
   def outgoing_edit?

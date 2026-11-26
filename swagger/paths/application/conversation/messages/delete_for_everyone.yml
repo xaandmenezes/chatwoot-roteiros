@@ -1,0 +1,41 @@
+tags:
+  - Messages
+operationId: delete-ryze-message-for-everyone
+summary: Revoke a sent Ryze pilot message for everyone
+security:
+  - userBearerAuth: []
+  - userApiKey: []
+description: |
+  Only the original agent can revoke an eligible public text message less than 15 minutes old.
+  Confirmation must identify the same WhatsApp message and pilot chat. While confirmation is
+  pending, the original remains visible and repeated requests do not resend the command.
+responses:
+  '200':
+    description: Updated Chatwoot message
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/message'
+  '202':
+    description: Awaiting a correlated provider confirmation
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [status]
+          properties:
+            status:
+              type: string
+              enum: [pending]
+  '401':
+    description: Authentication required
+  '403':
+    description: The caller cannot perform this action
+  '404':
+    description: Conversation or message unavailable
+  '409':
+    description: Another message operation is in progress
+  '422':
+    description: Ineligible message or conversation
+  '502':
+    description: Provider lookup failed or the provider rejected the request

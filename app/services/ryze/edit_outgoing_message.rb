@@ -23,6 +23,7 @@ class Ryze::EditOutgoingMessage
     return :invalid_content unless valid_content?
     return :edit_unavailable unless @eligibility.permitted? && @conversation.can_reply?
     return :edit_expired if @eligibility.expired?
+    return :edit_pending if Ryze::MessageDeletion.pending?(@message)
     return :edit_pending unless @claim.acquire(@content, original: @message)
 
     nil
@@ -35,7 +36,7 @@ class Ryze::EditOutgoingMessage
   end
 
   def edit_at_provider
-    provider = Ryze::EditProvider.new
+    provider = Ryze::MessageProvider.new
     source_id = @message.source_id
     revision = previous_revision
     snapshot = provider.text(source_id)

@@ -38,6 +38,10 @@ class Ryze::EditClaim
     text.is_a?(String) && @state.fetch('content_digest') == Digest::SHA256.hexdigest(text)
   end
 
+  def pending?
+    Redis::Alfred.exists?(@key)
+  end
+
   def active?
     @value.present? && Redis::Alfred.get(@key) == @value
   end

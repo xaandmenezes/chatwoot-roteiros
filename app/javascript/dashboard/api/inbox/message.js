@@ -2,7 +2,7 @@
 /* global axios */
 import ApiClient from '../ApiClient';
 
-const EDIT_CONTENT_TIMEOUT_MS = 30_000;
+const RYZE_ACTION_TIMEOUT_MS = 30_000;
 
 export const buildCreatePayload = ({
   message,
@@ -121,11 +121,27 @@ class MessageApi extends ApiClient {
     return axios.delete(`${this.url}/${conversationID}/messages/${messageId}`);
   }
 
+  deleteOnlyInChatwoot(conversationId, messageId) {
+    return axios.post(
+      `${this.url}/${conversationId}/messages/${messageId}/delete_only_in_chatwoot`,
+      {},
+      { timeout: RYZE_ACTION_TIMEOUT_MS }
+    );
+  }
+
+  deleteForEveryone(conversationId, messageId) {
+    return axios.post(
+      `${this.url}/${conversationId}/messages/${messageId}/delete_for_everyone`,
+      {},
+      { timeout: RYZE_ACTION_TIMEOUT_MS }
+    );
+  }
+
   editContent(conversationId, messageId, content) {
     return axios.post(
       `${this.url}/${conversationId}/messages/${messageId}/edit_content`,
       { content },
-      { timeout: EDIT_CONTENT_TIMEOUT_MS }
+      { timeout: RYZE_ACTION_TIMEOUT_MS }
     );
   }
 

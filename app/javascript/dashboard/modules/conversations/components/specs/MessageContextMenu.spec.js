@@ -48,7 +48,7 @@ const DialogStub = defineComponent({
   },
 });
 
-const mountMenu = enabledOptions =>
+const mountMenu = (enabledOptions, messageOverrides = {}) =>
   mount(MessageContextMenu, {
     props: {
       message: {
@@ -56,6 +56,7 @@ const mountMenu = enabledOptions =>
         content: 'Translated text',
         originalContent: 'Hello',
         conversation_id: 2,
+        ...messageOverrides,
       },
       isOpen: true,
       enabledOptions,
@@ -195,6 +196,100 @@ describe('MessageContextMenu', () => {
       $i18n.locale = previousLocale;
       wrapper.unmount();
     }
+  });
+
+  const openDeletion = async (ageSeconds = 0, edit = true) => {
+    const wrapper = mountMenu(
+      { delete: true, edit, ryzeDeleteScopes: true },
+      { createdAt: Math.floor(Date.now() / 1000) - ageSeconds }
+    );
+    await menuItem(wrapper, 'Delete').trigger('click');
+    await flushPromises();
+    return wrapper;
+  };
+
+  it.each([
+    ['local', 'delete_only_in_chatwoot'],
+    ['everyone', 'delete_for_everyone'],
+  ])(
+    'requires an explicit choice and calls only the %s endpoint',
+    async (choice, endpoint) => {
+      const saved = { id: 1, content_attributes: { deleted: true } };
+      post.mockResolvedValue({ status: 200, data: saved });
+      const wrapper = await openDeletion();
+      await wrapper.get('form').trigger('submit');
+      expect(post).not.toHaveBeenCalled();
+      await wrapper.get(`input[value="${choice}"]`).setValue();
+      await wrapper.get('form').trigger('submit');
+      await flushPromises();
+      expect(post).toHaveBeenCalledExactlyOnceWith(
+        `/api/v1/conversations/2/messages/1/${endpoint}`,
+        {},
+        expect.any(Object)
+      );
+      expect(dispatch).toHaveBeenCalledExactlyOnceWith('updateMessage', saved);
+      wrapper.unmount();
+    }
+  );
+
+  it('expires a remote selection at 15 minutes without switching to local deletion', async () => {
+    vi.useFakeTimers();
+    const wrapper = await openDeletion(899);
+    try {
+      await wrapper.get('input[value="everyone"]').setValue();
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(wrapper.get('input[value="everyone"]').element.disabled).toBe(
+        true
+      );
+      expect(wrapper.get('input[value="local"]').element.checked).toBe(false);
+      await wrapper.get('form').trigger('submit');
+      expect(post).not.toHaveBeenCalled();
+    } finally {
+      wrapper.unmount();
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps local deletion available for old messages when the backend omits editing', async () => {
+    const wrapper = await openDeletion(3600, false);
+    expect(wrapper.get('input[value="everyone"]').element.disabled).toBe(true);
+    expect(wrapper.get('input[value="local"]').element.disabled).toBe(false);
+    wrapper.unmount();
+  });
+
+  it('leaves the message intact when remote deletion is pending', async () => {
+    post.mockResolvedValue({ status: 202, data: { status: 'pending' } });
+    const wrapper = await openDeletion();
+    await wrapper.get('input[value="everyone"]').setValue();
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(post).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
+  });
+
+  it('does not fall back to local deletion on a remote rejection or a repeated click', async () => {
+    let rejectRequest;
+    post.mockImplementation(
+      () =>
+        new Promise((_, reject) => {
+          rejectRequest = reject;
+        })
+    );
+    const wrapper = await openDeletion();
+    await wrapper.get('input[value="everyone"]').setValue();
+    await wrapper.get('form').trigger('submit');
+    await wrapper.get('form').trigger('submit');
+    rejectRequest({
+      response: { status: 422, data: { error_code: 'delete_expired' } },
+    });
+    await flushPromises();
+    expect(wrapper.get('input[value="everyone"]').element.disabled).toBe(true);
+    expect(wrapper.get('input[value="local"]').element.checked).toBe(false);
+    expect(wrapper.get('[role="alert"]').text()).toContain('15-minute');
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(dispatch).not.toHaveBeenCalled();
+    wrapper.unmount();
   });
 
   it('offers forward email first and emits it on click', async () => {

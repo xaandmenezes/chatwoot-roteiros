@@ -1,0 +1,31 @@
+module ActionCableListener::MessageBroadcasts
+  private
+
+  def broadcast_message_event(message, event_name, **extra)
+    conversation = message.conversation
+    widget_tokens, client_tokens = split_contact_tokens(message_contact_inboxes(conversation, message))
+    data = message.push_event_data
+    agent_tokens = message_agent_tokens(message, conversation)
+    if message.deleted_by_customer?
+      # Only agents receive the retained body. previous_changes can also contain that body.
+      broadcast(conversation.account, agent_tokens, event_name, message.agent_view_data(data))
+    elsif Ryze::OutgoingEditEligibility.pilot_conversation?(conversation)
+      data.merge!(extra)
+      broadcast(conversation.account, agent_tokens, event_name, message.agent_view_data(data, conversation: conversation))
+    else
+      client_tokens = agent_tokens + client_tokens
+      data.merge!(extra)
+    end
+
+    broadcast(conversation.account, client_tokens, event_name, data,
+              widget: { tokens: widget_tokens, data: message.widget_push_event_data(data) })
+  end
+
+  def message_agent_tokens(message, conversation)
+    tokens = inbox_user_tokens(conversation)
+    return tokens unless Ryze::MessageDeletion.suppress_bridge_event?(message)
+
+    bridge_token = conversation.account.users.where(id: Ryze::OutboundDelivery.bridge_user_id).pick(:pubsub_token)
+    tokens - [bridge_token]
+  end
+end

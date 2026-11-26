@@ -178,8 +178,8 @@ RSpec.describe 'Ryze outgoing edit confirmations', type: :request do
     submitted_at = Time.current.utc.change(usec: 500_000)
     claim = Ryze::EditClaim.new(original.id)
     claim.acquire('snapshot', original: original)
-    provider = instance_double(Ryze::EditProvider, text: 'snapshot')
-    allow(Ryze::EditProvider).to receive(:new).and_return(provider)
+    provider = instance_double(Ryze::MessageProvider, text: 'snapshot')
+    allow(Ryze::MessageProvider).to receive(:new).and_return(provider)
 
     Ryze::ConfirmOutgoingEditJob.perform_now(original.id, claim.token, submitted_at.to_i)
     confirm(content: 'older webhook', at: submitted_at - 2.seconds)
@@ -196,8 +196,8 @@ RSpec.describe 'Ryze outgoing edit confirmations', type: :request do
     expect(original.reload.content).to eq('previous edit')
     claim = Ryze::EditClaim.new(original.id)
     claim.acquire('next edit', original: original)
-    provider = instance_double(Ryze::EditProvider, text: 'next edit')
-    allow(Ryze::EditProvider).to receive(:new).and_return(provider)
+    provider = instance_double(Ryze::MessageProvider, text: 'next edit')
+    allow(Ryze::MessageProvider).to receive(:new).and_return(provider)
 
     Ryze::ConfirmOutgoingEditJob.perform_now(original.id, claim.token, revision.to_i)
     confirm(content: 'previous edit', at: revision)

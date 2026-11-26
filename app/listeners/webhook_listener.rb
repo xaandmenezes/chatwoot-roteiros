@@ -108,10 +108,11 @@ class WebhookListener < BaseListener
     deliver_webhook_payloads(payload, inbox)
   end
 
-  def deliver_account_webhooks(payload, account)
+  def deliver_account_webhooks(payload, account, except_url: nil)
     return unless account.api_and_webhooks_enabled?
 
     account.webhooks.account_type.each do |webhook|
+      next if except_url && webhook.url == except_url
       next unless webhook.subscriptions.include?(payload[:event])
 
       WebhookJob.perform_later(webhook.url, payload, :account_webhook,
@@ -130,8 +131,9 @@ class WebhookListener < BaseListener
 
   def deliver_message_webhooks(payload, message)
     inbox = message.inbox
-    deliver_account_webhooks(payload, inbox.account)
-    return if Ryze::OutboundDelivery.direct?(message) || Ryze::OutboundDelivery.native_mirror?(message)
+    suppress_bridge = Ryze::MessageDeletion.suppress_bridge_event?(message)
+    deliver_account_webhooks(payload, inbox.account, except_url: (inbox.channel.webhook_url if suppress_bridge))
+    return if suppress_bridge || Ryze::OutboundDelivery.direct?(message) || Ryze::OutboundDelivery.native_mirror?(message)
 
     deliver_api_inbox_webhooks(payload, inbox)
   end

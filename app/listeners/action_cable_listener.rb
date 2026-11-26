@@ -1,6 +1,7 @@
 class ActionCableListener < BaseListener
   include Events::Types
   include ActionCableListener::ConversationBroadcasts
+  include ActionCableListener::MessageBroadcasts
 
   def notification_created(event)
     notification, account, unread_count, count = extract_notification_and_account(event)
@@ -145,26 +146,6 @@ class ActionCableListener < BaseListener
 
   def account_token(account)
     "account_#{account.id}"
-  end
-
-  def broadcast_message_event(message, event_name, **extra)
-    conversation = message.conversation
-    widget_tokens, client_tokens = split_contact_tokens(message_contact_inboxes(conversation, message))
-    data = message.push_event_data
-    agent_tokens = inbox_user_tokens(conversation)
-    if message.deleted_by_customer?
-      # Only agents receive the retained body. previous_changes can also contain that body.
-      broadcast(conversation.account, agent_tokens, event_name, message.agent_view_data(data))
-    elsif message.ryze_editable?(conversation: conversation)
-      data.merge!(extra)
-      broadcast(conversation.account, agent_tokens, event_name, data.merge(can_edit_content: true))
-    else
-      client_tokens = agent_tokens + client_tokens
-      data.merge!(extra)
-    end
-
-    broadcast(conversation.account, client_tokens, event_name, data,
-              widget: { tokens: widget_tokens, data: message.widget_push_event_data(data) })
   end
 
   def broadcast_typing_event(event, event_name)
