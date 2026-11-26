@@ -4,11 +4,16 @@ properties:
     type: string
     description: The name of the custom filter
     example: 'My Custom Filter'
-  type:
+  filter_type:
     type: string
     enum: ['conversation', 'contact', 'report']
-    description: The description about the custom filter
+    description: The category of saved filter
     example: 'conversation'
+  visibility:
+    type: string
+    enum: ['personal', 'team']
+    default: personal
+    description: Fixed at creation. Only account administrators can create team conversation filters. All members of the account can read them.
   query:
     type: object
     description: A query that needs to be saved as a custom filter

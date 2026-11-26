@@ -201,6 +201,8 @@ pt_BR:
       validations:
         name: 'não deve iniciar ou terminar com símbolos e não deve ter os caracteres: < > / \ @.'
     custom_filters:
+      team_limit: Limite atingido. Cada conta pode ter até 1000 filtros da equipe.
+      visibility_change: não pode mudar após a criação
       number_of_records: Limite atingido. O número máximo de filtros personalizados permitidos para um usuário por conta é de 1000.
       invalid_attribute: Chave de atributo inválido - [%{key}]. A chave deve ser uma das [%{allowed_keys}] ou um atributo personalizado definido na conta.
       invalid_operator: Operador inválido. Os operadores permitidos para %{attribute_name} são [%{allowed_keys}].

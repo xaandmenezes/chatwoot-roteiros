@@ -19,6 +19,7 @@ import TeleportWithDirection from 'dashboard/components-next/TeleportWithDirecti
 import ConversationResolveAttributesModal from 'dashboard/components-next/ConversationWorkflow/ConversationResolveAttributesModal.vue';
 
 import { useUISettings } from 'dashboard/composables/useUISettings';
+import { useAdmin } from 'dashboard/composables/useAdmin';
 import { useAlert } from 'dashboard/composables';
 import { useBulkActions } from 'dashboard/composables/chatlist/useBulkActions';
 import { useFilter } from 'shared/composables/useFilter';
@@ -67,6 +68,7 @@ const props = defineProps({
 const emit = defineEmits(['conversationLoad']);
 const { uiSettings } = useUISettings();
 const { t } = useI18n();
+const { isAdmin } = useAdmin();
 const router = useRouter();
 const route = useRoute();
 const store = useStore();
@@ -161,6 +163,10 @@ const folderContactId = useMapGetter('customViews/getActiveFolderContactId');
 const activeFolderName = computed(() => {
   return activeFolder.value?.name;
 });
+
+const canManageFolder = computed(
+  () => activeFolder.value?.visibility !== 'team' || isAdmin.value
+);
 
 const hasActiveFolders = computed(() => {
   return Boolean(activeFolder.value && props.foldersId !== 0);
@@ -451,15 +457,19 @@ function closeAdvanceFiltersModal() {
   appliedFilter.value = [];
 }
 
-function onUpdateSavedFilter(payload, folderName) {
+async function onUpdateSavedFilter(payload, folderName) {
   const transformedPayload = useSnakeCase(payload);
   const payloadData = {
     ...unref(activeFolder),
     name: unref(folderName),
     query: filterQueryGenerator(transformedPayload),
   };
-  store.dispatch('customViews/update', payloadData);
-  closeAdvanceFiltersModal();
+  try {
+    await store.dispatch('customViews/update', payloadData);
+    closeAdvanceFiltersModal();
+  } catch (error) {
+    useAlert(error.message || t('FILTER.CUSTOM_VIEWS.EDIT.ERROR_MESSAGE'));
+  }
 }
 
 function onClickOpenAddFoldersModal() {
@@ -923,6 +933,7 @@ watch(appliedFilters, () => resetBulkActions());
       :contact-filter="appliedContactFilter"
       :has-applied-filters="hasAppliedFilters"
       :has-active-folders="hasActiveFolders"
+      :can-manage-folder="canManageFolder"
       :active-status="activeStatus"
       :is-on-expanded-layout="isOnExpandedLayout"
       :conversation-stats="conversationStats"
@@ -941,6 +952,7 @@ watch(appliedFilters, () => resetBulkActions());
       <SaveCustomView
         v-model="appliedFilter"
         :custom-views-query="foldersQuery"
+        :can-share="isAdmin"
         :open-last-saved-item="openLastSavedItemInFolder"
         @close="onCloseAddFoldersModal"
       />

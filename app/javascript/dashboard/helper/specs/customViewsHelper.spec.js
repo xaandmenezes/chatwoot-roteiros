@@ -258,6 +258,24 @@ describe('customViewsHelper', () => {
       });
     });
 
+    it.each(['is_present', 'is_not_present'])(
+      'reopens a saved %s condition without a comparison value',
+      operator => {
+        const filter = {
+          attribute_key: 'booking',
+          filter_operator: operator,
+          values: [],
+        };
+        const params = {
+          filterTypes: advancedFilterTypes,
+          allCustomAttributes: [
+            { attribute_key: 'booking', attribute_display_type: 'text' },
+          ],
+        };
+        expect(generateValuesForEditCustomViews(filter, params)).toEqual([]);
+      }
+    );
+
     it('should return value as string if filterInputTypes is string', () => {
       const filter = {
         attribute_key: 'test',

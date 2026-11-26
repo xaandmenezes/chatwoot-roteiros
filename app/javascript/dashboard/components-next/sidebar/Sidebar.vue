@@ -441,7 +441,10 @@ const menuItems = computed(() => {
           showTreeLine: true,
           children: sortedFolders.value.map(view => ({
             name: `${view.name}-${view.id}`,
-            label: view.name,
+            label:
+              view.visibility === 'team'
+                ? t('FILTER.CUSTOM_VIEWS.TEAM_FOLDER', { name: view.name })
+                : view.name,
             badgeCount: hasFilteredUnreadCounts.value
               ? getFolderUnreadCount.value(view.id)
               : 0,

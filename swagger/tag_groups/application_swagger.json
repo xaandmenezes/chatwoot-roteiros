@@ -7784,7 +7784,7 @@
         ],
         "operationId": "list-all-filters",
         "summary": "List all custom filters",
-        "description": "List all custom filters in a category of a user",
+        "description": "List personal filters in the selected category. Conversation folders also include team filters for the current account.",
         "security": [
           {
             "userBearerAuth": []
@@ -7889,7 +7889,7 @@
         ],
         "operationId": "get-details-of-a-single-custom-filter",
         "summary": "Get a custom filter details",
-        "description": "Get the details of a custom filter in the account",
+        "description": "Read a personal filter or a team conversation filter in the current account.",
         "security": [
           {
             "userBearerAuth": []
@@ -7920,7 +7920,7 @@
             }
           },
           "404": {
-            "description": "The given team ID does not exist in the account",
+            "description": "The filter is unavailable to this user in the current account",
             "content": {
               "application/json": {
                 "schema": {
@@ -7945,7 +7945,7 @@
             "userApiKey": []
           }
         ],
-        "description": "Update a custom filter's attributes",
+        "description": "Update your own personal filter or, as an account administrator, a team conversation filter. Ownership and visibility are fixed at creation.",
         "requestBody": {
           "required": true,
           "content": {
@@ -7993,9 +7993,9 @@
             "userApiKey": []
           }
         ],
-        "description": "Delete a custom filter from the account",
+        "description": "Delete your own personal filter or, as an account administrator, a team conversation filter.",
         "responses": {
-          "200": {
+          "204": {
             "description": "Success"
           },
           "401": {
@@ -10942,14 +10942,23 @@
             "type": "string",
             "description": "The name of the custom filter"
           },
-          "type": {
+          "filter_type": {
             "type": "string",
             "enum": [
               "conversation",
               "contact",
               "report"
             ],
-            "description": "The description about the custom filter"
+            "description": "The category of saved filter"
+          },
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "personal",
+              "team"
+            ],
+            "default": "personal",
+            "description": "Fixed at creation. Only account administrators can create team conversation filters. All members of the account can read them."
           },
           "query": {
             "type": "object",
@@ -13993,15 +14002,24 @@
             "description": "The name of the custom filter",
             "example": "My Custom Filter"
           },
-          "type": {
+          "filter_type": {
             "type": "string",
             "enum": [
               "conversation",
               "contact",
               "report"
             ],
-            "description": "The description about the custom filter",
+            "description": "The category of saved filter",
             "example": "conversation"
+          },
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "personal",
+              "team"
+            ],
+            "default": "personal",
+            "description": "Fixed at creation. Only account administrators can create team conversation filters. All members of the account can read them."
           },
           "query": {
             "type": "object",

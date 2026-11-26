@@ -137,20 +137,23 @@ export function useOperators() {
    * @param {string} key - Type of operator to get
    * @returns {Array<Operator>}
    */
-  const getOperatorTypes = key => {
+  const getOperatorTypes = (key, filterModel) => {
+    const conversation = filterModel === 'conversation';
     switch (key) {
-      case 'list':
-        return equalityOperators.value;
       case 'text':
-        return containmentOperators.value;
+        return conversation
+          ? [
+              ...containmentOperators.value,
+              ...NO_INPUT_OPTS.map(op => operators.value[op]),
+            ]
+          : containmentOperators.value;
+      case 'list':
       case 'number':
-        return equalityOperators.value;
       case 'link':
-        return equalityOperators.value;
+      case 'checkbox':
+        return conversation ? presenceOperators.value : equalityOperators.value;
       case 'date':
         return comparisonOperators.value;
-      case 'checkbox':
-        return equalityOperators.value;
       default:
         return equalityOperators.value;
     }

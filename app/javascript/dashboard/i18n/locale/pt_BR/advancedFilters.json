@@ -83,7 +83,9 @@
       "CUSTOM_ATTRIBUTES": "Atributos personalizados"
     },
     "CUSTOM_VIEWS": {
+      "TEAM_FOLDER": "{name} (equipe)",
       "ADD": {
+        "SHARE_WITH_TEAM": "Compartilhar esta pasta com todos da conta",
         "TITLE": "Você quer salvar este filtro?",
         "LABEL": "Nomear este filtro",
         "PLACEHOLDER": "Nomeie seu filtro para referenciá-lo posteriormente.",
@@ -100,6 +102,7 @@
         }
       },
       "EDIT": {
+        "ERROR_MESSAGE": "Não foi possível atualizar a pasta.",
         "EDIT_BUTTON": "Alterar Pasta"
       },
       "DELETE": {
