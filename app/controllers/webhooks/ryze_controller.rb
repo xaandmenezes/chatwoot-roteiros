@@ -10,6 +10,7 @@ class Webhooks::RyzeController < ActionController::API
     return head :ok unless event.instance_name == ENV.fetch('RYZE_INSTANCE_NAME') && event.message_exchange?
 
     log_pilot_event(event)
+    return process_outgoing(event) if event.outgoing_change?
     return head :ok unless event.message_change?
 
     process_event(event)
@@ -27,6 +28,26 @@ class Webhooks::RyzeController < ActionController::API
 
   def log_pilot_event(event)
     Rails.logger.info(event.pilot_log_line) if pilot_chat_id.present? && event.chat_ids.include?(pilot_chat_id)
+  end
+
+  def process_outgoing(event)
+    return head :ok unless outgoing_pilot_event?(event)
+    return head :service_unavailable unless inbox&.api?
+
+    return confirm_delivery(event) if event.tracked_delivery?
+    return head :bad_request unless event.valid?
+
+    Ryze::OutgoingMessageChange.new(inbox: inbox, event: event).perform(pilot_chat_id: pilot_chat_id)
+    head :ok
+  end
+
+  def outgoing_pilot_event?(event)
+    pilot_chat_id.present? && ENV['RYZE_EDIT_API_TOKEN'].present? && !event.outside_pilot?(pilot_chat_id)
+  end
+
+  def confirm_delivery(event)
+    result = Ryze::OutboundDelivery.confirm_event!(inbox: inbox, event: event, pilot_chat_id: pilot_chat_id)
+    head(result == :conflict ? :conflict : :ok)
   end
 
   def process_event(event)

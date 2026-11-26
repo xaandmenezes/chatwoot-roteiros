@@ -6721,6 +6721,87 @@
         }
       }
     },
+    "/api/v1/accounts/{account_id}/conversations/{conversation_id}/messages/{message_id}/edit_content": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/account_id"
+        },
+        {
+          "$ref": "#/components/parameters/conversation_id"
+        },
+        {
+          "$ref": "#/components/parameters/message_id"
+        }
+      ],
+      "post": {
+        "tags": [
+          "Messages"
+        ],
+        "operationId": "edit-outgoing-message-content",
+        "summary": "Edit a sent team message in the Ryze pilot",
+        "security": [
+          {
+            "userBearerAuth": []
+          },
+          {
+            "userApiKey": []
+          }
+        ],
+        "description": "Only the original agent can edit a public text message sent through the configured\nRyze pilot with a verified WhatsApp message ID. The provider's edit window applies.\nAn accepted command waits for confirmation. Clients should keep the current\nmessage visible and consume the message update event.\n",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "content"
+                ],
+                "properties": {
+                  "content": {
+                    "type": "string",
+                    "description": "New text for the same message"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Confirmed edit on the existing message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/message"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Awaiting provider confirmation"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "The agent cannot edit this message"
+          },
+          "404": {
+            "description": "Conversation or message unavailable"
+          },
+          "409": {
+            "description": "Another edit is pending"
+          },
+          "422": {
+            "description": "Invalid text, expired window or ineligible message"
+          },
+          "502": {
+            "description": "Provider request failed"
+          }
+        }
+      }
+    },
     "/api/v1/accounts/{account_id}/integrations/apps": {
       "parameters": [
         {

@@ -10,6 +10,7 @@ import actions from 'dashboard/store/modules/conversations/actions';
 import MessageList from '../MessageList.vue';
 import Message from '../Message.vue';
 import MessageError from '../MessageError.vue';
+import MessageStatus from '../MessageStatus.vue';
 
 withFullI18n('pt_BR');
 
@@ -17,12 +18,13 @@ const NOW = Math.floor(Date.now() / 1000);
 const CONVERSATION_ID = 71;
 
 const mountConversation = (message, stubs = {}) => {
-  const currentChat = { id: CONVERSATION_ID, messages: [message] };
+  const currentChat = { id: CONVERSATION_ID, inbox_id: 2, messages: [message] };
   const store = createStore({
     getters: {
       getSelectedChat: () => currentChat,
       getSelectedChatAttachments: () => [],
       'inboxes/getInbox': () => () => ({ channel_type: 'Channel::Api' }),
+      'inboxes/getInboxById': () => () => ({ channel_type: 'Channel::Api' }),
       'globalConfig/get': () => ({}),
       'globalConfig/isOnChatwootCloud': () => false,
       getAutoTranslate: () => ({}),
@@ -71,6 +73,94 @@ describe('conversation messages', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it.each([
+    [{ can_edit_content: true, sender: { id: 1, type: 'user' } }, true],
+    [{ can_edit_content: true, sender_id: 1, sender_type: 'User' }, true],
+    [{ can_edit_content: true, sender: { id: 2, type: 'user' } }, false],
+    [{ can_edit_content: true, sender: { id: 1, type: 'agent_bot' } }, false],
+    [{ can_edit_content: false, sender: { id: 1, type: 'user' } }, false],
+    [
+      {
+        can_edit_content: true,
+        sender: { id: 1, type: 'user' },
+        private: true,
+      },
+      false,
+    ],
+    [
+      {
+        can_edit_content: true,
+        sender: { id: 1, type: 'user' },
+        content_attributes: { deleted: true },
+      },
+      false,
+    ],
+  ])(
+    'offers the editor only for own eligible messages %j',
+    (message, canEdit) => {
+      const wrapper = mountConversation({
+        id: 101,
+        status: 'sent',
+        message_type: 1,
+        content: 'Hello',
+        content_attributes: {},
+        conversation_id: CONVERSATION_ID,
+        created_at: NOW,
+        attachments: [],
+        ...message,
+      });
+
+      const menu = wrapper.getComponent({ name: 'ContextMenu' });
+      expect(menu.props('enabledOptions').edit).toBe(canEdit);
+      expect(menu.props('hideButton')).toBe(!canEdit);
+      wrapper.unmount();
+    }
+  );
+
+  it('shows sending until Ryze confirms delivery to the channel', async () => {
+    const pending = {
+      id: 101,
+      status: 'sent',
+      message_type: 1,
+      content: 'Team text',
+      content_attributes: {},
+      ryze_delivery_pending: true,
+      conversation_id: CONVERSATION_ID,
+      created_at: NOW,
+      attachments: [],
+    };
+    const wrapper = mountConversation(pending, { TextBubble: false });
+    expect(wrapper.getComponent(MessageStatus).props('status')).toBe(
+      'progress'
+    );
+
+    await wrapper.setProps({
+      messages: [
+        { ...pending, ryze_delivery_pending: false, source_id: 'verified-id' },
+      ],
+    });
+    expect(wrapper.getComponent(MessageStatus).props('status')).toBe('sent');
+    wrapper.unmount();
+  });
+
+  it('explains uncertain Ryze delivery without offering a duplicate send', () => {
+    const wrapper = mountConversation({
+      id: 101,
+      status: 'failed',
+      message_type: 1,
+      content: 'Team text with an uncertain outcome',
+      content_attributes: { external_error: 'ryze_delivery_unknown' },
+      conversation_id: CONVERSATION_ID,
+      created_at: NOW,
+      attachments: [],
+    });
+
+    const error = wrapper.getComponent(MessageError);
+    expect(error.text()).toContain('Entrega sem confirmação');
+    expect(error.find('button').exists()).toBe(false);
+    wrapper.unmount();
   });
 
   it('shows Brazilian 24-hour time on the message itself', async () => {

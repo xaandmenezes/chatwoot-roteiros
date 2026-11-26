@@ -10,6 +10,14 @@ end
 json.payload do
   json.array! @messages do |message|
     json.partial! 'api/v1/models/message', message: message
-    json.merge! message.agent_view_data({}) if @agent_history && message.deleted_by_customer?
+    if @agent_history
+      json.merge! message.agent_view_data({}) if message.deleted_by_customer?
+      json.can_edit_content true if message.sender_id == Current.user.id && message.ryze_editable?(conversation: @conversation)
+      json.ryze_delivery_pending true if Ryze::OutboundDelivery.pending?(message)
+      edit_metadata = message.additional_attributes&.slice(
+        'ryze_edited_at', Ryze::OutboundDelivery::VERIFIED_ID_KEY, Ryze::OutboundDelivery::REPLACED_ID_KEY
+      )
+      json.additional_attributes edit_metadata if edit_metadata.present?
+    end
   end
 end

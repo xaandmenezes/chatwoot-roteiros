@@ -44,7 +44,9 @@ if last_message.blank?
   json.messages []
 else
   data = last_message.push_event_data
-  data = last_message.agent_view_data(data) if Current.user.is_a?(User)
+  if Current.user.is_a?(User) && (last_message.deleted_by_customer? || last_message.sender_id == Current.user.id)
+    data = last_message.agent_view_data(data)
+  end
   json.messages [data]
 end
 

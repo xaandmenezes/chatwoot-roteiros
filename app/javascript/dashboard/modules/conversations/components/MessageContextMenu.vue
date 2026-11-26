@@ -16,10 +16,12 @@ import MenuItem from '../../../components/widgets/conversation/contextMenu/menuI
 import { useTrack } from 'dashboard/composables';
 import NextButton from 'dashboard/components-next/button/Button.vue';
 import ReportCaptainMessageDialog from './ReportCaptainMessageDialog.vue';
+import EditMessageDialog from './EditMessageDialog.vue';
 
 export default {
   components: {
     AddCannedModal,
+    EditMessageDialog,
     MenuItem,
     ContextMenu,
     NextButton,
@@ -58,6 +60,7 @@ export default {
   data() {
     return {
       isCannedResponseModalOpen: false,
+      isEditDialogOpen: false,
       showDeleteModal: false,
     };
   },
@@ -144,6 +147,18 @@ export default {
       this.$emit('forwardEmail');
       this.handleClose();
     },
+    openEditDialog() {
+      this.handleClose();
+      this.isEditDialogOpen = true;
+      this.$nextTick(() => this.$refs.editDialog?.open());
+    },
+    closeEditDialog() {
+      this.isEditDialogOpen = false;
+      this.$nextTick(() => this.$refs.menuButton?.$el?.focus());
+    },
+    updateEditedMessage(message) {
+      this.$store.dispatch('updateMessage', message);
+    },
     openDeleteModal() {
       this.handleClose();
       this.showDeleteModal = true;
@@ -198,11 +213,14 @@ export default {
     />
     <NextButton
       v-if="!hideButton"
+      ref="menuButton"
       ghost
       slate
       sm
       icon="i-lucide-ellipsis-vertical"
-      class="invisible group-hover/context-menu:visible"
+      class="motion-safe:transition-opacity [@media(hover:hover)]:opacity-0 group-hover/context-menu:opacity-100 focus-visible:opacity-100"
+      :aria-label="$t('CONVERSATION.CONTEXT_MENU.MESSAGE_ACTIONS')"
+      :aria-expanded="isOpen"
       @click="handleOpen"
     />
     <ContextMenu
@@ -277,6 +295,19 @@ export default {
           variant="icon"
           @click.stop="openReportDialog"
         />
+        <MenuItem
+          v-if="enabledOptions['edit']"
+          :option="{
+            icon: 'edit',
+            label: $t('CONVERSATION.CONTEXT_MENU.EDIT_MESSAGE.ACTION'),
+          }"
+          variant="icon"
+          tabindex="0"
+          class="focus-visible:outline focus-visible:outline-2 focus-visible:outline-n-brand"
+          @click.stop="openEditDialog"
+          @keydown.enter.stop.prevent="openEditDialog"
+          @keydown.space.stop.prevent="openEditDialog"
+        />
         <hr v-if="enabledOptions['delete']" />
         <MenuItem
           v-if="enabledOptions['delete']"
@@ -289,6 +320,15 @@ export default {
         />
       </div>
     </ContextMenu>
+    <EditMessageDialog
+      v-if="isEditDialogOpen"
+      ref="editDialog"
+      :message-id="messageId"
+      :conversation-id="conversationId"
+      :original-content="message.originalContent"
+      @close="closeEditDialog"
+      @confirmed="updateEditedMessage"
+    />
     <ReportCaptainMessageDialog
       v-if="enabledOptions['report']"
       ref="reportDialog"

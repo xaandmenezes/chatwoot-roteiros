@@ -3,6 +3,12 @@ module ActionCableListener::ConversationBroadcasts
 
   private
 
+  def broadcast_to_inbox_members(event, event_name, **metadata)
+    conversation, account = extract_conversation_and_account(event)
+
+    broadcast(account, user_tokens(account, conversation.inbox.members), event_name, conversation.push_event_data.merge(metadata))
+  end
+
   def broadcast_conversation_event(conversation, event_name)
     widget_tokens, client_tokens = split_contact_tokens(session_contact_inboxes(conversation.contact_inbox))
     # The web widget has no handler for conversation.updated

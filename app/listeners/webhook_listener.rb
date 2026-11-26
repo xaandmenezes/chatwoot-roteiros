@@ -24,22 +24,23 @@ class WebhookListener < BaseListener
 
   def message_created(event)
     message = extract_message_and_account(event)[0]
-    inbox = message.inbox
 
     return unless message.webhook_sendable?
 
     payload = message.webhook_data.merge(event: __method__.to_s)
-    deliver_webhook_payloads(payload, inbox)
+    deliver_message_webhooks(payload, message)
+    return unless Ryze::OutboundDelivery.direct?(message)
+
+    raise ActiveJob::EnqueueError, 'Could not enqueue Ryze delivery' unless Ryze::OutboundDelivery.enqueue(message.id, 1)
   end
 
   def message_updated(event)
     message = extract_message_and_account(event)[0]
-    inbox = message.inbox
 
     return unless message.webhook_sendable?
 
     payload = message.webhook_data.merge(event: __method__.to_s)
-    deliver_webhook_payloads(payload, inbox)
+    deliver_message_webhooks(payload, message)
   end
 
   def webwidget_triggered(event)
@@ -125,6 +126,14 @@ class WebhookListener < BaseListener
 
     WebhookJob.perform_later(inbox.channel.webhook_url, payload, :api_inbox_webhook,
                              secret: inbox.channel.secret, delivery_id: SecureRandom.uuid)
+  end
+
+  def deliver_message_webhooks(payload, message)
+    inbox = message.inbox
+    deliver_account_webhooks(payload, inbox.account)
+    return if Ryze::OutboundDelivery.direct?(message) || Ryze::OutboundDelivery.native_mirror?(message)
+
+    deliver_api_inbox_webhooks(payload, inbox)
   end
 
   def deliver_webhook_payloads(payload, inbox)

@@ -209,6 +209,36 @@ describe('#mutations', () => {
       expect(emitter.emit).not.toHaveBeenCalled();
     });
 
+    it('keeps the original Ryze message and coalesces its verified bridge mirror in both event orders', () => {
+      const original = { id: 101, conversation_id: 1, content: 'Team text' };
+      const mirror = {
+        id: 102,
+        conversation_id: 1,
+        source_id: 'provider-id',
+        additional_attributes: { ryze_native_bridge_mirror: true },
+        content: 'Team text',
+      };
+      const confirmed = {
+        ...original,
+        source_id: 'provider-id',
+        additional_attributes: {
+          ryze_outbound_message_id: 'provider-id',
+          ryze_replaced_message_id: mirror.id,
+        },
+      };
+      const state = {
+        allConversations: [{ id: 1, messages: [original, mirror] }],
+        selectedChatId: 1,
+      };
+
+      mutations[types.ADD_MESSAGE](state, confirmed);
+      expect(state.allConversations[0].messages).toEqual([confirmed]);
+
+      mutations[types.ADD_MESSAGE](state, mirror);
+      mutations[types.ADD_MESSAGE](state, original);
+      expect(state.allConversations[0].messages).toEqual([confirmed]);
+    });
+
     it('ignores an older Ryze revision for an existing persisted message', () => {
       const currentMessage = {
         id: 101,
