@@ -3,6 +3,7 @@ run-name: Dokploy check for PR ${{ github.event.pull_request.number }} at ${{ gi
 
 on:
   pull_request:
+    branches-ignore: [develop]
   workflow_call:
 
 permissions:
