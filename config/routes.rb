@@ -223,6 +223,7 @@ Rails.application.routes.draw do
               resource :participants, only: [:show, :create, :update, :destroy]
               resource :direct_uploads, only: [:create]
               resource :draft_messages, only: [:show, :update, :destroy]
+              resource :ryze_presence, only: [:create]
               resource :suggestions, only: [] do
                 get :labels
                 get :priority
