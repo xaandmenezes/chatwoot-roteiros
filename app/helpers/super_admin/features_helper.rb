@@ -5,12 +5,12 @@ module SuperAdmin::FeaturesHelper
 
   def self.plan_details
     plan = ChatwootHub.pricing_plan
-    quantity = ChatwootHub.pricing_plan_quantity
 
     if plan == 'premium'
-      "You are currently on the <span class='font-semibold'>#{plan.titleize}</span> plan with <span class='font-semibold'>#{quantity} agents</span>."
+      ActionController::Base.helpers.translate('super_admin.settings.premium_plan_details_html',
+                                               plan: plan.titleize, quantity: ChatwootHub.pricing_plan_quantity)
     else
-      "You are currently on the <span class='font-semibold'>#{plan.titleize}</span> edition plan."
+      ActionController::Base.helpers.translate('super_admin.settings.edition_plan_details_html', plan: plan.titleize)
     end
   end
 end
