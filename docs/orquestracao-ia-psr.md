@@ -4,7 +4,7 @@ Projeto: https://linear.app/porto-seguro-roteiros/project/implementacao-chatwoot
 
 ### Família dos modelos
 
-Use o perfil OMO Slim `codex-rails` como referência de capacidade. O usuário escolhe o modelo do chat principal no T3. A preferência atual é Astra High, Fast desligado. A família abaixo governa apenas os papéis delegados.
+O OMO Slim inspira a divisão dos papéis. Cada pessoa pode trabalhar no executor da equipe sem instalar o OMO Slim. O usuário escolhe o modelo do chat principal no T3. A preferência atual é Astra High, Fast desligado. A família abaixo governa apenas os papéis delegados.
 
 Leia o valor vigente da linha **Família padrão dos papéis** no projeto do Linear.
 
@@ -14,7 +14,7 @@ Ao delegar, consulte o catálogo real do executor e escolha, na família ativa, 
 
 ### Papéis e instalação de skills
 
-Acione somente os papéis e as skills úteis à tarefa. As letras A e B identificam a origem e o procedimento de instalação logo abaixo.
+Acione somente os papéis e as skills úteis à tarefa. A identifica skills do acervo da equipe. B identifica práticas descritas no guia e disponíveis para qualquer pessoa.
 
 | Papel e responsabilidade | Referência Codex | Skills e instalação |
 | --- | --- | --- |
@@ -39,17 +39,9 @@ test -r "$origem/SKILL.md" && mkdir -p "$HOME/.agents/skills" &&
   test ! -e "$destino" && test ! -L "$destino" && ln -s "$origem" "$destino"
 ```
 
-**B · OMO Slim.** No OpenCode com Slim, habilite as skills da tabela no papel do preset. No T3/Codex, instale as que faltarem em um diretório de skills do executor. O exemplo usa o instalador do Codex e uma revisão verificada. Se uma já existir, passe em `--path` apenas a que falta. [Catálogo oficial de skills](https://ohmyopencodeslim.com/skills)
+**B · Práticas da equipe.** `verification-planning` significa combinar antecipadamente como verificar o resultado; `step-back` significa reavaliar a hipótese quando uma correção falha. Ambas podem ser aplicadas diretamente, sem instalar software.
 
-```sh
-python3 "$HOME/.codex/skills/.system/skill-installer/scripts/install-skill-from-github.py" \
-  --repo alvinunreal/oh-my-opencode-slim \
-  --ref 22751840b97c9f5d4d4d90530a0d332a2a42088a --method git \
-  --path src/skills/verification-planning src/skills/step-back \
-  --dest "$HOME/.agents/skills"
-```
-
-Depois da instalação, confira o `SKILL.md` e a descoberta pelo executor em uma nova sessão. Leia a skill antes de aplicá-la. Em outros provedores, use o diretório de descoberta documentado pelo executor. O acesso ao navegador, às credenciais e ao Linear é verificado separadamente.
+Ao instalar uma skill do acervo A, confira o `SKILL.md` e a descoberta pelo executor em uma nova sessão. Leia a skill antes de aplicá-la. Em outros provedores, use o diretório de descoberta documentado pelo executor. O acesso ao navegador, às credenciais e ao Linear é verificado separadamente.
 
 ### Prompt de inicialização — copie para uma nova conversa
 
