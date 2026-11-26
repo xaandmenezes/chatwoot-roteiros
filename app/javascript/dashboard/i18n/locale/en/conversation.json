@@ -393,6 +393,9 @@
     "BOT": "Bot",
     "NATIVE_APP": "Native app",
     "NATIVE_APP_ADVISORY": "This message was sent from the native app. Reply from Chatwoot to maintain the message window.",
+    "RYZE_SEND_UNCONFIRMED": "The WhatsApp delivery could not be confirmed. Check the chat before sending this message again.",
+    "RYZE_SEND_FAILED": "WhatsApp rejected this message. You can try sending it again.",
+    "RYZE_DELIVERY_STATUS_UNKNOWN": "Delivery unconfirmed",
     "SEND_FAILED": "Couldn't send message! Try again",
     "TRY_AGAIN": "retry",
     "ASSIGNMENT": {
@@ -401,6 +404,20 @@
       "ASSIGN": "Assign"
     },
     "CONTEXT_MENU": {
+      "MESSAGE_ACTIONS": "Message actions",
+      "EDIT_MESSAGE": {
+        "ACTION": "Edit",
+        "TITLE": "Edit message",
+        "LABEL": "Message",
+        "SAVE": "Save changes",
+        "SUCCESS": "Message edited on WhatsApp.",
+        "PENDING": "Waiting for WhatsApp to confirm the edit.",
+        "EXPIRED": "The WhatsApp editing window has closed.",
+        "FAILED": "WhatsApp could not edit the message.",
+        "UNAVAILABLE": "This message cannot be edited.",
+        "INVALID": "Enter valid message text.",
+        "UNKNOWN": "Could not confirm the edit. Check the message before trying again."
+      },
       "COPY": "Copy",
       "REPLY_TO": "Reply to this message",
       "FORWARD_EMAIL": "Forward email",

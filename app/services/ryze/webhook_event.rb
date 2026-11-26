@@ -10,6 +10,22 @@ class Ryze::WebhookEvent
       (edited_message? || revoked_message?)
   end
 
+  def outgoing_change?
+    outgoing_edit? || tracked_delivery?
+  end
+
+  def outgoing_edit?
+    @data[:direction] == 'outgoing' && edited_message?
+  end
+
+  def tracked_delivery?
+    @data[:direction] == 'outgoing' && @message[:type] == 'text' && tracking_source.is_a?(String) && tracking_source.start_with?('psr-cw-')
+  end
+
+  def tracking_source
+    @message[:source]
+  end
+
   def message_exchange?
     @params[:event] == 'message.exchange' && @message.is_a?(ActionController::Parameters)
   end
@@ -58,7 +74,7 @@ class Ryze::WebhookEvent
   end
 
   def content
-    @message[:content] if edited_message?
+    @message[:content] if edited_message? || tracked_delivery?
   end
 
   def edited_at

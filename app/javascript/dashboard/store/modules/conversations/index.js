@@ -275,6 +275,28 @@ export const mutations = {
     });
     if (!chat) return;
 
+    const replacedMessageId =
+      message.additional_attributes?.ryze_replaced_message_id;
+    if (replacedMessageId) {
+      chat.messages = chat.messages.filter(
+        existing =>
+          existing.id !== replacedMessageId ||
+          existing.source_id !== message.source_id ||
+          !existing.additional_attributes?.ryze_native_bridge_mirror
+      );
+    }
+    if (
+      message.additional_attributes?.ryze_native_bridge_mirror &&
+      chat.messages.some(
+        existing =>
+          existing.source_id === message.source_id &&
+          existing.additional_attributes?.ryze_replaced_message_id ===
+            message.id
+      )
+    ) {
+      return;
+    }
+
     const pendingMessageIndex = findPendingMessageIndex(chat, message);
     if (pendingMessageIndex !== -1) {
       const existingMessage = chat.messages[pendingMessageIndex];
@@ -282,7 +304,9 @@ export const mutations = {
         existingMessage.id === message.id &&
         !message.content_attributes?.deleted &&
         (existingMessage.content_attributes?.deleted ||
-          isOlderRyzeRevision(existingMessage, message))
+          isOlderRyzeRevision(existingMessage, message) ||
+          (existingMessage.additional_attributes?.ryze_outbound_message_id &&
+            !message.source_id))
       ) {
         return;
       }

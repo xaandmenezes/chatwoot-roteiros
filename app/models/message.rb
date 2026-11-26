@@ -187,7 +187,13 @@ class Message < ApplicationRecord
     content_attributes['deleted_by_customer'] == true
   end
 
+  def ryze_editable?(conversation: nil)
+    eligibility = Ryze::OutgoingEditEligibility.new(self, conversation: conversation)
+    eligibility.permitted? && !eligibility.expired?
+  end
+
   def agent_view_data(data)
+    return data.merge(can_edit_content: true) if ryze_editable?
     return data unless deleted_by_customer?
 
     revocation = customer_revocation

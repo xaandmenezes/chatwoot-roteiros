@@ -212,6 +212,7 @@ Rails.application.routes.draw do
                 member do
                   post :translate
                   post :retry
+                  post :edit_content
                 end
               end
               resource :contact_info_request, only: [:show, :create]

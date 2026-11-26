@@ -2,6 +2,8 @@
 /* global axios */
 import ApiClient from '../ApiClient';
 
+const EDIT_CONTENT_TIMEOUT_MS = 30_000;
+
 export const buildCreatePayload = ({
   message,
   isPrivate,
@@ -117,6 +119,14 @@ class MessageApi extends ApiClient {
 
   delete(conversationID, messageId) {
     return axios.delete(`${this.url}/${conversationID}/messages/${messageId}`);
+  }
+
+  editContent(conversationId, messageId, content) {
+    return axios.post(
+      `${this.url}/${conversationId}/messages/${messageId}/edit_content`,
+      { content },
+      { timeout: EDIT_CONTENT_TIMEOUT_MS }
+    );
   }
 
   retry(conversationID, messageId) {

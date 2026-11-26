@@ -120,6 +120,8 @@ const props = defineProps({
     validator: value => Object.values(MESSAGE_STATUS).includes(value),
   },
   attachments: { type: Array, default: () => [] },
+  canEditContent: { type: Boolean, default: false },
+  ryzeDeliveryPending: { type: Boolean, default: false },
   hasPendingFiles: { type: Boolean, default: false },
   call: { type: Object, default: null }, // eslint-disable-line vue/no-unused-properties
   content: { type: String, default: null },
@@ -412,6 +414,22 @@ const isForwardedEmail = computed(
   () => !!props.contentAttributes?.forwardedMessageId && !isMessageDeleted.value
 );
 
+const deliveryUnconfirmed = computed(
+  () => props.contentAttributes?.externalError === 'ryze_delivery_unknown'
+);
+
+const messageError = computed(() => {
+  if (deliveryUnconfirmed.value) {
+    return t('CONVERSATION.RYZE_SEND_UNCONFIRMED');
+  }
+  if (props.contentAttributes?.externalError === 'ryze_delivery_failed') {
+    return t('CONVERSATION.RYZE_SEND_FAILED');
+  }
+  return (
+    props.contentAttributes?.externalError || t('CONVERSATION.MESSAGE_ERROR')
+  );
+});
+
 const shouldShowWhatsappReferral = computed(
   () =>
     variant.value === MESSAGE_VARIANTS.USER &&
@@ -423,6 +441,7 @@ const payloadForContextMenu = computed(() => {
     id: props.id,
     content_attributes: props.contentAttributes,
     content: displayedContent.value,
+    originalContent: props.content,
     conversation_id: props.conversationId,
   };
 });
@@ -432,12 +451,24 @@ const contextMenuEnabledOptions = computed(() => {
   const hasAttachments = !!(props.attachments && props.attachments.length > 0);
 
   const isOutgoing = props.messageType === MESSAGE_TYPES.OUTGOING;
+  const senderType = props.sender?.type ?? props.senderType;
+  const isOwnAgentMessage =
+    senderType?.toLowerCase() === SENDER_TYPES.USER.toLowerCase() &&
+    (props.senderId ?? props.sender?.id) === props.currentUserId;
   const isFailedOrProcessing =
     props.status === MESSAGE_STATUS.FAILED ||
     props.status === MESSAGE_STATUS.PROGRESS;
 
   return {
     copy: hasText,
+    edit:
+      props.canEditContent &&
+      isOutgoing &&
+      hasText &&
+      isOwnAgentMessage &&
+      !props.private &&
+      !isMessageDeleted.value &&
+      !isFailedOrProcessing,
     delete:
       (hasText || hasAttachments) &&
       !isFailedOrProcessing &&
@@ -501,9 +532,10 @@ function openContextMenu(e) {
   if (e.type === 'contextmenu') {
     useTrack(ACCOUNT_EVENTS.OPEN_MESSAGE_CONTEXT_MENU);
   }
+  const anchor = e.currentTarget?.getBoundingClientRect();
   contextMenuPosition.value = {
-    x: e.pageX || e.clientX,
-    y: e.pageY || e.clientY,
+    x: e.clientX || anchor?.left || 0,
+    y: e.clientY || anchor?.bottom || 0,
   };
   showContextMenu.value = true;
 }
@@ -589,8 +621,16 @@ const setupHighlightTimer = () => {
 
 onMounted(setupHighlightTimer);
 
+const deliveryStatus = computed(() => {
+  const state = props.additionalAttributes?.ryzeOutboundDelivery?.state;
+  const isWaiting =
+    props.ryzeDeliveryPending || ['queued', 'sending'].includes(state);
+  return isWaiting ? MESSAGE_STATUS.PROGRESS : props.status;
+});
+
 provideMessageContext({
   ...toRefs(props),
+  status: deliveryStatus,
   showingOriginal,
   contactSide,
   isCaptainMessage,
@@ -608,7 +648,7 @@ provideMessageContext({
   <div
     v-if="shouldRenderMessage"
     :id="`message${props.id}`"
-    class="flex w-full mb-2 message-bubble-container"
+    class="flex w-full mb-2 message-bubble-container group/context-menu"
     :data-message-id="props.id"
     :class="[
       flexOrientationClass,
@@ -666,10 +706,9 @@ provideMessageContext({
         "
         class="[grid-area:meta]"
         :class="flexOrientationClass"
-        :error="
-          contentAttributes.externalError || t('CONVERSATION.MESSAGE_ERROR')
-        "
+        :error="messageError"
         :has-pending-files="hasPendingFiles"
+        :delivery-unconfirmed="deliveryUnconfirmed"
         @retry="emit('retry')"
       />
     </div>
@@ -680,7 +719,7 @@ provideMessageContext({
         :is-open="showContextMenu"
         :enabled-options="contextMenuEnabledOptions"
         :message="payloadForContextMenu"
-        hide-button
+        :hide-button="!contextMenuEnabledOptions.edit"
         @open="openContextMenu"
         @close="closeContextMenu"
         @reply-to="handleReplyTo"

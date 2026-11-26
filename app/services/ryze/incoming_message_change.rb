@@ -42,20 +42,9 @@ class Ryze::IncomingMessageChange
     return if message.deleted_by_customer? && (@event.customer_revoked? || @event.edited_at)
 
     if @event.edited_at
-      apply_edit(message)
+      Ryze::MessageEdit.apply(message, content: @event.content, edited_at: @event.edited_at)
     else
       I18n.with_locale(@inbox.account.locale) { message.mark_deleted!(by_customer: @event.customer_revoked?) }
     end
-  end
-
-  def apply_edit(message)
-    # Canonical UTC strings sort by revision time, including fractional seconds.
-    revision = @event.edited_at.utc.iso8601(9)
-    metadata = message.additional_attributes || {}
-    return if metadata.fetch('ryze_edited_at', '') >= revision
-
-    attributes = message.content_attributes.except('translations', 'translation_provider', 'translation_failed', 'source_language')
-    message.update!(content: @event.content, content_attributes: attributes.merge('edited' => true),
-                    additional_attributes: metadata.merge('ryze_edited_at' => revision))
   end
 end

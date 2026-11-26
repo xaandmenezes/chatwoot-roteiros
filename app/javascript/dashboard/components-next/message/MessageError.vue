@@ -9,6 +9,7 @@ import { ORIENTATION, MESSAGE_STATUS } from './constants';
 const props = defineProps({
   error: { type: String, required: true },
   hasPendingFiles: { type: Boolean, default: false },
+  deliveryUnconfirmed: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(['retry']);
@@ -22,6 +23,7 @@ const canRetry = computed(() => {
   const hasContent = content.value !== null;
   const hasAttachments = attachments.value && attachments.value.length > 0;
   return (
+    !props.deliveryUnconfirmed &&
     !hasOneDayPassed(createdAt.value) &&
     (hasContent || hasAttachments || props.hasPendingFiles)
   );
@@ -30,7 +32,13 @@ const canRetry = computed(() => {
 
 <template>
   <div class="text-xs text-n-ruby-11 flex items-center gap-1.5">
-    <span>{{ t('CHAT_LIST.FAILED_TO_SEND') }}</span>
+    <span>
+      {{
+        deliveryUnconfirmed
+          ? t('CONVERSATION.RYZE_DELIVERY_STATUS_UNKNOWN')
+          : t('CHAT_LIST.FAILED_TO_SEND')
+      }}
+    </span>
     <div class="relative group">
       <div
         class="bg-n-alpha-2 rounded-md size-5 grid place-content-center cursor-pointer"

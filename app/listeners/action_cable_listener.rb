@@ -143,12 +143,6 @@ class ActionCableListener < BaseListener
 
   private
 
-  def broadcast_to_inbox_members(event, event_name, **metadata)
-    conversation, account = extract_conversation_and_account(event)
-
-    broadcast(account, user_tokens(account, conversation.inbox.members), event_name, conversation.push_event_data.merge(metadata))
-  end
-
   def account_token(account)
     "account_#{account.id}"
   end
@@ -161,6 +155,9 @@ class ActionCableListener < BaseListener
     if message.deleted_by_customer?
       # Only agents receive the retained body. previous_changes can also contain that body.
       broadcast(conversation.account, agent_tokens, event_name, message.agent_view_data(data))
+    elsif message.ryze_editable?(conversation: conversation)
+      data.merge!(extra)
+      broadcast(conversation.account, agent_tokens, event_name, data.merge(can_edit_content: true))
     else
       client_tokens = agent_tokens + client_tokens
       data.merge!(extra)

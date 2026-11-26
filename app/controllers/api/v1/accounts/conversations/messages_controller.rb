@@ -1,4 +1,12 @@
 class Api::V1::Accounts::Conversations::MessagesController < Api::V1::Accounts::Conversations::BaseController
+  EDIT_ERRORS = {
+    edit_expired: :unprocessable_entity,
+    edit_failed: :bad_gateway,
+    edit_unavailable: :unprocessable_entity,
+    invalid_content: :unprocessable_entity,
+    edit_pending: :conflict
+  }.freeze
+
   before_action :ensure_api_inbox, only: :update
 
   def index
@@ -9,7 +17,7 @@ class Api::V1::Accounts::Conversations::MessagesController < Api::V1::Accounts::
 
   def create
     user = Current.user || @resource
-    mb = Messages::MessageBuilder.new(user, @conversation, params)
+    mb = Messages::MessageBuilder.new(user, @conversation, params, api_token_request: @access_token.present?)
     @message = mb.perform
   rescue StandardError => e
     render_could_not_create_error(e.message)
@@ -20,12 +28,21 @@ class Api::V1::Accounts::Conversations::MessagesController < Api::V1::Accounts::
     @message = message
   end
 
+  def edit_content
+    unless Current.user.is_a?(User) && message.sender_type == 'User' && message.sender_id == Current.user.id
+      return render json: { error_code: 'edit_unavailable' }, status: :forbidden
+    end
+
+    result = Ryze::EditOutgoingMessage.new(message: message, conversation: @conversation, content: params[:content]).perform
+    render_edit_result(result)
+  end
+
   def destroy
     message.mark_deleted!
   end
 
   def retry
-    return if message.blank?
+    return retry_ryze_delivery if Ryze::OutboundDelivery.direct?(message)
 
     ::SendReplyJob.perform_later(message.id) if claim_message_retry
   rescue StandardError => e
@@ -45,6 +62,14 @@ class Api::V1::Accounts::Conversations::MessagesController < Api::V1::Accounts::
   end
 
   private
+
+  def render_edit_result(result)
+    case result
+    when :confirmed then render json: message.agent_view_data(message.push_event_data)
+    when :pending then render json: { status: 'pending' }, status: :accepted
+    else render json: { error_code: result }, status: EDIT_ERRORS.fetch(result)
+    end
+  end
 
   def preload_customer_revocations
     revoked = @messages.select(&:deleted_by_customer?)
@@ -76,6 +101,12 @@ class Api::V1::Accounts::Conversations::MessagesController < Api::V1::Accounts::
 
   def message_finder
     @message_finder ||= MessageFinder.new(@conversation, params)
+  end
+
+  def retry_ryze_delivery
+    return head :accepted if Ryze::OutboundDelivery.retry_rejected!(message)
+
+    render json: { error_code: 'ryze_retry_unavailable' }, status: :conflict
   end
 
   def claim_message_retry

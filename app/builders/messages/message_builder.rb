@@ -5,8 +5,9 @@ class Messages::MessageBuilder
 
   attr_reader :message
 
-  def initialize(user, conversation, params)
+  def initialize(user, conversation, params, api_token_request: nil)
     @params = params
+    @api_token_request = api_token_request
     @private = ActiveModel::Type::Boolean.new.cast(params[:private]) || false
     @conversation = conversation
     @user = user
@@ -23,6 +24,7 @@ class Messages::MessageBuilder
   end
 
   def perform
+    return receive_native_mirror if native_mirror?
     return create_message unless replayable_incoming_text?
 
     @conversation.with_lock do
@@ -33,6 +35,39 @@ class Messages::MessageBuilder
   end
 
   private
+
+  def native_mirror?
+    @api_token_request == true && plain_outgoing_text? && Ryze::OutboundDelivery.provider_id?(@params[:source_id]) &&
+      Ryze::OutboundDelivery.bridge_user?(@user) && Ryze::OutboundDelivery.configured_pilot?(@conversation)
+  end
+
+  def direct_outgoing?
+    return false unless @api_token_request == false && @user.is_a?(User) && @params[:source_id].blank?
+    return false unless plain_outgoing_text? && ordinary_dashboard_text?
+    return false if conversation_auto_translates?
+
+    Ryze::OutboundDelivery.configured_pilot?(@conversation)
+  end
+
+  def plain_outgoing_text?
+    @message_type == 'outgoing' && !@private && plain_text_delivery? && @params[:content].is_a?(String) && @params[:content].present? &&
+      content_attributes.values_at(:in_reply_to, :in_reply_to_external_id).all?(&:blank?)
+  end
+
+  def ordinary_dashboard_text?
+    @params.values_at(:campaign_id, :template_params, :external_created_at, :email_html_content).all?(&:blank?) &&
+      content_attributes.values.all?(&:blank?)
+  end
+
+  def conversation_auto_translates?
+    @conversation.respond_to?(:auto_translate_enabled?) && @conversation.auto_translate_enabled?
+  end
+
+  def receive_native_mirror
+    @conversation.with_lock do
+      @message = Ryze::OutboundMessageCorrelation.matching_message(@conversation, @params[:source_id]) || create_message(native_mirror: true)
+    end
+  end
 
   def replayable_incoming_text?
     return false unless @message_type == 'incoming' && !@private && @conversation.inbox.api?
@@ -50,15 +85,26 @@ class Messages::MessageBuilder
                  .where.missing(:attachments).reorder(:id).first
   end
 
-  def create_message
+  def create_message(native_mirror: false)
     @message = @conversation.messages.build(message_params)
     process_attachments
     process_emails
     # When the message has no quoted content, it will just be rendered as a regular message
     # The frontend is equipped to handle this case
     process_email_content
+    mark_ryze_delivery(native_mirror)
     @message.save!
     @message
+  end
+
+  def mark_ryze_delivery(native_mirror)
+    return unless @message.sender_type == 'User' && @message.sender_id == @user&.id
+
+    if native_mirror
+      @message.additional_attributes = (@message.additional_attributes || {}).merge(Ryze::OutboundDelivery::MIRROR_KEY => true)
+    elsif direct_outgoing?
+      Ryze::OutboundDelivery.prepare(@message)
+    end
   end
 
   # Extracts content attributes from the given params.

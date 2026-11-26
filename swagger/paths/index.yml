@@ -518,6 +518,13 @@
     $ref: ./application/conversation/messages/update.yml
   delete:
     $ref: ./application/conversation/messages/delete.yml
+/api/v1/accounts/{account_id}/conversations/{conversation_id}/messages/{message_id}/edit_content:
+  parameters:
+    - $ref: '#/components/parameters/account_id'
+    - $ref: '#/components/parameters/conversation_id'
+    - $ref: '#/components/parameters/message_id'
+  post:
+    $ref: ./application/conversation/messages/edit_content.yml
 
 # Integrations
 /api/v1/accounts/{account_id}/integrations/apps:
