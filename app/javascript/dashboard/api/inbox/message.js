@@ -145,6 +145,14 @@ class MessageApi extends ApiClient {
     );
   }
 
+  react(conversationId, messageId, emoji) {
+    return axios.post(
+      `${this.url}/${conversationId}/messages/${messageId}/reaction`,
+      { emoji },
+      { timeout: RYZE_ACTION_TIMEOUT_MS }
+    );
+  }
+
   retry(conversationID, messageId) {
     return axios.post(
       `${this.url}/${conversationID}/messages/${messageId}/retry`

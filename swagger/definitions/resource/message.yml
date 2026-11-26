@@ -67,6 +67,11 @@ properties:
   additional_attributes:
     type: object
     description: The additional attributes of the message
+  can_react:
+    type: boolean
+    description: Whether an agent can set the connected WhatsApp account's reaction on this message
+  ryze_reactions:
+    $ref: '#/components/schemas/ryze_reactions'
   processed_message_content:
     type:
       - string

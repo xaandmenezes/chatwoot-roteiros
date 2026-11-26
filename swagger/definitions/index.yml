@@ -40,6 +40,8 @@ conversation:
   $ref: ./resource/conversation.yml
 message:
   $ref: ./resource/message.yml
+ryze_reactions:
+  $ref: ./resource/ryze_reactions.yml
 user:
   $ref: ./resource/user.yml
 agent:

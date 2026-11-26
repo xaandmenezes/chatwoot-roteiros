@@ -16,6 +16,7 @@ json.payload do
       json.ryze_delete_scopes true if pilot
       json.can_edit_content true if pilot && message.sender_id == Current.user.id && message.ryze_editable?(conversation: @conversation)
       json.ryze_delivery_pending true if Ryze::OutboundDelivery.pending?(message)
+      json.merge! message.ryze_reaction_data(conversation: @conversation)
       edit_metadata = message.additional_attributes&.slice(
         'ryze_edited_at', Ryze::OutboundDelivery::VERIFIED_ID_KEY, Ryze::OutboundDelivery::REPLACED_ID_KEY
       )

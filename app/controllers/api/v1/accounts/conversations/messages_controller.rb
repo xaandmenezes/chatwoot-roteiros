@@ -11,6 +11,12 @@ class Api::V1::Accounts::Conversations::MessagesController < Api::V1::Accounts::
     edit_pending: :conflict
   }.freeze
 
+  REACTION_ERRORS = {
+    invalid_reaction: :unprocessable_entity,
+    reaction_unavailable: :unprocessable_entity,
+    reaction_failed: :bad_gateway
+  }.freeze
+
   before_action :ensure_api_inbox, only: :update
 
   def index
@@ -37,6 +43,19 @@ class Api::V1::Accounts::Conversations::MessagesController < Api::V1::Accounts::
 
     result = Ryze::EditOutgoingMessage.new(message: message, conversation: @conversation, content: params[:content]).perform
     render_message_action_result(result)
+  end
+
+  def reaction
+    return head :forbidden unless Current.user.is_a?(User)
+
+    result = Ryze::SendReaction.new(message: message, actor: Current.user, emoji: params[:emoji]).perform
+    case result
+    when :confirmed, :pending
+      status = result == :pending ? :accepted : :ok
+      render json: Ryze::MessageReactions.new(message).payload, status: status
+    else
+      render json: { error_code: result }, status: REACTION_ERRORS.fetch(result)
+    end
   end
 
   def delete_for_everyone

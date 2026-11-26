@@ -196,6 +196,7 @@ class Message < ApplicationRecord
     )
     data[:echo_id] = echo_id if echo_id.present?
     data[:attachments] = attachments.map(&:push_event_data) if attachments.present?
+    data[:additional_attributes] = public_additional_attributes
     merge_sender_attributes(data)
   end
 
@@ -209,12 +210,22 @@ class Message < ApplicationRecord
   end
 
   def agent_view_data(data, conversation: self.conversation, viewer: nil)
+    data = data.merge(ryze_reaction_data(conversation: conversation))
     data = data.merge(ryze_delete_scopes: true) if Ryze::OutgoingEditEligibility.pilot_conversation?(conversation)
     if data[:ryze_delete_scopes] && (!viewer || sender_id == viewer.id) && ryze_editable?(conversation: conversation)
       return data.merge(can_edit_content: true)
     end
 
     deleted_by_customer? ? agent_revocation_data(data) : data
+  end
+
+  def ryze_reaction_data(conversation: self.conversation)
+    return {} unless Ryze::MessageReactions.pilot?(conversation) && Ryze::MessageReactions.target?(self)
+
+    reactions = Ryze::MessageReactions.new(self)
+    data = { can_react: Ryze::MessageReactions.sendable?(self, conversation: conversation) }
+    data[:ryze_reactions] = reactions.payload.fetch(:ryze_reactions) if reactions.state.present?
+    data
   end
 
   def agent_revocation_data(data)
@@ -268,7 +279,7 @@ class Message < ApplicationRecord
   def webhook_data
     data = {
       account: account.webhook_data,
-      additional_attributes: additional_attributes,
+      additional_attributes: public_additional_attributes,
       content_attributes: content_attributes,
       content_type: content_type,
       content: webhook_content,
@@ -284,6 +295,18 @@ class Message < ApplicationRecord
     data[:attachments] = attachments.map(&:push_event_data) if attachments.present?
     data
   end
+
+  def public_additional_attributes
+    attributes_without_reaction_state(additional_attributes)
+  end
+  private :public_additional_attributes
+
+  def attributes_without_reaction_state(attributes)
+    return attributes unless attributes&.key?(Ryze::MessageReactions::KEY)
+
+    attributes.except(Ryze::MessageReactions::KEY)
+  end
+  private :attributes_without_reaction_state
 
   # Method to get content with survey URL for outgoing channel delivery
   def outgoing_content
@@ -338,8 +361,17 @@ class Message < ApplicationRecord
 
   def send_update_event
     Rails.configuration.dispatcher.dispatch(MESSAGE_UPDATED, Time.zone.now, message: self, performed_by: Current.executed_by,
-                                                                            previous_changes: previous_changes)
+                                                                            previous_changes: public_previous_changes)
   end
+
+  def public_previous_changes
+    changes = previous_changes
+    attributes = changes['additional_attributes']
+    return changes unless attributes
+
+    changes.merge('additional_attributes' => attributes.map { |value| attributes_without_reaction_state(value) })
+  end
+  private :public_previous_changes
 
   def should_index?
     return false unless ChatwootApp.advanced_search_allowed?

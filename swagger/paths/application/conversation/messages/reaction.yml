@@ -1,0 +1,49 @@
+tags:
+  - Messages
+operationId: set-ryze-message-reaction
+summary: Set or remove a WhatsApp reaction in the Ryze pilot
+security:
+  - userBearerAuth: []
+  - userApiKey: []
+description: |
+  Updates the reaction of the connected WhatsApp account on an eligible message
+  in the configured direct conversation. An uncertain provider response stays
+  pending and a later request will return the current state without resending.
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema:
+        type: object
+        required: [emoji]
+        properties:
+          emoji:
+            type: string
+            description: One emoji to apply or an empty string to remove the reaction
+responses:
+  '200':
+    description: Current confirmed state
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [id, conversation_id, ryze_reactions]
+          properties:
+            id:
+              type: integer
+            conversation_id:
+              type: integer
+            ryze_reactions:
+              $ref: '#/components/schemas/ryze_reactions'
+  '202':
+    description: Awaiting provider confirmation for the same message
+  '401':
+    description: Authentication or conversation access required
+  '403':
+    description: Only agents can send reactions
+  '404':
+    description: Conversation or message unavailable
+  '422':
+    description: Invalid emoji or ineligible message
+  '502':
+    description: Provider rejected the command
