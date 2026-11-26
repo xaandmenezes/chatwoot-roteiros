@@ -34,6 +34,12 @@ class Ryze::WebhookEvent
     @params[:event] == 'message.exchange' && @message.is_a?(ActionController::Parameters)
   end
 
+  def incoming_private_text?
+    message_exchange? && @data[:direction] == 'incoming' && @message[:type] == 'text' &&
+      @data[:chat].is_a?(ActionController::Parameters) && @data[:chat][:type] == 'private' &&
+      source_id.is_a?(String) && source_id.present?
+  end
+
   def pilot_log_line
     type = @message[:type]
     direction = @data[:direction]
