@@ -12,8 +12,10 @@ RSpec.describe Ryze::IncomingMessageChange do
                      content_attributes: { translations: { en: 'old' }, source_language: 'pt' })
   end
 
-  def change_message(content: nil, at: nil, ids: [chat_id])
-    described_class.new(inbox: inbox, source_id: source_id, chat_ids: ids, content: content, edited_at: at).perform
+  def change_message(content: nil, at: nil, ids: [chat_id], customer_revoked: false)
+    event = instance_double(Ryze::WebhookEvent, source_id: source_id, chat_ids: ids, content: content, edited_at: at,
+                                                customer_revoked?: customer_revoked)
+    described_class.new(inbox: inbox, event: event).perform
   end
 
   it 'updates the original text, marks it edited, and invalidates the old translation' do
@@ -22,7 +24,7 @@ RSpec.describe Ryze::IncomingMessageChange do
     expect(message.content_attributes).to include('edited' => true)
   end
 
-  it 'applies edits and revocations while the conversation is at its new-message limit' do
+  it 'applies edits and admin revocations while the conversation is at its new-message limit' do
     with_modified_env CONVERSATION_MESSAGE_PER_MINUTE_LIMIT: '1' do
       change_message(content: 'edited', at: edited_at)
       expect(message.reload.content).to eq('edited')
@@ -40,7 +42,7 @@ RSpec.describe Ryze::IncomingMessageChange do
     expect(message.content).to eq('latest')
   end
 
-  it 'removes the original content and attachments once and never resurrects a revoked message' do
+  it 'removes the original content and attachments for an admin revocation' do
     account.update!(locale: :pt_BR)
     message.attachments.create!(account: account, file_type: :image, external_url: 'https://example.org/photo.jpg')
     expect { change_message }.not_to change(Message, :count)
@@ -51,6 +53,94 @@ RSpec.describe Ryze::IncomingMessageChange do
       change_message
     end.not_to(change { message.reload.updated_at })
     expect(message.content).to eq(I18n.t('conversations.messages.deleted', locale: :pt_BR))
+  end
+
+  it 'preserves text and marks a sender revocation without changing the message timestamp' do
+    original_content = message.reload.content
+    original_created_at = message.created_at
+    message.attachments.create!(account: account, file_type: :image, external_url: 'https://example.org/photo.jpg')
+
+    expect do
+      change_message(customer_revoked: true)
+    end.not_to change(Message, :count)
+
+    expect(message.reload).to have_attributes(content: I18n.t('conversations.messages.deleted'), deleted: true,
+                                              created_at: original_created_at)
+    expect(message.content_attributes).to include('deleted' => true, 'deleted_by_customer' => true)
+    expect(message.agent_view_data(message.push_event_data)).to include(content: original_content)
+    expect(message.attachments).to be_empty
+    expect(message.customer_revocation).to have_attributes(content: original_content, edited: false)
+  end
+
+  it 'handles repeated sender revocations idempotently and ignores later edits' do
+    change_message(customer_revoked: true)
+
+    expect do
+      change_message(customer_revoked: true)
+      change_message(content: 'stale edit', at: edited_at)
+    end.not_to(change { message.reload.updated_at })
+
+    expect(message.content).to eq(I18n.t('conversations.messages.deleted'))
+    expect(message.content_attributes).to include('deleted_by_customer' => true)
+    expect(message.agent_view_data(message.push_event_data)[:content]).to eq('original')
+  end
+
+  it 'preserves the sender revocation marker when it follows an edit' do
+    change_message(content: 'edited', at: edited_at)
+    change_message(customer_revoked: true)
+
+    expect(message.reload.content).to eq(I18n.t('conversations.messages.deleted'))
+    agent_data = message.agent_view_data(message.push_event_data)
+    expect(agent_data[:content]).to eq('edited')
+    expect(agent_data[:content_attributes]).to include('edited' => true, 'deleted' => true, 'deleted_by_customer' => true)
+    expect(message.customer_revocation).to have_attributes(content: 'edited', edited: true)
+  end
+
+  it 'revokes an attachment-only message without creating an empty archive' do
+    message.update!(content: '')
+    message.attachments.create!(account: account, file_type: :image, external_url: 'https://example.org/photo.jpg')
+
+    change_message(customer_revoked: true)
+
+    expect(message.reload).to have_attributes(content: I18n.t('conversations.messages.deleted'), deleted: true)
+    expect(message.content_attributes).to include('deleted_by_customer' => true)
+    expect(message.customer_revocation).to be_nil
+    expect(message.attachments).to be_empty
+  end
+
+  it 'does not replace existing manual deletion semantics' do
+    message.mark_deleted!
+    deleted_content = message.reload.content
+    deleted_attributes = message.content_attributes
+
+    expect do
+      change_message(customer_revoked: true)
+      change_message(content: 'late edit', at: edited_at)
+    end.not_to(change { message.reload.updated_at })
+
+    expect(message.reload.content).to eq(deleted_content)
+    expect(message.content_attributes).to eq(deleted_attributes)
+  end
+
+  it 'clears the retained customer text when a later admin revocation is applied' do
+    change_message(customer_revoked: true)
+
+    change_message
+
+    expect(message.reload).to have_attributes(content: I18n.t('conversations.messages.deleted'), deleted: true)
+    expect(message.content_attributes).to include('deleted' => true)
+    expect(message.content_attributes).not_to include('deleted_by_customer')
+    expect(message.customer_revocation).to be_nil
+  end
+
+  it 'clears the retained customer text when an agent manually deletes the message' do
+    change_message(customer_revoked: true)
+
+    expect { message.mark_deleted! }.to change(MessageRevocation, :count).by(-1)
+
+    expect(message.reload.content_attributes).to include('deleted' => true)
+    expect(message.content_attributes).not_to include('deleted_by_customer')
+    expect(message.customer_revocation).to be_nil
   end
 
   it 'matches the conversation JID against the provider chat aliases' do

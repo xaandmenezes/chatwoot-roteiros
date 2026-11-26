@@ -1,4 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils';
+import VueDOMPurifyHTML from 'vue-dompurify-html';
+import { domPurifyConfig } from 'shared/helpers/HTMLSanitizer';
 import { createStore } from 'vuex';
 import { routeLocationKey } from 'vue-router';
 import MessagesView from 'dashboard/components/widgets/conversation/MessagesView.vue';
@@ -40,7 +42,7 @@ const mountConversation = (message, stubs = {}) => {
         ),
     },
     global: {
-      plugins: [store],
+      plugins: [store, [VueDOMPurifyHTML, domPurifyConfig]],
       provide: { [routeLocationKey]: { query: {} } },
       stubs: {
         Avatar: true,
@@ -151,6 +153,73 @@ describe('conversation messages', () => {
     wrapper.unmount();
   });
 
+  it('keeps the incoming message visible and labels its timestamp after customer deletion', async () => {
+    const incoming = {
+      id: 101,
+      status: 'sent',
+      message_type: 0,
+      content: 'Edited incoming message',
+      content_attributes: { edited: true },
+      conversation_id: CONVERSATION_ID,
+      created_at: NOW,
+      attachments: [],
+    };
+    const wrapper = mountConversation(incoming, { TextBubble: false });
+    const bubble = wrapper.getComponent(Message);
+    const initialTime = bubble.get('time').text();
+
+    expect(bubble.text()).not.toContain('CONVERSATION.DELETED_BY_CUSTOMER');
+
+    const revoked = {
+      ...incoming,
+      content_attributes: {
+        edited: true,
+        deleted: true,
+        deleted_by_customer: true,
+      },
+    };
+    await wrapper.setProps({
+      messages: [revoked, { ...incoming, id: 102, content: 'Next message' }],
+    });
+
+    const updatedBubble = wrapper.getComponent(Message);
+    expect(updatedBubble.vm.$.uid).toBe(bubble.vm.$.uid);
+    expect(updatedBubble.text()).toContain(incoming.content);
+    expect(updatedBubble.get('time').text()).toBe(initialTime);
+    expect(updatedBubble.get('time + span').text()).toBe(
+      'CONVERSATION.DELETED_BY_CUSTOMER'
+    );
+    expect(updatedBubble.text()).not.toContain('CONVERSATION.EDITED');
+    wrapper.unmount();
+
+    const reloaded = mountConversation(revoked, { TextBubble: false });
+    expect(reloaded.text()).toContain(incoming.content);
+    expect(reloaded.get('time').text()).toBe(initialTime);
+    expect(reloaded.get('time + span').text()).toBe(
+      'CONVERSATION.DELETED_BY_CUSTOMER'
+    );
+    reloaded.unmount();
+  });
+
+  it('does not attribute an outgoing message deletion to the customer', () => {
+    const wrapper = mountConversation(
+      {
+        id: 101,
+        status: 'sent',
+        message_type: 1,
+        content: 'Outgoing message',
+        content_attributes: { deleted_by_customer: true },
+        conversation_id: CONVERSATION_ID,
+        created_at: NOW,
+        attachments: [],
+      },
+      { TextBubble: false }
+    );
+
+    expect(wrapper.text()).not.toContain('CONVERSATION.DELETED_BY_CUSTOMER');
+    wrapper.unmount();
+  });
+
   it('updates the same message bubble when the inbox marks it edited', async () => {
     const wrapper = mountConversation(
       {
@@ -210,6 +279,7 @@ describe('conversation messages', () => {
     expect(deletedBubble.vm.$.uid).toBe(originalBubbleInstance);
     expect(deletedBubble.props().content).toBe('This message was deleted');
     expect(wrapper.text()).not.toContain('CONVERSATION.EDITED');
+    expect(wrapper.text()).not.toContain('CONVERSATION.DELETED_BY_CUSTOMER');
 
     wrapper.unmount();
   });

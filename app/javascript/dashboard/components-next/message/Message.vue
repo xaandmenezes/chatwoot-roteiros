@@ -308,8 +308,16 @@ const gridTemplate = computed(() => {
   return map[orientation.value];
 });
 
+const isDeletedByCustomer = computed(
+  () =>
+    props.messageType === MESSAGE_TYPES.INCOMING &&
+    !props.private &&
+    props.contentAttributes?.deletedByCustomer === true
+);
+
 const shouldGroupWithNext = computed(() => {
-  if (props.status === MESSAGE_STATUS.FAILED) return false;
+  if (props.status === MESSAGE_STATUS.FAILED || isDeletedByCustomer.value)
+    return false;
 
   return props.groupWithNext;
 });
@@ -586,6 +594,7 @@ provideMessageContext({
   showingOriginal,
   contactSide,
   isCaptainMessage,
+  isDeletedByCustomer,
   isPrivate: computed(() => props.private),
   variant,
   orientation,

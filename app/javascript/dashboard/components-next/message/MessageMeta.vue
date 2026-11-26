@@ -30,6 +30,7 @@ const {
 const {
   status,
   isPrivate,
+  isDeletedByCustomer,
   createdAt,
   sourceId,
   messageType,
@@ -154,7 +155,12 @@ const statusToShow = computed(() => {
       >
         {{ readableTime }}
       </time>
-      <span v-if="isEdited" class="ms-1">{{ t('CONVERSATION.EDITED') }}</span>
+      <span v-if="isDeletedByCustomer" class="ms-1">
+        {{ t('CONVERSATION.DELETED_BY_CUSTOMER') }}
+      </span>
+      <span v-else-if="isEdited" class="ms-1">
+        {{ t('CONVERSATION.EDITED') }}
+      </span>
     </div>
     <Icon v-if="isPrivate" icon="i-lucide-lock-keyhole" class="size-3" />
     <MessageStatus v-if="showStatusIndicator" :status="statusToShow" />

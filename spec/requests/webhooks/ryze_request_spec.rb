@@ -58,11 +58,8 @@ RSpec.describe 'Ryze inbound message changes', type: :request do
 
     expect(response).to have_http_status(:ok)
     expect(Ryze::IncomingMessageChange).to have_received(:new).with(
-      inbox: inbox,
-      source_id: source_id,
-      chat_ids: [jid, lid],
-      content: 'Texto atualizado',
-      edited_at: Time.iso8601(edit_timestamp)
+      inbox: inbox, event: have_attributes(source_id: source_id, chat_ids: [jid, lid], content: 'Texto atualizado',
+                                           edited_at: Time.iso8601(edit_timestamp), customer_revoked?: false)
     )
     expect(service).to have_received(:perform)
   end
@@ -78,11 +75,8 @@ RSpec.describe 'Ryze inbound message changes', type: :request do
 
     expect(response).to have_http_status(:ok)
     expect(Ryze::IncomingMessageChange).to have_received(:new).with(
-      inbox: inbox,
-      source_id: source_id,
-      chat_ids: [jid, lid],
-      content: nil,
-      edited_at: nil
+      inbox: inbox, event: have_attributes(source_id: source_id, chat_ids: [jid, lid], content: nil,
+                                           edited_at: nil, customer_revoked?: true)
     )
     expect(service).to have_received(:perform)
   end
@@ -113,7 +107,13 @@ RSpec.describe 'Ryze inbound message changes', type: :request do
     post_event(revoked_payload)
 
     expect(response).to have_http_status(:ok)
-    expect(original_message.reload).to have_attributes(content: I18n.t('conversations.messages.deleted'), deleted: true)
+    expect(original_message.reload).to have_attributes(
+      content: I18n.t('conversations.messages.deleted'),
+      deleted: true,
+      content_attributes: include('deleted' => true, 'deleted_by_customer' => true)
+    )
+    expect(original_message.agent_view_data(original_message.push_event_data)).to include(content: 'Texto atualizado')
+    expect(original_message.customer_revocation).to have_attributes(content: 'Texto atualizado', edited: true)
     expect(conversation.messages.incoming.count).to eq(1)
   end
 
@@ -165,6 +165,22 @@ RSpec.describe 'Ryze inbound message changes', type: :request do
 
     expect(response).to have_http_status(:ok)
     expect(Ryze::IncomingMessageChange).not_to have_received(:new)
+  end
+
+  it 'records a safe correlation for an ignored pilot event without logging other chats' do
+    logs = []
+    allow(Rails.logger).to receive(:info).and_call_original
+    allow(Rails.logger).to receive(:info).with(/Ryze pilot/) { |line| logs << line }
+    ignored = payload.deep_dup
+    ignored[:data][:direction] = 'outgoing'
+    ignored[:data][:message][:type] = 'private-provider-value'
+    with_modified_env(RYZE_PILOT_CHAT_JID: jid) do
+      post_event(ignored, token: 'invalid')
+      post_event(ignored.deep_merge(data: { chat: { jid: 'other@lid' } }))
+      post_event(ignored)
+    end
+
+    expect(logs).to eq(["Ryze pilot type=other direction=outgoing id_hash=#{Digest::SHA256.hexdigest(source_id).first(16)}"])
   end
 
   it 'returns service unavailable while the integration is not configured' do

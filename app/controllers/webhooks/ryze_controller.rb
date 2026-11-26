@@ -7,7 +7,10 @@ class Webhooks::RyzeController < ActionController::API
     return head :unauthorized unless valid_bearer_token?
 
     event = Ryze::WebhookEvent.new(params)
-    return head :ok unless event.message_change? && event.instance_name == ENV.fetch('RYZE_INSTANCE_NAME')
+    return head :ok unless event.instance_name == ENV.fetch('RYZE_INSTANCE_NAME') && event.message_exchange?
+
+    log_pilot_event(event)
+    return head :ok unless event.message_change?
 
     process_event(event)
   end
@@ -22,23 +25,17 @@ class Webhooks::RyzeController < ActionController::API
     super
   end
 
+  def log_pilot_event(event)
+    Rails.logger.info(event.pilot_log_line) if pilot_chat_id.present? && event.chat_ids.include?(pilot_chat_id)
+  end
+
   def process_event(event)
     return head :bad_request unless event.valid?
     return head :ok if pilot_chat_id.present? && event.chat_ids.exclude?(pilot_chat_id)
     return head :service_unavailable unless inbox&.api?
 
-    dispatch_change(event)
+    Ryze::IncomingMessageChange.new(inbox: inbox, event: event).perform
     head :ok
-  end
-
-  def dispatch_change(event)
-    Ryze::IncomingMessageChange.new(
-      inbox: inbox,
-      source_id: event.source_id,
-      chat_ids: event.chat_ids,
-      content: event.content,
-      edited_at: event.edited_at
-    ).perform
   end
 
   def configured?
