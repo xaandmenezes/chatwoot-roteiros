@@ -5,7 +5,7 @@ ruby '3.4.13'
 ##-- base gems for rails --##
 
 gem 'rack-cors', '2.0.0', require: 'rack/cors'
-gem 'rails', '8.0.5.2'
+gem 'rails', '8.1.4.1'
 gem 'sprockets-rails', '~> 3.5'
 
 # Reduces boot times through caching; required in config/boot.rb
@@ -79,7 +79,7 @@ gem 'faraday_middleware-aws-sigv4'
 ##--- gems for server & infra configuration ---##
 gem 'dotenv-rails', '>= 3.0.0'
 gem 'foreman'
-gem 'puma', '~> 7.2', '>= 7.2.1'
+gem 'puma', '~> 7.2', '>= 7.2.3'
 gem 'vite_rails'
 # metrics on heroku
 gem 'barnes'
@@ -89,7 +89,7 @@ gem 'devise', '>= 4.9.4'
 # 2.2.3 requires Devise 5; Chatwoot remains on Devise 4 for this upgrade stack.
 gem 'devise-secure_password', '2.2.1'
 gem 'devise_token_auth', '>= 1.2.3'
-gem 'rails-i18n', '~> 8.0.2'
+gem 'rails-i18n', '~> 8.1.0'
 # two-factor authentication
 gem 'devise-two-factor', '>= 5.0.0'
 # authorization

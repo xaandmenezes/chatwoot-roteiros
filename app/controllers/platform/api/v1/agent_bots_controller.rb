@@ -38,15 +38,17 @@ class Platform::Api::V1::AgentBotsController < PlatformController
   end
 
   def validate_account_permissible
-    return if params[:account_id].blank?
-    return if @resource && params[:account_id].to_s == @resource.account_id.to_s
-    return if @platform_app.platform_app_permissibles.exists?(permissible_type: 'Account', permissible_id: params[:account_id])
+    return unless agent_bot_params.key?(:account_id)
+
+    account_id = agent_bot_params[:account_id].presence
+    return if account_id.to_s == @resource&.account_id.to_s
+    return if account_id && @platform_app.platform_app_permissibles.exists?(permissible_type: 'Account', permissible_id: account_id)
 
     render json: { error: 'Non permissible resource' }, status: :unauthorized
   end
 
   def agent_bot_params
-    params.permit(:name, :description, :account_id, :outgoing_url, :avatar, :avatar_url)
+    @agent_bot_params ||= params.permit(:name, :description, :account_id, :outgoing_url, :avatar, :avatar_url)
   end
 
   def process_avatar_from_url

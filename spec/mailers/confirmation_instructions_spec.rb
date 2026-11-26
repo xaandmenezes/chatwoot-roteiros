@@ -5,16 +5,10 @@ require 'rails_helper'
 RSpec.describe 'Devise::Mailer' do
   describe 'notify' do
     let(:account) { create(:account) }
-    let!(:confirmable_user) { create(:user, inviter: inviter_val, account: account) }
+    let!(:confirmable_user) { create(:user, skip_confirmation: false, inviter: inviter_val, account: account) }
     let(:inviter_val) { nil }
-    let(:mail) { Devise::Mailer.confirmation_instructions(confirmable_user.reload, nil, {}) }
+    let(:mail) { Devise::Mailer.confirmation_instructions(confirmable_user.reload, confirmable_user.confirmation_token) }
     let(:mail_body) { CGI.unescapeHTML(mail.body.to_s) }
-
-    before do
-      # to verify the token in email
-      confirmable_user.update!(confirmed_at: nil)
-      confirmable_user.send(:generate_confirmation_token)
-    end
 
     it 'has the correct header data' do
       expect(mail.reply_to).to contain_exactly('accounts@chatwoot.com')
@@ -76,13 +70,10 @@ RSpec.describe 'Devise::Mailer' do
       end
 
       it 'sends a confirmation link' do
-        confirmation_mail = Devise::Mailer.confirmation_instructions(confirmable_user.reload, nil, {})
-        confirmation_body = CGI.unescapeHTML(confirmation_mail.body.to_s)
-
-        expect(confirmation_body).to include('Confirm your new email address')
-        expect(confirmation_body).to include('New email')
-        expect(confirmation_mail.body).to include('app/auth/confirmation?confirmation_token')
-        expect(confirmation_mail.body).not_to include('app/auth/password/edit')
+        expect(mail_body).to include('Confirm your new email address')
+        expect(mail_body).to include('New email')
+        expect(mail.body).to include('app/auth/confirmation?confirmation_token')
+        expect(mail.body).not_to include('app/auth/password/edit')
         expect(confirmable_user.unconfirmed_email.blank?).to be false
       end
     end
@@ -94,12 +85,9 @@ RSpec.describe 'Devise::Mailer' do
       end
 
       it 'sends a confirmation link' do
-        confirmation_mail = Devise::Mailer.confirmation_instructions(confirmable_user.reload, nil, {})
-        confirmation_body = CGI.unescapeHTML(confirmation_mail.body.to_s)
-
-        expect(confirmation_body).to include('Confirm your new email address')
-        expect(confirmation_mail.body).to include('app/auth/confirmation?confirmation_token')
-        expect(confirmation_mail.body).not_to include('app/auth/password/edit')
+        expect(mail_body).to include('Confirm your new email address')
+        expect(mail.body).to include('app/auth/confirmation?confirmation_token')
+        expect(mail.body).not_to include('app/auth/password/edit')
         expect(confirmable_user.unconfirmed_email.blank?).to be false
       end
     end
@@ -111,12 +99,9 @@ RSpec.describe 'Devise::Mailer' do
       end
 
       it 'send instructions with the link to login' do
-        confirmation_mail = Devise::Mailer.confirmation_instructions(confirmable_user.reload, nil, {})
-        confirmation_body = CGI.unescapeHTML(confirmation_mail.body.to_s)
-
-        expect(confirmation_body).to include('Your account is ready')
-        expect(confirmation_body).to include('Open my account')
-        expect(confirmation_mail.body).to include('/auth/sign_in')
+        expect(mail_body).to include('Your account is ready')
+        expect(mail_body).to include('Open my account')
+        expect(mail.body).to include('/auth/sign_in')
       end
     end
   end

@@ -139,6 +139,16 @@ RSpec.describe 'Profile API', type: :request do
         expect(agent.name).to eq('test')
       end
 
+      it 'uses only profile attributes when updating the user' do
+        put '/api/v1/profile',
+            params: { profile: { name: 'Updated name', account_id: account.id } },
+            headers: agent.create_new_auth_token,
+            as: :json
+
+        expect(response).to have_http_status(:success)
+        expect(agent.reload.name).to eq('Updated name')
+      end
+
       it 'updates custom attributes' do
         put '/api/v1/profile',
             params: { profile: { phone_number: '+123456789' } },
@@ -239,7 +249,8 @@ RSpec.describe 'Profile API', type: :request do
     context 'when an authenticated user updates email' do
       let(:agent) { create(:user, password: 'Test123!', account: account, role: :agent) }
 
-      it 'populates the unconfirmed email' do
+      it 'keeps the current email until the new address is confirmed' do
+        original_email = agent.email
         new_email = Faker::Internet.email
         put '/api/v1/profile',
             params: { profile: { email: new_email, current_password: 'Test123!' } },
@@ -249,6 +260,7 @@ RSpec.describe 'Profile API', type: :request do
         expect(response).to have_http_status(:success)
         agent.reload
 
+        expect(agent.email).to eq(original_email)
         expect(agent.unconfirmed_email).to eq(new_email)
       end
 
@@ -441,6 +453,19 @@ RSpec.describe 'Profile API', type: :request do
             as: :json
 
         expect(response).to have_http_status(:success)
+      end
+
+      it 'requires the user to belong to the selected account' do
+        other_membership = create(:account_user)
+
+        expect do
+          put '/api/v1/profile/set_active_account',
+              params: { profile: { account_id: other_membership.account_id } },
+              headers: agent.create_new_auth_token,
+              as: :json
+        end.not_to(change { other_membership.reload.active_at })
+
+        expect(response).to have_http_status(:not_found)
       end
     end
   end

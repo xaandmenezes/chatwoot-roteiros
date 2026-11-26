@@ -2,6 +2,24 @@
 
 `CLAUDE.md` is a symlink to this file. Keep shared, repository-wide instructions here and detailed procedures in linked docs. Add nested `AGENTS.md` files only for subtree-specific differences; avoid duplicating root rules.
 
+## Regras para IA da PSR
+
+Projeto: https://linear.app/porto-seguro-roteiros/project/implementacao-chatwoot-roteiros-fe7deb79accd
+
+### Orquestração e escolha de modelo
+
+A família dos modelos delegados é selecionável no Linear ou por sessão; os modelos indicados são referências. Use Fast para todos os delegados e prefira Astra High com Fast desligado no chat principal. Leia [Orquestração de IA da PSR](docs/orquestracao-ia-psr.md) para o prompt de inicialização, as skills e a escolha dos papéis e modelos.
+
+### PR, deploy e testes em produção
+
+- Cada issue tem responsável e branch/worktree própria baseada em `develop` atualizado. Trabalho incompleto permanece na branch ou desativado.
+- A branch da issue entra em `develop` por PR vinculado, com revisão de outra pessoa e checks obrigatórios aprovados. A release entra em `prod` por PR de `develop`, listando todas as issues e nomeando o responsável. Push direto é proibido nas duas branches.
+- Antes do merge em `prod`, obtenha autorização de deploy e verifique a imagem construída fora da VPS e do Mac de 8 GB. Preserve-a em registry autorizado e publique exatamente a imagem testada, por digest. Registre digest e resultado.
+- Em emergência, crie hotfix a partir de `prod`, com PR para `prod`, revisão, verificações e autorização; depois abra PR de `prod` para `develop`.
+- O enforcement das proteções no GitHub depende de administrador; não presuma que estão ativas. O registry atual do runner é efêmero.
+- Faça o build da imagem fora da VPS e do Mac de 8 GB. Após o deploy, confira a versão ativa, a saúde do painel e o processamento do Sidekiq.
+- Restrinja os testes de envio, edição, reação ou exclusão à conversa e às ações autorizadas para aquela rodada. Registre na issue o que foi confirmado e o que ainda depende de teste real.
+
 ## Build, Test, and Lint
 
 - **Ruby setup**: Use the version in `.ruby-version` through `rbenv`. Before Ruby commands, run `eval "$(rbenv init -)"`; use `bundle exec` for Rails, RSpec, and RuboCop.

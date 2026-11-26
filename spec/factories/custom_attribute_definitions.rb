@@ -8,5 +8,12 @@ FactoryBot.define do
     attribute_model { 0 }
     default_value { nil }
     account
+
+    trait :legacy_colon_key do
+      attribute_key { 'billing:region' }
+      attribute_display_type { :text }
+      # Model validations now reject colons, but existing definitions can contain them.
+      to_create { |definition| definition.save!(validate: false) }
+    end
   end
 end
