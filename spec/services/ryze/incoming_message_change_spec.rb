@@ -14,7 +14,7 @@ RSpec.describe Ryze::IncomingMessageChange do
 
   def change_message(content: nil, at: nil, ids: [chat_id], customer_revoked: false)
     event = instance_double(Ryze::WebhookEvent, source_id: source_id, chat_ids: ids, content: content, edited_at: at,
-                                                customer_revoked?: customer_revoked)
+                                                customer_revoked?: customer_revoked, outside_pilot?: false)
     described_class.new(inbox: inbox, event: event).perform
   end
 

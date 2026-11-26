@@ -30,11 +30,12 @@ class Webhooks::RyzeController < ActionController::API
   end
 
   def process_event(event)
-    return head :bad_request unless event.valid?
-    return head :ok if pilot_chat_id.present? && event.chat_ids.exclude?(pilot_chat_id)
+    pilot_revocation = pilot_chat_id.present? && event.customer_revoked?
+    return head :bad_request unless event.valid?(require_chat: !pilot_revocation)
+    return head :ok if event.outside_pilot?(pilot_chat_id) && !pilot_revocation
     return head :service_unavailable unless inbox&.api?
 
-    Ryze::IncomingMessageChange.new(inbox: inbox, event: event).perform
+    Ryze::IncomingMessageChange.new(inbox: inbox, event: event).perform(pilot_chat_id: pilot_chat_id)
     head :ok
   end
 
