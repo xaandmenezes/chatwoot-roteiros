@@ -249,7 +249,8 @@ RSpec.describe 'Profile API', type: :request do
     context 'when an authenticated user updates email' do
       let(:agent) { create(:user, password: 'Test123!', account: account, role: :agent) }
 
-      it 'populates the unconfirmed email' do
+      it 'keeps the current email until the new address is confirmed' do
+        original_email = agent.email
         new_email = Faker::Internet.email
         put '/api/v1/profile',
             params: { profile: { email: new_email, current_password: 'Test123!' } },
@@ -259,6 +260,7 @@ RSpec.describe 'Profile API', type: :request do
         expect(response).to have_http_status(:success)
         agent.reload
 
+        expect(agent.email).to eq(original_email)
         expect(agent.unconfirmed_email).to eq(new_email)
       end
 
