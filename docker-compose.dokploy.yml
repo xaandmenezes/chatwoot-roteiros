@@ -1,11 +1,7 @@
 x-chatwoot: &chatwoot
   image: chatwoot-psr:${CHATWOOT_IMAGE_TAG:?Set the deployed Git commit SHA}
-  build:
-    context: .
-    dockerfile: docker/Dockerfile
-    args:
-      RAILS_ENV: production
-      NODE_OPTIONS: --max-old-space-size=4096 --openssl-legacy-provider
+  platform: linux/amd64
+  pull_policy: never
   environment: &chatwoot-environment
     RAILS_ENV: production
     NODE_ENV: production

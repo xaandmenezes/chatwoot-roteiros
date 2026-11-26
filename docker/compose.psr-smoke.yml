@@ -1,0 +1,4 @@
+# Apply only to the disposable smoke project.
+networks:
+  default:
+    internal: true
