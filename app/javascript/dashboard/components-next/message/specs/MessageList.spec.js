@@ -119,6 +119,36 @@ describe('conversation messages', () => {
     }
   );
 
+  it('keeps the action trigger in the bubble gutter when a sent message becomes editable', async () => {
+    const message = {
+      id: 101,
+      status: 'sent',
+      message_type: 1,
+      sender: { id: 1, type: 'user' },
+      content: 'Team text',
+      content_attributes: {},
+      conversation_id: CONVERSATION_ID,
+      created_at: NOW,
+      attachments: [],
+    };
+    const wrapper = mountConversation(message);
+    const menu = wrapper.getComponent({ name: 'ContextMenu' });
+    expect(menu.props('hideButton')).toBe(true);
+
+    await wrapper.setProps({
+      messages: [{ ...message, can_edit_content: true }],
+    });
+
+    expect(menu.props('hideButton')).toBe(false);
+    const gutter = menu.element.parentElement;
+    const avatar = wrapper.getComponent({ name: 'Avatar' });
+    expect(gutter.parentElement).toBe(avatar.element.closest('.grid'));
+    expect([...gutter.classList]).toEqual(
+      expect.arrayContaining(['[grid-area:bubble]', 'justify-self-start'])
+    );
+    wrapper.unmount();
+  });
+
   it('shows sending until Ryze confirms delivery to the channel', async () => {
     const pending = {
       id: 101,
