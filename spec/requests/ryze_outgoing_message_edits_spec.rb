@@ -36,13 +36,13 @@ RSpec.describe 'Ryze outgoing message edits', type: :request do
     post endpoint, params: { content: value }, headers: user.create_new_auth_token, as: :json
   end
 
-  def stub_verified_message(snapshot: 'Original text', chat: jid, direction: 'sent')
+  def stub_verified_message(snapshot: 'Original text', status: {}, snapshot_id: source_id, type: 'text')
     stub_request(:get, "#{provider}/status/Pilot%20%2F%20Dev")
       .with(query: { messageId: source_id }, headers: { 'token' => 'test-edit-token' })
-      .to_return(body: { success: true, message_id: source_id, chat_jid: chat, direction: direction, status: 'delivered' }.to_json)
+      .to_return(body: { success: true, message_id: source_id, chat_jid: jid, direction: 'sent', status: 'delivered' }.merge(status).to_json)
     stub_request(:get, "#{provider}/getMessage/Pilot%20%2F%20Dev")
       .with(query: { messageId: source_id }, headers: { 'token' => 'test-edit-token' })
-      .to_return(body: { success: true, messageId: source_id, data: { type: 'text', content: snapshot } }.to_json)
+      .to_return(body: { success: true, messageId: snapshot_id, data: { type: type, content: snapshot } }.to_json)
   end
 
   def stub_edit
@@ -62,6 +62,132 @@ RSpec.describe 'Ryze outgoing message edits', type: :request do
     expect(message.reload.content).to eq('Original text')
     expect(message.additional_attributes.keys).to match_array(%w[ryze_outbound_message_id ryze_outbound_delivery])
     expect(edit).to have_been_requested.once
+  end
+
+  it 'reopens the corrected message after a verified read when the edit webhook never arrives' do
+    stub_verified_message
+    edit = stub_edit.to_return(body: { success: true }.to_json)
+    submit_edit
+    expect(response).to have_http_status(:accepted)
+    expect(message.reload.content).to eq('Original text')
+
+    stub_verified_message(snapshot: content)
+    perform_enqueued_jobs(only: Ryze::ConfirmOutgoingEditJob)
+
+    get api_v1_account_conversation_messages_path(account.id, conversation.display_id), headers: agent.create_new_auth_token
+    expect(response.parsed_body.fetch('payload')).to contain_exactly(include('id' => message.id, 'source_id' => source_id, 'content' => content,
+                                                                             'content_attributes' => include('edited' => true)))
+    expect(edit).to have_been_requested.once
+  end
+
+  describe 'pending edit readback' do
+    let(:timed_out_edit) { stub_edit.to_timeout }
+
+    before do
+      stub_verified_message
+      timed_out_edit
+      submit_edit
+    end
+
+    def run_readback
+      perform_enqueued_jobs(only: Ryze::ConfirmOutgoingEditJob)
+    end
+
+    it 'rechecks stale text once after an ambiguous POST and confirms a later matching snapshot' do
+      run_readback
+      expect(message.reload.content).to eq('Original text')
+
+      stub_verified_message(snapshot: content)
+      run_readback
+      expect(message.reload.content).to eq(content)
+      expect(timed_out_edit).to have_been_requested.once
+    end
+
+    it 'bounds attempts when the provider keeps timing out' do
+      status = stub_request(:get, %r{/chat/status/}).to_timeout
+      3.times { run_readback }
+      expect(status).to have_been_requested.times(3) # One preflight and two readbacks.
+      expect(message.reload.content).to eq('Original text')
+      expect(timed_out_edit).to have_been_requested.once
+    end
+
+    {
+      'destination' => { status: { chat_jid: 'another@lid' } },
+      'direction' => { status: { direction: 'received' } },
+      'status ID' => { status: { message_id: 'OTHER' } },
+      'snapshot ID' => { snapshot_id: 'OTHER' },
+      'message type' => { type: 'image' }
+    }.each do |field, mismatch|
+      it "rejects matching text with a different #{field}" do
+        stub_verified_message(snapshot: content, **mismatch)
+        expect { run_readback }.not_to(change { message.reload.content })
+        expect(enqueued_jobs.pluck(:job)).not_to include(Ryze::ConfirmOutgoingEditJob)
+      end
+    end
+
+    it 'drops a delayed job after its claim expires' do
+      Redis::Alfred.expire("RYZE_OUTGOING_EDIT:#{message.id}", 0)
+      run_readback
+      expect(WebMock).to have_requested(:get, %r{/chat/status/}).once
+      expect(message.reload.content).to eq('Original text')
+    end
+
+    it 'skips a read after the pilot credentials change' do
+      with_modified_env(RYZE_EDIT_API_TOKEN: 'rotated-token') { run_readback }
+      expect(WebMock).to have_requested(:get, %r{/chat/status/}).once
+      expect(message.reload.content).to eq('Original text')
+    end
+
+    it 'binds the pending edit to its original provider even if the delivery is rebound' do
+      with_modified_env(RYZE_INSTANCE_NAME: 'replacement-instance') do
+        Ryze::OutboundDelivery.prepare(message)
+        message.additional_attributes[Ryze::OutboundDelivery::DELIVERY_KEY]['state'] = 'confirmed'
+        message.save!
+        run_readback
+      end
+      expect(WebMock).not_to have_requested(:get, %r{/replacement-instance})
+      expect(message.reload.content).to eq('Original text')
+    end
+
+    it 'preserves a deletion committed while the snapshot was being read' do
+      stub_request(:get, %r{/chat/getMessage/}).to_return do
+        message.mark_deleted!
+        { body: { success: true, messageId: source_id, data: { type: 'text', content: content } }.to_json }
+      end
+      run_readback
+      expect(message.reload.deleted).to be(true)
+      expect(message.content).to eq(I18n.t('conversations.messages.deleted'))
+    end
+
+    it 'preserves a webhook revision committed while the snapshot was being read' do
+      stub_request(:get, %r{/chat/getMessage/}).to_return do
+        message.with_lock { Ryze::MessageEdit.apply(message, content: 'Webhook revision', edited_at: 1.second.from_now) }
+        { body: { success: true, messageId: source_id, data: { type: 'text', content: content } }.to_json }
+      end
+      run_readback
+      expect(message.reload.content).to eq('Webhook revision')
+    end
+
+    it 'discards the snapshot if another attempt has acquired the expired claim during the read' do
+      replacement = Ryze::EditClaim.new(message.id)
+      stub_request(:get, %r{/chat/getMessage/}).to_return do
+        Redis::Alfred.delete("RYZE_OUTGOING_EDIT:#{message.id}")
+        expect(replacement.acquire(content, original: message)).to be_truthy
+        { body: { success: true, messageId: source_id, data: { type: 'text', content: content } }.to_json }
+      end
+      run_readback
+      expect(message.reload.content).to eq('Original text')
+      expect(replacement.active?).to be(true)
+    end
+  end
+
+  it 'waits for the webhook if normalization made the requested text indistinguishable from the preflight' do
+    message.update!(content: "Original text\n")
+    stub_verified_message
+    stub_request(:post, %r{/chat/edit/}).to_return(body: { success: true }.to_json)
+    expect { submit_edit(value: 'Original text') }.not_to have_enqueued_job(Ryze::ConfirmOutgoingEditJob)
+    expect(response).to have_http_status(:accepted)
+    expect(message.reload.content_attributes).not_to include('edited')
   end
 
   it 'blocks a second request while the original command is pending' do
@@ -127,7 +253,7 @@ RSpec.describe 'Ryze outgoing message edits', type: :request do
   end
 
   it 'rejects a provider message from another chat before sending an edit' do
-    stub_verified_message(chat: 'unrelated@lid')
+    stub_verified_message(status: { chat_jid: 'unrelated@lid' })
     submit_edit
 
     expect(response).to have_http_status(422)
