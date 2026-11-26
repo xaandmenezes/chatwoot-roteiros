@@ -89,6 +89,25 @@ describe WebhookListener do
     end
 
     context 'when inbox is an API Channel' do
+      [true, false].each do |recorded|
+        it "sends is_voice_message=#{recorded} for the same OGG depending on how it was attached" do
+          channel = create(:channel_api, account: account)
+          api_conversation = create(:conversation, account: account, inbox: channel.inbox)
+          audio = Rack::Test::UploadedFile.new('spec/assets/sample.ogg', 'audio/ogg')
+          params = ActionController::Parameters.new(attachments: [audio])
+          params[:is_voice_message] = 'true' if recorded
+          sent_message = Messages::MessageBuilder.new(user, api_conversation, params).perform
+          event = Events::Base.new(event_name, Time.zone.now, message: sent_message.reload)
+          attachment = hash_including(file_type: 'audio', is_voice_message: recorded, data_url: a_string_matching(/.+/))
+
+          expect(WebhookJob).to receive(:perform_later).with(
+            channel.webhook_url, hash_including(event: 'message_created', attachments: [attachment]),
+            :api_inbox_webhook, secret: channel.secret, delivery_id: instance_of(String)
+          )
+          listener.message_created(event)
+        end
+      end
+
       it 'triggers webhook if webhook_url is present' do
         channel_api = create(:channel_api, account: account)
         api_inbox = channel_api.inbox

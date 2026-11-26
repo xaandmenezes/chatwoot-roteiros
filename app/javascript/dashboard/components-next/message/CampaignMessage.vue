@@ -1,7 +1,6 @@
 <script setup>
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { messageTimestamp } from 'shared/helpers/timeHelper';
 import { useExactTimestamp } from 'shared/composables/useExactTimestamp';
 import { useCampaignAnalytics } from 'dashboard/composables/useCampaignAnalytics';
 import { useAdmin } from 'dashboard/composables/useAdmin';
@@ -17,9 +16,8 @@ const { isAdmin } = useAdmin();
 const { canViewAnalytics } = useCampaignAnalytics();
 const { accountScopedRoute } = useAccount();
 const exactTimestamp = useExactTimestamp();
-const sentAt = computed(() =>
-  messageTimestamp(props.recipient.sent_at, 'LLL d, h:mm a')
-);
+const inlineTimestamp = useExactTimestamp({ omitCurrentYear: true });
+const sentAt = computed(() => inlineTimestamp(props.recipient.sent_at));
 const statusLabel = computed(
   () =>
     ({

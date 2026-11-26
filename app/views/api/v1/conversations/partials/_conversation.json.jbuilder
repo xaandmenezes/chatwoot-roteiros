@@ -43,7 +43,9 @@ last_message = conversation.messages.where(account_id: conversation.account_id)
 if last_message.blank?
   json.messages []
 else
-  json.messages [last_message.try(:push_event_data)]
+  data = last_message.push_event_data
+  data = last_message.agent_view_data(data, conversation: conversation, viewer: Current.user) if Current.user.is_a?(User)
+  json.messages [data]
 end
 
 json.account_id conversation.account_id
@@ -57,6 +59,7 @@ json.contact_last_seen_at conversation.contact_last_seen_at.to_i
 json.custom_attributes conversation.custom_attributes
 json.inbox_id conversation.inbox_id
 json.labels conversation.cached_label_list_array
+json.contact_labels contact_labels if local_assigns.key?(:contact_labels)
 json.muted conversation.muted?
 json.snoozed_until conversation.snoozed_until
 json.status conversation.status

@@ -94,7 +94,7 @@ import { useTranslations } from 'dashboard/composables/useTranslations';
  * @property {number|null} [senderId=null] - The ID of the sender
  * @property {number} createdAt - Timestamp when the message was created
  * @property {number} currentUserId - The ID of the current user
- * @property {number} id - The unique identifier for the message
+ * @property {number|string} id - The persisted ID or temporary ID of the message
  * @property {number} messageType - The type of message (must be one of MESSAGE_TYPES)
  * @property {string|null} [error=null] - Error message if the message failed to send
  * @property {string|null} [senderType=null] - The type of the sender
@@ -108,7 +108,7 @@ import { useTranslations } from 'dashboard/composables/useTranslations';
 
 // eslint-disable-next-line vue/define-macros-order
 const props = defineProps({
-  id: { type: Number, required: true },
+  id: { type: [Number, String], required: true },
   messageType: {
     type: Number,
     required: true,
@@ -120,6 +120,10 @@ const props = defineProps({
     validator: value => Object.values(MESSAGE_STATUS).includes(value),
   },
   attachments: { type: Array, default: () => [] },
+  ryzeDeleteScopes: { type: Boolean, default: false },
+  canEditContent: { type: Boolean, default: false },
+  ryzeDeliveryPending: { type: Boolean, default: false },
+  hasPendingFiles: { type: Boolean, default: false },
   call: { type: Object, default: null }, // eslint-disable-line vue/no-unused-properties
   content: { type: String, default: null },
   contentAttributes: { type: Object, default: () => ({}) },
@@ -307,8 +311,16 @@ const gridTemplate = computed(() => {
   return map[orientation.value];
 });
 
+const isDeletedByCustomer = computed(
+  () =>
+    props.messageType === MESSAGE_TYPES.INCOMING &&
+    !props.private &&
+    props.contentAttributes?.deletedByCustomer === true
+);
+
 const shouldGroupWithNext = computed(() => {
-  if (props.status === MESSAGE_STATUS.FAILED) return false;
+  if (props.status === MESSAGE_STATUS.FAILED || isDeletedByCustomer.value)
+    return false;
 
   return props.groupWithNext;
 });
@@ -388,11 +400,10 @@ const componentToRender = computed(() => {
 });
 
 const shouldShowContextMenu = computed(() => {
-  return !props.contentAttributes?.isUnsupported;
-});
-
-const isBubble = computed(() => {
-  return props.messageType !== MESSAGE_TYPES.ACTIVITY;
+  return (
+    props.messageType !== MESSAGE_TYPES.ACTIVITY &&
+    !props.contentAttributes?.isUnsupported
+  );
 });
 
 const isMessageDeleted = computed(() => {
@@ -402,6 +413,22 @@ const isMessageDeleted = computed(() => {
 const isForwardedEmail = computed(
   () => !!props.contentAttributes?.forwardedMessageId && !isMessageDeleted.value
 );
+
+const deliveryUnconfirmed = computed(
+  () => props.contentAttributes?.externalError === 'ryze_delivery_unknown'
+);
+
+const messageError = computed(() => {
+  if (deliveryUnconfirmed.value) {
+    return t('CONVERSATION.RYZE_SEND_UNCONFIRMED');
+  }
+  if (props.contentAttributes?.externalError === 'ryze_delivery_failed') {
+    return t('CONVERSATION.RYZE_SEND_FAILED');
+  }
+  return (
+    props.contentAttributes?.externalError || t('CONVERSATION.MESSAGE_ERROR')
+  );
+});
 
 const shouldShowWhatsappReferral = computed(
   () =>
@@ -414,8 +441,17 @@ const payloadForContextMenu = computed(() => {
     id: props.id,
     content_attributes: props.contentAttributes,
     content: displayedContent.value,
+    originalContent: props.content,
+    createdAt: props.createdAt,
     conversation_id: props.conversationId,
   };
+});
+
+const deliveryStatus = computed(() => {
+  const state = props.additionalAttributes?.ryzeOutboundDelivery?.state;
+  const isWaiting =
+    props.ryzeDeliveryPending || ['queued', 'sending'].includes(state);
+  return isWaiting ? MESSAGE_STATUS.PROGRESS : props.status;
 });
 
 const contextMenuEnabledOptions = computed(() => {
@@ -423,14 +459,31 @@ const contextMenuEnabledOptions = computed(() => {
   const hasAttachments = !!(props.attachments && props.attachments.length > 0);
 
   const isOutgoing = props.messageType === MESSAGE_TYPES.OUTGOING;
+  const senderType = props.sender?.type ?? props.senderType;
+  const isOwnAgentMessage =
+    senderType?.toLowerCase() === SENDER_TYPES.USER.toLowerCase() &&
+    (props.senderId ?? props.sender?.id) === props.currentUserId;
   const isFailedOrProcessing =
     props.status === MESSAGE_STATUS.FAILED ||
     props.status === MESSAGE_STATUS.PROGRESS;
 
   return {
+    ryzeDeleteScopes: props.ryzeDeleteScopes,
     copy: hasText,
+    edit:
+      props.canEditContent &&
+      isOutgoing &&
+      hasText &&
+      isOwnAgentMessage &&
+      !props.private &&
+      !isMessageDeleted.value &&
+      !isFailedOrProcessing,
     delete:
       (hasText || hasAttachments) &&
+      !(
+        props.ryzeDeleteScopes &&
+        deliveryStatus.value === MESSAGE_STATUS.PROGRESS
+      ) &&
       !isFailedOrProcessing &&
       !isMessageDeleted.value,
     cannedResponse: isOutgoing && hasText && !isMessageDeleted.value,
@@ -492,9 +545,10 @@ function openContextMenu(e) {
   if (e.type === 'contextmenu') {
     useTrack(ACCOUNT_EVENTS.OPEN_MESSAGE_CONTEXT_MENU);
   }
+  const anchor = e.currentTarget?.getBoundingClientRect();
   contextMenuPosition.value = {
-    x: e.pageX || e.clientX,
-    y: e.pageY || e.clientY,
+    x: e.clientX || anchor?.left || 0,
+    y: e.clientY || anchor?.bottom || 0,
   };
   showContextMenu.value = true;
 }
@@ -582,9 +636,11 @@ onMounted(setupHighlightTimer);
 
 provideMessageContext({
   ...toRefs(props),
+  status: deliveryStatus,
   showingOriginal,
   contactSide,
   isCaptainMessage,
+  isDeletedByCustomer,
   isPrivate: computed(() => props.private),
   variant,
   orientation,
@@ -598,7 +654,7 @@ provideMessageContext({
   <div
     v-if="shouldRenderMessage"
     :id="`message${props.id}`"
-    class="flex w-full mb-2 message-bubble-container"
+    class="flex w-full mb-2 message-bubble-container group/context-menu"
     :data-message-id="props.id"
     :class="[
       flexOrientationClass,
@@ -650,32 +706,46 @@ provideMessageContext({
         <Component :is="componentToRender" />
       </div>
       <MessageError
-        v-if="contentAttributes.externalError"
+        v-if="
+          contentAttributes.externalError ||
+          (status === MESSAGE_STATUS.FAILED && hasPendingFiles)
+        "
         class="[grid-area:meta]"
         :class="flexOrientationClass"
-        :error="contentAttributes.externalError"
+        :error="messageError"
+        :has-pending-files="hasPendingFiles"
+        :delivery-unconfirmed="deliveryUnconfirmed"
         @retry="emit('retry')"
       />
-    </div>
-    <div v-if="shouldShowContextMenu" class="context-menu-wrap">
-      <ContextMenu
-        v-if="isBubble"
-        :context-menu-position="contextMenuPosition"
-        :is-open="showContextMenu"
-        :enabled-options="contextMenuEnabledOptions"
-        :message="payloadForContextMenu"
-        hide-button
-        @open="openContextMenu"
-        @close="closeContextMenu"
-        @reply-to="handleReplyTo"
-        @forward-email="openForwardEmail"
-      />
-      <ForwardEmailPanel
-        v-if="showForwardEmail"
-        :x="forwardEmailPosition.x"
-        :y="forwardEmailPosition.y"
-        @close="showForwardEmail = false"
-      />
+      <div
+        v-if="shouldShowContextMenu"
+        class="[grid-area:bubble] self-start justify-self-start"
+      >
+        <ContextMenu
+          :context-menu-position="contextMenuPosition"
+          :is-open="showContextMenu"
+          :enabled-options="contextMenuEnabledOptions"
+          :message="payloadForContextMenu"
+          :hide-button="
+            !contextMenuEnabledOptions.edit &&
+            !(
+              ryzeDeleteScopes &&
+              contextMenuEnabledOptions.delete &&
+              orientation === ORIENTATION.RIGHT
+            )
+          "
+          @open="openContextMenu"
+          @close="closeContextMenu"
+          @reply-to="handleReplyTo"
+          @forward-email="openForwardEmail"
+        />
+        <ForwardEmailPanel
+          v-if="showForwardEmail"
+          :x="forwardEmailPosition.x"
+          :y="forwardEmailPosition.y"
+          @close="showForwardEmail = false"
+        />
+      </div>
     </div>
   </div>
 </template>

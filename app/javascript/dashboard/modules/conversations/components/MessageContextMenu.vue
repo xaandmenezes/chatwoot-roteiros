@@ -16,10 +16,15 @@ import MenuItem from '../../../components/widgets/conversation/contextMenu/menuI
 import { useTrack } from 'dashboard/composables';
 import NextButton from 'dashboard/components-next/button/Button.vue';
 import ReportCaptainMessageDialog from './ReportCaptainMessageDialog.vue';
+import EditMessageDialog from './EditMessageDialog.vue';
+
+import RyzeDeleteMessageDialog from './RyzeDeleteMessageDialog.vue';
 
 export default {
   components: {
     AddCannedModal,
+    EditMessageDialog,
+    RyzeDeleteMessageDialog,
     MenuItem,
     ContextMenu,
     NextButton,
@@ -58,6 +63,7 @@ export default {
   data() {
     return {
       isCannedResponseModalOpen: false,
+      isEditDialogOpen: false,
       showDeleteModal: false,
     };
   },
@@ -144,9 +150,28 @@ export default {
       this.$emit('forwardEmail');
       this.handleClose();
     },
+    openEditDialog() {
+      this.handleClose();
+      this.isEditDialogOpen = true;
+      this.$nextTick(() => this.$refs.editDialog?.open());
+    },
+    closeEditDialog() {
+      this.isEditDialogOpen = false;
+      this.$nextTick(() => this.$refs.menuButton?.$el?.focus());
+    },
+    updateMessage(message) {
+      this.$store.dispatch('updateMessage', message);
+    },
+    refreshPendingDeletion() {
+      this.$store.dispatch('refreshPendingDeletion', {
+        conversationId: this.conversationId,
+        messageId: this.messageId,
+      });
+    },
     openDeleteModal() {
       this.handleClose();
       this.showDeleteModal = true;
+      this.$nextTick(() => this.$refs.ryzeDeleteDialog?.open());
     },
     async confirmDeletion() {
       try {
@@ -162,6 +187,7 @@ export default {
     },
     closeDeleteModal() {
       this.showDeleteModal = false;
+      this.$nextTick(() => this.$refs.menuButton?.$el?.focus());
     },
     openReportDialog() {
       this.handleClose();
@@ -185,8 +211,23 @@ export default {
       />
     </woot-modal>
     <!-- Confirm Deletion -->
+    <RyzeDeleteMessageDialog
+      v-if="
+        showDeleteModal &&
+        enabledOptions.delete &&
+        enabledOptions.ryzeDeleteScopes
+      "
+      ref="ryzeDeleteDialog"
+      :message-id="messageId"
+      :conversation-id="conversationId"
+      :created-at="message.createdAt"
+      :can-delete-for-everyone="!!enabledOptions.edit"
+      @close="closeDeleteModal"
+      @confirmed="updateMessage"
+      @pending="refreshPendingDeletion"
+    />
     <woot-delete-modal
-      v-if="showDeleteModal && enabledOptions['delete']"
+      v-else-if="showDeleteModal && enabledOptions.delete"
       v-model:show="showDeleteModal"
       class="context-menu--delete-modal"
       :on-close="closeDeleteModal"
@@ -198,11 +239,14 @@ export default {
     />
     <NextButton
       v-if="!hideButton"
+      ref="menuButton"
       ghost
       slate
       sm
       icon="i-lucide-ellipsis-vertical"
-      class="invisible group-hover/context-menu:visible"
+      class="motion-safe:transition-opacity [@media(hover:hover)]:opacity-0 group-hover/context-menu:opacity-100 focus-visible:opacity-100"
+      :aria-label="$t('CONVERSATION.CONTEXT_MENU.MESSAGE_ACTIONS')"
+      :aria-expanded="isOpen"
       @click="handleOpen"
     />
     <ContextMenu
@@ -277,6 +321,19 @@ export default {
           variant="icon"
           @click.stop="openReportDialog"
         />
+        <MenuItem
+          v-if="enabledOptions['edit']"
+          :option="{
+            icon: 'edit',
+            label: $t('CONVERSATION.CONTEXT_MENU.EDIT_MESSAGE.ACTION'),
+          }"
+          variant="icon"
+          tabindex="0"
+          class="focus-visible:outline focus-visible:outline-2 focus-visible:outline-n-brand"
+          @click.stop="openEditDialog"
+          @keydown.enter.stop.prevent="openEditDialog"
+          @keydown.space.stop.prevent="openEditDialog"
+        />
         <hr v-if="enabledOptions['delete']" />
         <MenuItem
           v-if="enabledOptions['delete']"
@@ -285,10 +342,22 @@ export default {
             label: $t('CONVERSATION.CONTEXT_MENU.DELETE'),
           }"
           variant="icon"
+          tabindex="0"
+          @keydown.enter.stop.prevent="openDeleteModal"
+          @keydown.space.stop.prevent="openDeleteModal"
           @click.stop="openDeleteModal"
         />
       </div>
     </ContextMenu>
+    <EditMessageDialog
+      v-if="isEditDialogOpen"
+      ref="editDialog"
+      :message-id="messageId"
+      :conversation-id="conversationId"
+      :original-content="message.originalContent"
+      @close="closeEditDialog"
+      @confirmed="updateMessage"
+    />
     <ReportCaptainMessageDialog
       v-if="enabledOptions['report']"
       ref="reportDialog"

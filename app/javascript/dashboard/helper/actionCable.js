@@ -112,12 +112,13 @@ class ActionCableConnector extends BaseActionCableConnector {
   };
 
   onConversationContactChange = payload => {
-    const { meta = {}, id: conversationId } = payload;
-    const { sender } = meta || {};
+    const { meta, id: conversationId, contact_labels: contactLabels } = payload;
+    const sender = meta?.sender;
     if (conversationId) {
       this.app.$store.dispatch('updateConversationContact', {
         conversationId,
         ...sender,
+        contactLabels,
       });
     }
   };

@@ -1,5 +1,5 @@
 <script setup>
-import { format, fromUnixTime } from 'date-fns';
+import { useExactTimestamp } from 'shared/composables/useExactTimestamp';
 
 defineProps({
   label: {
@@ -11,8 +11,7 @@ defineProps({
     required: true,
   },
 });
-const formatDate = timestamp =>
-  format(fromUnixTime(timestamp), 'MMM dd, yyyy, hh:mm a');
+const exactTimestamp = useExactTimestamp();
 </script>
 
 <template>
@@ -28,7 +27,7 @@ const formatDate = timestamp =>
         :key="item.id"
         class="text-sm font-normal text-n-slate-12 text-right tabular-nums"
       >
-        {{ formatDate(item.created_at) }}
+        {{ exactTimestamp(item.created_at) }}
       </span>
       <slot name="showMore" />
     </div>

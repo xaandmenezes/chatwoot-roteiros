@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue';
-import { messageTimestamp } from 'shared/helpers/timeHelper';
+import { useI18n } from 'vue-i18n';
 import { useExactTimestamp } from 'shared/composables/useExactTimestamp';
 
 import MessageStatus from './MessageStatus.vue';
@@ -11,6 +11,7 @@ import { useMessageContext } from './provider.js';
 import { MESSAGE_STATUS, MESSAGE_TYPES } from './constants';
 
 const exactTimestamp = useExactTimestamp();
+const inlineTimestamp = useExactTimestamp({ omitCurrentYear: true });
 
 const {
   isAFacebookInbox,
@@ -29,15 +30,19 @@ const {
 const {
   status,
   isPrivate,
+  isDeletedByCustomer,
   createdAt,
   sourceId,
   messageType,
   contentAttributes,
 } = useMessageContext();
+const { t } = useI18n();
 
-const readableTime = computed(() =>
-  messageTimestamp(createdAt.value, 'LLL d, h:mm a')
+const isEdited = computed(
+  () => contentAttributes.value?.edited && !contentAttributes.value?.deleted
 );
+
+const readableTime = computed(() => inlineTimestamp(createdAt.value));
 
 const exactTime = computed(() => exactTimestamp(createdAt.value));
 
@@ -148,6 +153,15 @@ const statusToShow = computed(() => {
       >
         {{ readableTime }}
       </time>
+      <span v-if="isDeletedByCustomer" class="ms-1 text-n-ruby-11">
+        {{ t('CONVERSATION.DELETED_BY_CUSTOMER') }}
+      </span>
+      <span
+        v-else-if="isEdited"
+        class="ms-1 text-n-blue-12 dark:text-n-blue-11"
+      >
+        {{ t('CONVERSATION.EDITED') }}
+      </span>
     </div>
     <Icon v-if="isPrivate" icon="i-lucide-lock-keyhole" class="size-3" />
     <MessageStatus v-if="showStatusIndicator" :status="statusToShow" />

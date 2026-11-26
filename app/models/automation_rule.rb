@@ -166,7 +166,9 @@ class AutomationRule < ApplicationRecord
   # Conversation-level episodes key on status_changed_at alone. Mutable attributes would collapse
   # distinct periods into one episode, so only status and immutable filters (inbox) are allowed.
   def execution_delay_supported_event
-    return if execution_delay.blank? || conditions.blank? || event_name == 'message_created'
+    return if execution_delay.blank?
+    return errors.add(:execution_delay, :present) if event_name == 'message_edited'
+    return if conditions.blank? || event_name == 'message_created'
     return if conditions.all? { |obj| DELAYED_CONVERSATION_ATTRIBUTES.include?(obj['attribute_key']) }
 
     errors.add(:execution_delay, 'only supports status and inbox conditions for conversation-level events.')

@@ -9,6 +9,8 @@
     },
     "SELECT_A_CONVERSATION": "Por favor, selecione uma conversa no painel da esquerda",
     "CSAT_REPLY_MESSAGE": "Por favor, classifique a conversa",
+    "DELETED_BY_CUSTOMER": "Mensagem deletada pelo cliente",
+    "EDITED": "Editada",
     "404": "Desculpe, não conseguimos encontrar a conversa. Por favor, tente novamente",
     "SWITCH_VIEW_LAYOUT": "Alternar o layout",
     "DASHBOARD_APP_TAB_MESSAGES": "Mensagens",
@@ -380,6 +382,9 @@
     "BOT": "Robôs",
     "NATIVE_APP": "Aplicativo nativo",
     "NATIVE_APP_ADVISORY": "Esta mensagem foi enviada a partir do aplicativo nativo. Responda pelo Chatwoot para manter a janela de mensagens ativa.",
+    "RYZE_SEND_UNCONFIRMED": "Não foi possível confirmar a entrega no WhatsApp. Confira a conversa antes de enviar esta mensagem de novo.",
+    "RYZE_SEND_FAILED": "O WhatsApp recusou esta mensagem. Você pode tentar enviar novamente.",
+    "RYZE_DELIVERY_STATUS_UNKNOWN": "Entrega sem confirmação",
     "SEND_FAILED": "Não foi possível enviar a mensagem! Tente novamente",
     "TRY_AGAIN": "tentar novamente",
     "ASSIGNMENT": {
@@ -388,6 +393,34 @@
       "ASSIGN": "Atribuir"
     },
     "CONTEXT_MENU": {
+      "MESSAGE_ACTIONS": "Ações da mensagem",
+      "DELETE_SCOPE": {
+        "TITLE": "Excluir mensagem",
+        "LOCAL": "Excluir só no Chatwoot",
+        "LOCAL_DESCRIPTION": "Remove a mensagem da conversa para toda a equipe. O cliente continua vendo a mensagem no WhatsApp.",
+        "EVERYONE": "Excluir para todos",
+        "EVERYONE_DESCRIPTION": "Remove a mensagem do Chatwoot e do WhatsApp. Disponível por 15 minutos após o envio.",
+        "EXPIRED": "O prazo de 15 minutos para excluir no WhatsApp terminou.",
+        "UNAVAILABLE": "Esta mensagem não pode ser excluída no WhatsApp.",
+        "LOCAL_DONE": "Mensagem excluída para a equipe no Chatwoot.",
+        "EVERYONE_DONE": "Mensagem excluída no Chatwoot e no WhatsApp.",
+        "PENDING": "Aguardando o WhatsApp confirmar a exclusão.",
+        "CONFLICT": "Outra alteração está em andamento. Confira a mensagem antes de tentar novamente.",
+        "UNKNOWN": "Não foi possível confirmar a exclusão. Confira a conversa antes de tentar novamente."
+      },
+      "EDIT_MESSAGE": {
+        "ACTION": "Editar",
+        "TITLE": "Editar mensagem",
+        "LABEL": "Mensagem",
+        "SAVE": "Salvar alterações",
+        "SUCCESS": "Mensagem editada no WhatsApp.",
+        "PENDING": "Aguardando o WhatsApp confirmar a edição.",
+        "EXPIRED": "O prazo para editar esta mensagem no WhatsApp terminou.",
+        "FAILED": "O WhatsApp não conseguiu editar a mensagem.",
+        "UNAVAILABLE": "Esta mensagem não pode ser editada.",
+        "INVALID": "Digite um texto válido para a mensagem.",
+        "UNKNOWN": "Não foi possível confirmar a edição. Confira a mensagem antes de tentar novamente."
+      },
       "COPY": "Copiar",
       "REPLY_TO": "Responder mensagem",
       "FORWARD_EMAIL": "Encaminhar e-mail",

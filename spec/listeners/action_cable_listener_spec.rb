@@ -13,6 +13,49 @@ describe ActionCableListener do
     Current.account = nil
   end
 
+  describe '#conversation_created' do
+    it 'includes contact labels on the dashboard event and excludes them from customer events' do
+      api_inbox = create(:inbox, account: account, channel: create(:channel_api, account: account))
+      create(:inbox_member, inbox: api_inbox, user: agent)
+      api_conversation = create(:conversation, account: account, inbox: api_inbox)
+      api_conversation.contact.update_labels(['direct-insta'])
+      api_conversation.contact_inbox.update!(hmac_verified: true)
+      widget_session = create(:contact_inbox, contact: api_conversation.contact, inbox: inbox, hmac_verified: true)
+      event = Events::Base.new(:'conversation.created', Time.current, conversation: api_conversation)
+      allow(ActionCableBroadcastJob).to receive(:perform_later)
+
+      listener.conversation_created(event)
+
+      expect(ActionCableBroadcastJob).to have_received(:perform_later).with(
+        a_collection_containing_exactly(agent.pubsub_token, admin.pubsub_token),
+        'conversation.created',
+        hash_including(contact_labels: ['direct-insta']),
+        widget_members: [widget_session.pubsub_token],
+        widget_data: hash_excluding(:contact_labels)
+      ).once
+      expect(ActionCableBroadcastJob).to have_received(:perform_later).with(
+        [api_conversation.contact_inbox.pubsub_token],
+        'conversation.created',
+        hash_excluding(:contact_labels)
+      ).once
+    end
+  end
+
+  describe '#conversation_contact_changed' do
+    it 'sends the replacement contact labels to inbox agents and account admins' do
+      conversation.contact.update_labels(['direct-insta'])
+      event = Events::Base.new(:'conversation.contact_changed', Time.current, conversation: conversation)
+
+      expect(ActionCableBroadcastJob).to receive(:perform_later).with(
+        a_collection_containing_exactly(agent.pubsub_token, admin.pubsub_token),
+        'conversation.contact_changed',
+        hash_including(contact_labels: ['direct-insta'])
+      )
+
+      listener.conversation_contact_changed(event)
+    end
+  end
+
   describe '#conversation_bot_handoff' do
     let(:event) { Events::Base.new(:'conversation.bot_handoff', Time.zone.now, conversation: conversation) }
 
@@ -157,6 +200,82 @@ describe ActionCableListener do
       listener.message_created(Events::Base.new(event_name, Time.zone.now, message: note))
 
       expect(ActionCableBroadcastJob).to have_received(:perform_later).once
+    end
+  end
+
+  describe '#message_updated' do
+    it 'sends edit capability to staff sessions only' do
+      api_inbox = create(:inbox, account: account, channel: create(:channel_api, account: account))
+      create(:inbox_member, inbox: api_inbox, user: agent)
+      chat_id = '15550001111@s.whatsapp.net'
+      api_conversation = create(:conversation, account: account, inbox: api_inbox, additional_attributes: { whatsapp_jid: chat_id })
+      api_conversation.contact_inbox.update!(hmac_verified: true)
+      widget_session = create(:contact_inbox, contact: api_conversation.contact, inbox: inbox, hmac_verified: true)
+      reply = create(:message, account: account, inbox: api_inbox, conversation: api_conversation, sender: agent,
+                               message_type: :outgoing, status: :delivered, source_id: 'team-message-id',
+                               additional_attributes: { ryze_outbound_message_id: 'team-message-id' })
+      event = Events::Base.new(:'message.updated', Time.current, message: reply, previous_changes: {})
+      allow(ActionCableBroadcastJob).to receive(:perform_later)
+
+      with_modified_env(RYZE_INBOX_ID: api_inbox.id.to_s, RYZE_PILOT_CHAT_JID: chat_id, RYZE_INSTANCE_NAME: 'Pilot',
+                        RYZE_WEBHOOK_SECRET: 'test-webhook', RYZE_EDIT_API_TOKEN: 'test-token',
+                        RYZE_EDIT_CONVERSATION_ID: api_conversation.display_id.to_s, RYZE_NATIVE_BRIDGE_USER_ID: agent.id.to_s) do
+        Ryze::OutboundDelivery.prepare(reply)
+        reply.additional_attributes[Ryze::OutboundDelivery::DELIVERY_KEY]['state'] = 'confirmed'
+        listener.message_updated(event)
+      end
+
+      expect(ActionCableBroadcastJob).to have_received(:perform_later).with(
+        a_collection_containing_exactly(agent.pubsub_token, admin.pubsub_token),
+        'message.updated',
+        hash_including(id: reply.id, can_edit_content: true, ryze_delete_scopes: true)
+      ).once
+      public_payload = satisfy { |data| data[:id] == reply.id && !data.key?(:can_edit_content) && !data.key?(:ryze_delete_scopes) }
+      expect(ActionCableBroadcastJob).to have_received(:perform_later).with(
+        [api_conversation.contact_inbox.pubsub_token], 'message.updated', public_payload,
+        widget_members: [widget_session.pubsub_token], widget_data: public_payload
+      ).once
+    end
+
+    it 'keeps customer-revoked text and the before-value out of every contact session' do
+      api_inbox = create(:inbox, account: account, channel: create(:channel_api, account: account))
+      create(:inbox_member, inbox: api_inbox, user: agent)
+      chat_id = '5511111111111@s.whatsapp.net'
+      api_conversation = create(:conversation, account: account, inbox: api_inbox, additional_attributes: { whatsapp_jid: chat_id })
+      api_conversation.contact_inbox.update!(hmac_verified: true)
+      widget_session = create(:contact_inbox, contact: api_conversation.contact, inbox: inbox, hmac_verified: true)
+      original_content = 'Retained text'
+      message = create(:message, message_type: 'incoming', sender: api_conversation.contact,
+                                 account: account, inbox: api_inbox, conversation: api_conversation, content: original_content,
+                                 source_id: 'test-customer-revocation')
+      message.mark_deleted!(by_customer: true)
+      deleted_content = I18n.t('conversations.messages.deleted', locale: account.locale)
+      event = Events::Base.new(:'message.updated', Time.current, message: message.reload,
+                                                                 previous_changes: { 'content' => [original_content, deleted_content] })
+      allow(ActionCableBroadcastJob).to receive(:perform_later)
+
+      listener.message_updated(event)
+
+      expect(ActionCableBroadcastJob).to have_received(:perform_later).with(
+        a_collection_containing_exactly(agent.pubsub_token, admin.pubsub_token),
+        'message.updated',
+        hash_including(id: message.id, content: original_content, processed_message_content: original_content,
+                       content_attributes: hash_including('deleted' => true, 'deleted_by_customer' => true))
+      ).once
+
+      tombstone = satisfy do |data|
+        data[:id] == message.id && data[:content] == deleted_content &&
+          data[:content_attributes]['deleted'] == true && !data.key?(:previous_changes) &&
+          data.to_json.exclude?(original_content)
+      end
+      expect(ActionCableBroadcastJob).to have_received(:perform_later).with(
+        [api_conversation.contact_inbox.pubsub_token],
+        'message.updated',
+        tombstone,
+        widget_members: [widget_session.pubsub_token],
+        widget_data: tombstone
+      ).once
+      expect(ActionCableBroadcastJob).to have_received(:perform_later).exactly(2).times
     end
   end
 

@@ -18,7 +18,6 @@ import {
 import { useTrack } from 'dashboard/composables';
 import { useCampaignHistory } from 'dashboard/composables/useCampaignHistory';
 import { useKeyboardEvents } from 'dashboard/composables/useKeyboardEvents';
-import { useSnakeCase } from 'dashboard/composables/useTransformKeys';
 import { CONTACT_CONVERSATION_NAVIGATION } from 'dashboard/composables/useContactConversationNavigation';
 
 // components
@@ -521,10 +520,13 @@ export default {
     makeMessagesRead() {
       this.$store.dispatch('markMessagesRead', { id: this.currentChat.id });
     },
-    async handleMessageRetry(message) {
+    async handleMessageRetry(messageId) {
+      const message = this.currentChat.messages?.find(
+        entry => entry.id === messageId
+      );
       if (!message) return;
-      const payload = useSnakeCase(message);
-      await this.$store.dispatch('sendMessageWithData', payload);
+
+      await this.$store.dispatch('sendMessageWithData', message);
     },
     toggleReplyEditorSize() {
       this.resizableEditorWrapperRef?.toggleEditorExpand?.();

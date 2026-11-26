@@ -48,6 +48,13 @@ describe Telegram::UpdateMessageService do
         expect(message.reload.content).to eq('updated message')
       end
 
+      it 'enqueues one edit for a repeated Telegram update' do
+        create(:message, conversation: conversation, source_id: text_update_params[:edited_message][:message_id])
+        expect do
+          2.times { described_class.new(inbox: telegram_channel.inbox, params: text_update_params.with_indifferent_access).perform }
+        end.to have_enqueued_job(AutomationRules::MessageEditedJob).exactly(:once)
+      end
+
       it 'updates the message caption when caption is present' do
         message = create(:message, conversation: conversation, source_id: caption_update_params[:edited_message][:message_id])
         described_class.new(inbox: telegram_channel.inbox, params: caption_update_params.with_indifferent_access).perform

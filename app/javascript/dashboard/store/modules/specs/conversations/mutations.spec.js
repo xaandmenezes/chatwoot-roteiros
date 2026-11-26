@@ -208,6 +208,138 @@ describe('#mutations', () => {
       ]);
       expect(emitter.emit).not.toHaveBeenCalled();
     });
+
+    it('keeps the original Ryze message and coalesces its verified bridge mirror in both event orders', () => {
+      const original = { id: 101, conversation_id: 1, content: 'Team text' };
+      const mirror = {
+        id: 102,
+        conversation_id: 1,
+        source_id: 'provider-id',
+        additional_attributes: { ryze_native_bridge_mirror: true },
+        content: 'Team text',
+      };
+      const confirmed = {
+        ...original,
+        source_id: 'provider-id',
+        additional_attributes: {
+          ryze_outbound_message_id: 'provider-id',
+          ryze_replaced_message_id: mirror.id,
+        },
+      };
+      const state = {
+        allConversations: [{ id: 1, messages: [original, mirror] }],
+        selectedChatId: 1,
+      };
+
+      mutations[types.ADD_MESSAGE](state, confirmed);
+      expect(state.allConversations[0].messages).toEqual([confirmed]);
+
+      mutations[types.ADD_MESSAGE](state, mirror);
+      mutations[types.ADD_MESSAGE](state, original);
+      expect(state.allConversations[0].messages).toEqual([confirmed]);
+    });
+
+    it('ignores an older Ryze revision for an existing persisted message', () => {
+      const currentMessage = {
+        id: 101,
+        conversation_id: 1,
+        content: 'Latest text',
+        content_attributes: { edited: true },
+        additional_attributes: {
+          ryze_edited_at: '2026-11-25T22:00:00.000Z',
+        },
+        attachments: [],
+      };
+      const state = {
+        allConversations: [{ id: 1, messages: [currentMessage] }],
+        selectedChatId: 1,
+      };
+
+      mutations[types.ADD_MESSAGE](state, {
+        id: 101,
+        conversation_id: 1,
+        content: 'Older text',
+        content_attributes: {},
+        additional_attributes: {
+          ryze_edited_at: '2026-11-25T21:59:00.000Z',
+        },
+        attachments: [{ id: 900, message_id: 101 }],
+      });
+
+      expect(state.allConversations[0].messages).toEqual([currentMessage]);
+      expect(state.allConversations[0].messages[0]).toBe(currentMessage);
+    });
+
+    it('keeps a deleted message terminal when an older create and its attachments arrive', () => {
+      const deletedMessage = {
+        id: 101,
+        conversation_id: 1,
+        content: 'This message was deleted',
+        content_attributes: { deleted: true },
+        additional_attributes: {
+          ryze_edited_at: '2026-11-25T22:00:00.000Z',
+        },
+        attachments: [],
+      };
+      const oldMessage = {
+        id: 101,
+        conversation_id: 1,
+        status: 'sent',
+        content: 'Original text',
+        content_attributes: {},
+        attachments: [{ id: 900, message_id: 101 }],
+      };
+      const state = {
+        allConversations: [{ id: 1, messages: [deletedMessage] }],
+        selectedChatId: 1,
+        attachments: {
+          1: [],
+          2: [{ id: 901, message_id: 202 }],
+        },
+      };
+
+      mutations[types.ADD_MESSAGE](state, oldMessage);
+      mutations[types.ADD_CONVERSATION_ATTACHMENTS](state, oldMessage);
+
+      expect(state.allConversations[0].messages).toEqual([deletedMessage]);
+      expect(state.attachments[1]).toEqual([]);
+      expect(state.attachments[2]).toEqual([{ id: 901, message_id: 202 }]);
+    });
+  });
+
+  describe('customer revocation', () => {
+    it('preserves the archive and deletion flag after a delayed edit of the same revision', () => {
+      const edit = {
+        id: 101,
+        conversation_id: 1,
+        content: 'Archived text',
+        content_attributes: { edited: true },
+        additional_attributes: { ryze_edited_at: '2026-11-25T22:00:00.000Z' },
+        attachments: [{ id: 900, message_id: 101 }],
+      };
+      const revoked = {
+        ...edit,
+        content_attributes: {
+          edited: true,
+          deleted: true,
+          deleted_by_customer: true,
+        },
+        attachments: [],
+      };
+      const state = {
+        allConversations: [{ id: 1, messages: [edit] }],
+        selectedChatId: 1,
+        attachments: { 1: edit.attachments },
+      };
+
+      mutations[types.ADD_MESSAGE](state, revoked);
+      mutations[types.DELETE_CONVERSATION_ATTACHMENTS](state, revoked);
+      mutations[types.ADD_MESSAGE](state, edit);
+      mutations[types.ADD_CONVERSATION_ATTACHMENTS](state, edit);
+
+      expect(state.allConversations[0].messages).toEqual([revoked]);
+      expect(state.attachments[1]).toEqual([]);
+    });
   });
 
   describe('#CHANGE_CONVERSATION_STATUS', () => {
@@ -448,21 +580,26 @@ describe('#mutations', () => {
   });
 
   describe('#DELETE_CONVERSATION_ATTACHMENTS', () => {
-    it('delete conversation attachments', () => {
+    it('deletes only attachments for that message and conversation regardless of status', () => {
       const state = {
         allConversations: [{ id: 1 }],
         attachments: {
-          1: [{ id: 1, message_id: 1 }],
+          1: [
+            { id: 1, message_id: 1 },
+            { id: 2, message_id: 2 },
+          ],
+          2: [{ id: 3, message_id: 1 }],
         },
       };
       const message = {
         conversation_id: 1,
-        status: 'sent',
+        status: 'delivered',
         id: 1,
       };
 
       mutations[types.DELETE_CONVERSATION_ATTACHMENTS](state, message);
-      expect(state.attachments[1]).toHaveLength(0);
+      expect(state.attachments[1]).toEqual([{ id: 2, message_id: 2 }]);
+      expect(state.attachments[2]).toEqual([{ id: 3, message_id: 1 }]);
     });
 
     it('should not delete attachments for non-matching message id', () => {
@@ -1012,6 +1149,60 @@ describe('#mutations', () => {
     });
   });
 
+  describe('contact labels on conversation updates', () => {
+    it('preserves labels on partial updates and clears them when the contact changes', () => {
+      const state = {
+        allConversations: [
+          {
+            id: 1,
+            meta: { sender: { id: 71 } },
+            contact_labels: ['direct-insta'],
+          },
+        ],
+      };
+
+      mutations[types.UPDATE_CONVERSATION](state, {
+        id: 1,
+        status: 'resolved',
+      });
+      expect(state.allConversations[0].contact_labels).toEqual([
+        'direct-insta',
+      ]);
+
+      mutations[types.UPDATE_CONVERSATION](state, {
+        id: 1,
+        meta: { sender: { id: 72 } },
+      });
+      expect(state.allConversations[0].contact_labels).toBeUndefined();
+    });
+
+    it('stores the new contact labels outside the sender object', () => {
+      const state = {
+        allConversations: [
+          {
+            id: 1,
+            meta: { sender: { id: 71 } },
+            contact_labels: ['direct-insta'],
+          },
+        ],
+      };
+
+      mutations[types.UPDATE_CONVERSATION_CONTACT](state, {
+        conversationId: 1,
+        id: 72,
+        contactLabels: ['agenda'],
+      });
+
+      expect(state.allConversations[0]).toMatchObject({
+        contact_labels: ['agenda'],
+        meta: { sender: { id: 72 } },
+      });
+      expect(
+        state.allConversations[0].meta.sender.contactLabels
+      ).toBeUndefined();
+    });
+  });
+
   describe('#UPDATE_CONVERSATION_CONTACT', () => {
     it('should update conversation contact data', () => {
       const state = {
@@ -1093,6 +1284,30 @@ describe('#mutations', () => {
       const conversation = { id: 1, messages: [] };
       mutations[types.ADD_CONVERSATION](state, conversation);
       expect(state.allConversations).toEqual([conversation]);
+    });
+
+    it('fills missing contact labels when a partial update arrived before creation', () => {
+      const conversation = {
+        id: 1,
+        account_id: 1,
+        meta: { sender: { id: 71 } },
+        status: 'pending',
+      };
+      const state = { allConversations: [conversation] };
+
+      mutations[types.ADD_CONVERSATION](state, {
+        ...conversation,
+        contact_labels: ['direct-insta'],
+        status: 'open',
+      });
+
+      expect(state.allConversations).toEqual([
+        {
+          ...conversation,
+          contact_labels: ['direct-insta'],
+          status: 'pending',
+        },
+      ]);
     });
 
     it('should not add a duplicate conversation', () => {

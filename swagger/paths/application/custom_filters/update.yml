@@ -5,7 +5,7 @@ summary: Update a custom filter
 security:
   - userBearerAuth: []
   - userApiKey: []
-description: Update a custom filter's attributes
+description: Update your own personal filter or, as an account administrator, a team conversation filter. Ownership and visibility are fixed at creation.
 requestBody:
   required: true
   content:

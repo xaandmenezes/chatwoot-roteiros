@@ -68,6 +68,34 @@ describe('useExactTimestamp', () => {
     expect(exactTimestamp(TIMESTAMP)).toContain(year);
   });
 
+  describe('inline conversation timestamps', () => {
+    it.each([
+      [0, '00:09'],
+      [12, '12:09'],
+      [23, '23:09'],
+    ])('shows hour %i in Brazilian Portuguese', (hour, expected) => {
+      vi.mocked(useI18n).mockReturnValue({ locale: ref('pt_BR') });
+      const year = new Date().getFullYear();
+      const formatTime = useExactTimestamp({ omitCurrentYear: true });
+      const time = new Date(year, 6, 7, hour, 9).getTime() / 1000;
+
+      expect(formatTime(time)).toContain(expected);
+      expect(formatTime(time)).not.toContain(String(year));
+      expect(useExactTimestamp()(time)).toContain(String(year));
+    });
+
+    it('includes the year for older messages and follows locale changes', () => {
+      const locale = ref('pt_BR');
+      vi.mocked(useI18n).mockReturnValue({ locale });
+      const formatTime = useExactTimestamp({ omitCurrentYear: true });
+
+      expect(formatTime(TIMESTAMP)).toContain('2021');
+      expect(formatTime(TIMESTAMP)).toContain('15:35');
+      locale.value = 'en';
+      expect(formatTime(TIMESTAMP)).toMatch(/3:35\sPM/);
+    });
+  });
+
   it('returns an empty string when there is no timestamp', () => {
     const exactTimestamp = useExactTimestamp();
     expect(exactTimestamp(0)).toBe('');

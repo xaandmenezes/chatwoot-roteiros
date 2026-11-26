@@ -12,7 +12,10 @@ import {
   conversationAttrs,
   expectedOutputForCustomAttributeGenerator,
 } from './fixtures/automationFixtures';
-import { AUTOMATIONS } from 'dashboard/routes/dashboard/settings/automation/constants';
+import {
+  AUTOMATIONS,
+  AUTOMATION_RULE_EVENTS,
+} from 'dashboard/routes/dashboard/settings/automation/constants';
 
 describe('getCustomAttributeInputType', () => {
   it('returns the attribute input type', () => {
@@ -204,6 +207,20 @@ describe('getFileName', () => {
 });
 
 describe('getDefaultConditions', () => {
+  it('offers message edits with message filters and an independent condition list', () => {
+    expect(AUTOMATION_RULE_EVENTS).toContainEqual({
+      key: 'message_edited',
+      value: 'MESSAGE_EDITED',
+    });
+    expect(helpers.getDefaultConditions('message_edited')).toEqual(
+      helpers.getDefaultConditions('message_created')
+    );
+    expect(AUTOMATIONS.message_edited).toEqual(AUTOMATIONS.message_created);
+    expect(AUTOMATIONS.message_edited.conditions).not.toBe(
+      AUTOMATIONS.message_created.conditions
+    );
+  });
+
   it('returns the resp default condition model', () => {
     const messageCreatedModel = [
       {

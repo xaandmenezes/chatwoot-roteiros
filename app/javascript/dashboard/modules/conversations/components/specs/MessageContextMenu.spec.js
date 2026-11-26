@@ -1,13 +1,63 @@
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
+import { defineComponent, h, ref } from 'vue';
+import { useAlert } from 'dashboard/composables';
 import { withFullI18n } from 'test-i18n';
 import MessageContextMenu from '../MessageContextMenu.vue';
 
 withFullI18n();
 
-const mountMenu = enabledOptions =>
+vi.mock('dashboard/composables', () => ({
+  useAlert: vi.fn(),
+  useTrack: vi.fn(),
+}));
+
+const dispatch = vi.fn();
+const post = vi.fn();
+
+const DialogStub = defineComponent({
+  props: {
+    disableConfirmButton: Boolean,
+    isLoading: Boolean,
+  },
+  emits: ['confirm', 'close'],
+  setup(props, { emit, expose, slots }) {
+    const opened = ref(false);
+    expose({
+      open() {
+        opened.value = true;
+      },
+      close() {
+        opened.value = false;
+        emit('close');
+      },
+    });
+    const submit = event => {
+      event.preventDefault();
+      emit('confirm');
+    };
+    return () =>
+      opened.value
+        ? h('form', { onSubmit: submit }, [
+            slots.default?.(),
+            h('button', {
+              type: 'submit',
+              disabled: props.disableConfirmButton || props.isLoading,
+            }),
+          ])
+        : null;
+  },
+});
+
+const mountMenu = (enabledOptions, messageOverrides = {}) =>
   mount(MessageContextMenu, {
     props: {
-      message: { id: 1, content: 'Hello', conversation_id: 2 },
+      message: {
+        id: 1,
+        content: 'Translated text',
+        originalContent: 'Hello',
+        conversation_id: 2,
+        ...messageOverrides,
+      },
       isOpen: true,
       enabledOptions,
       contextMenuPosition: { x: 10, y: 20 },
@@ -16,6 +66,7 @@ const mountMenu = enabledOptions =>
     global: {
       mocks: {
         $store: {
+          dispatch,
           getters: {
             'accounts/getAccount': () => ({}),
             getCurrentAccountId: 1,
@@ -26,9 +77,11 @@ const mountMenu = enabledOptions =>
       stubs: {
         ContextMenu: { template: '<div><slot /></div>' },
         AddCannedModal: true,
+        WootDeleteModal: true,
         ReportCaptainMessageDialog: true,
         NextButton: true,
         FluentIcon: true,
+        Dialog: DialogStub,
       },
     },
   });
@@ -37,6 +90,211 @@ const menuItem = (wrapper, label) =>
   wrapper.findAll('.menu').find(item => item.text() === label);
 
 describe('MessageContextMenu', () => {
+  beforeEach(() => {
+    vi.stubGlobal('axios', { post });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const openEditor = async () => {
+    const wrapper = mountMenu({ edit: true });
+    await menuItem(wrapper, 'Edit').trigger('click');
+    await flushPromises();
+    return wrapper;
+  };
+
+  it('opens the original text and updates the conversation only after confirmation', async () => {
+    const saved = { id: 1, content: 'Edited', conversation_id: 2 };
+    post.mockResolvedValue({ status: 200, data: saved });
+    const wrapper = await openEditor();
+
+    expect(wrapper.get('textarea').element.value).toBe('Hello');
+    expect(wrapper.get('button[type="submit"]').element.disabled).toBe(true);
+    await wrapper.get('textarea').setValue('Edited');
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+
+    expect(post).toHaveBeenCalledExactlyOnceWith(
+      '/api/v1/conversations/2/messages/1/edit_content',
+      { content: 'Edited' },
+      expect.objectContaining({ timeout: 30_000 })
+    );
+    expect(dispatch).toHaveBeenCalledExactlyOnceWith('updateMessage', saved);
+    expect(useAlert).toHaveBeenCalledWith('Message edited on WhatsApp.');
+    expect(wrapper.find('form').exists()).toBe(false);
+  });
+
+  it('keeps the existing message in the store while WhatsApp confirmation is pending', async () => {
+    post.mockResolvedValue({ status: 202, data: {} });
+    const wrapper = await openEditor();
+    await wrapper.get('textarea').setValue('Edited');
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(useAlert).toHaveBeenCalledWith(
+      'Waiting for WhatsApp to confirm the edit.'
+    );
+  });
+
+  it('blocks blank content and repeated submissions while saving', async () => {
+    let resolve;
+    post.mockReturnValue(
+      new Promise(done => {
+        resolve = done;
+      })
+    );
+    const wrapper = await openEditor();
+    await wrapper.get('textarea').setValue('  ');
+    await wrapper.get('form').trigger('submit');
+    expect(post).not.toHaveBeenCalled();
+
+    await wrapper.get('textarea').setValue('Edited');
+    await wrapper.get('form').trigger('submit');
+    await wrapper.get('form').trigger('submit');
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(wrapper.get('textarea').element.disabled).toBe(true);
+
+    resolve({ status: 202, data: {} });
+    await flushPromises();
+    expect(wrapper.find('form').exists()).toBe(false);
+  });
+
+  it.each([
+    ['edit_expired', 'The WhatsApp editing window has closed.'],
+    ['edit_failed', 'WhatsApp could not edit the message.'],
+  ])(
+    'shows the provider error %s and preserves the draft',
+    async (errorCode, text) => {
+      post.mockRejectedValue({ response: { data: { error_code: errorCode } } });
+      const wrapper = await openEditor();
+      await wrapper.get('textarea').setValue('Edited');
+      await wrapper.get('form').trigger('submit');
+      await flushPromises();
+
+      expect(dispatch).not.toHaveBeenCalled();
+      expect(wrapper.get('textarea').element.value).toBe('Edited');
+      expect(wrapper.get('[role="alert"]').text()).toBe(text);
+    }
+  );
+
+  it('lets agents open the localized editor from the keyboard', async () => {
+    const wrapper = mountMenu({ edit: true });
+    const { $i18n } = wrapper.vm;
+    const previousLocale = $i18n.locale;
+    try {
+      $i18n.locale = 'pt_BR';
+      await flushPromises();
+      await menuItem(wrapper, 'Editar').trigger('keydown', { key: 'Enter' });
+      await flushPromises();
+
+      expect(wrapper.get('label').text()).toBe('Mensagem');
+      expect(wrapper.get('textarea').element.value).toBe('Hello');
+    } finally {
+      $i18n.locale = previousLocale;
+      wrapper.unmount();
+    }
+  });
+
+  const openDeletion = async (ageSeconds = 0, edit = true) => {
+    const wrapper = mountMenu(
+      { delete: true, edit, ryzeDeleteScopes: true },
+      { createdAt: Math.floor(Date.now() / 1000) - ageSeconds }
+    );
+    await menuItem(wrapper, 'Delete').trigger('click');
+    await flushPromises();
+    return wrapper;
+  };
+
+  it.each([
+    ['local', 'delete_only_in_chatwoot'],
+    ['everyone', 'delete_for_everyone'],
+  ])(
+    'requires an explicit choice and calls only the %s endpoint',
+    async (choice, endpoint) => {
+      const saved = { id: 1, content_attributes: { deleted: true } };
+      post.mockResolvedValue({ status: 200, data: saved });
+      const wrapper = await openDeletion();
+      await wrapper.get('form').trigger('submit');
+      expect(post).not.toHaveBeenCalled();
+      await wrapper.get(`input[value="${choice}"]`).setValue();
+      await wrapper.get('form').trigger('submit');
+      await flushPromises();
+      expect(post).toHaveBeenCalledExactlyOnceWith(
+        `/api/v1/conversations/2/messages/1/${endpoint}`,
+        {},
+        expect.any(Object)
+      );
+      expect(dispatch).toHaveBeenCalledExactlyOnceWith('updateMessage', saved);
+      wrapper.unmount();
+    }
+  );
+
+  it('expires a remote selection at 15 minutes without switching to local deletion', async () => {
+    vi.useFakeTimers();
+    const wrapper = await openDeletion(899);
+    try {
+      await wrapper.get('input[value="everyone"]').setValue();
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(wrapper.get('input[value="everyone"]').element.disabled).toBe(
+        true
+      );
+      expect(wrapper.get('input[value="local"]').element.checked).toBe(false);
+      await wrapper.get('form').trigger('submit');
+      expect(post).not.toHaveBeenCalled();
+    } finally {
+      wrapper.unmount();
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps local deletion available for old messages when the backend omits editing', async () => {
+    const wrapper = await openDeletion(3600, false);
+    expect(wrapper.get('input[value="everyone"]').element.disabled).toBe(true);
+    expect(wrapper.get('input[value="local"]').element.disabled).toBe(false);
+    wrapper.unmount();
+  });
+
+  it('leaves the message intact when remote deletion is pending', async () => {
+    post.mockResolvedValue({ status: 202, data: { status: 'pending' } });
+    const wrapper = await openDeletion();
+    await wrapper.get('input[value="everyone"]').setValue();
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(dispatch).toHaveBeenCalledExactlyOnceWith('refreshPendingDeletion', {
+      conversationId: 2,
+      messageId: 1,
+    });
+    expect(post).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
+  });
+
+  it('does not fall back to local deletion on a remote rejection or a repeated click', async () => {
+    let rejectRequest;
+    post.mockImplementation(
+      () =>
+        new Promise((_, reject) => {
+          rejectRequest = reject;
+        })
+    );
+    const wrapper = await openDeletion();
+    await wrapper.get('input[value="everyone"]').setValue();
+    await wrapper.get('form').trigger('submit');
+    await wrapper.get('form').trigger('submit');
+    rejectRequest({
+      response: { status: 422, data: { error_code: 'delete_expired' } },
+    });
+    await flushPromises();
+    expect(wrapper.get('input[value="everyone"]').element.disabled).toBe(true);
+    expect(wrapper.get('input[value="local"]').element.checked).toBe(false);
+    expect(wrapper.get('[role="alert"]').text()).toContain('15-minute');
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(dispatch).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
   it('offers forward email first and emits it on click', async () => {
     const wrapper = mountMenu({ forwardEmail: true, copy: true });
     const labels = wrapper.findAll('.menu').map(item => item.text());

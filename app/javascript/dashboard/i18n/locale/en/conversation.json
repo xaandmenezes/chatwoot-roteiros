@@ -9,6 +9,8 @@
     },
     "SELECT_A_CONVERSATION": "Please select a conversation from left pane",
     "CSAT_REPLY_MESSAGE": "Please rate the conversation",
+    "DELETED_BY_CUSTOMER": "Message deleted by customer",
+    "EDITED": "Edited",
     "404": "Sorry, we cannot find the conversation. Please try again",
     "SWITCH_VIEW_LAYOUT": "Switch the layout",
     "DASHBOARD_APP_TAB_MESSAGES": "Messages",
@@ -391,6 +393,9 @@
     "BOT": "Bot",
     "NATIVE_APP": "Native app",
     "NATIVE_APP_ADVISORY": "This message was sent from the native app. Reply from Chatwoot to maintain the message window.",
+    "RYZE_SEND_UNCONFIRMED": "The WhatsApp delivery could not be confirmed. Check the chat before sending this message again.",
+    "RYZE_SEND_FAILED": "WhatsApp rejected this message. You can try sending it again.",
+    "RYZE_DELIVERY_STATUS_UNKNOWN": "Delivery unconfirmed",
     "SEND_FAILED": "Couldn't send message! Try again",
     "TRY_AGAIN": "retry",
     "ASSIGNMENT": {
@@ -399,6 +404,34 @@
       "ASSIGN": "Assign"
     },
     "CONTEXT_MENU": {
+      "MESSAGE_ACTIONS": "Message actions",
+      "DELETE_SCOPE": {
+        "TITLE": "Delete message",
+        "LOCAL": "Delete only in Chatwoot",
+        "LOCAL_DESCRIPTION": "Removes the message from the conversation for the whole team. The customer keeps it on WhatsApp.",
+        "EVERYONE": "Delete for everyone",
+        "EVERYONE_DESCRIPTION": "Removes the message from Chatwoot and WhatsApp. Available for 15 minutes after sending.",
+        "EXPIRED": "The 15-minute window for deleting on WhatsApp has ended.",
+        "UNAVAILABLE": "This message cannot be deleted on WhatsApp.",
+        "LOCAL_DONE": "Message deleted for the team in Chatwoot.",
+        "EVERYONE_DONE": "Message deleted in Chatwoot and on WhatsApp.",
+        "PENDING": "Waiting for WhatsApp to confirm deletion.",
+        "CONFLICT": "Another change is in progress. Check the message before trying again.",
+        "UNKNOWN": "Could not confirm deletion. Check the conversation before trying again."
+      },
+      "EDIT_MESSAGE": {
+        "ACTION": "Edit",
+        "TITLE": "Edit message",
+        "LABEL": "Message",
+        "SAVE": "Save changes",
+        "SUCCESS": "Message edited on WhatsApp.",
+        "PENDING": "Waiting for WhatsApp to confirm the edit.",
+        "EXPIRED": "The WhatsApp editing window has closed.",
+        "FAILED": "WhatsApp could not edit the message.",
+        "UNAVAILABLE": "This message cannot be edited.",
+        "INVALID": "Enter valid message text.",
+        "UNKNOWN": "Could not confirm the edit. Check the message before trying again."
+      },
       "COPY": "Copy",
       "REPLY_TO": "Reply to this message",
       "FORWARD_EMAIL": "Forward email",

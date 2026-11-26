@@ -24,22 +24,23 @@ class WebhookListener < BaseListener
 
   def message_created(event)
     message = extract_message_and_account(event)[0]
-    inbox = message.inbox
 
     return unless message.webhook_sendable?
 
     payload = message.webhook_data.merge(event: __method__.to_s)
-    deliver_webhook_payloads(payload, inbox)
+    deliver_message_webhooks(payload, message)
+    return unless Ryze::OutboundDelivery.direct?(message)
+
+    raise ActiveJob::EnqueueError, 'Could not enqueue Ryze delivery' unless Ryze::OutboundDelivery.enqueue(message.id, 1)
   end
 
   def message_updated(event)
     message = extract_message_and_account(event)[0]
-    inbox = message.inbox
 
     return unless message.webhook_sendable?
 
     payload = message.webhook_data.merge(event: __method__.to_s)
-    deliver_webhook_payloads(payload, inbox)
+    deliver_message_webhooks(payload, message)
   end
 
   def webwidget_triggered(event)
@@ -107,10 +108,11 @@ class WebhookListener < BaseListener
     deliver_webhook_payloads(payload, inbox)
   end
 
-  def deliver_account_webhooks(payload, account)
+  def deliver_account_webhooks(payload, account, except_url: nil)
     return unless account.api_and_webhooks_enabled?
 
     account.webhooks.account_type.each do |webhook|
+      next if except_url && webhook.url == except_url
       next unless webhook.subscriptions.include?(payload[:event])
 
       WebhookJob.perform_later(webhook.url, payload, :account_webhook,
@@ -125,6 +127,15 @@ class WebhookListener < BaseListener
 
     WebhookJob.perform_later(inbox.channel.webhook_url, payload, :api_inbox_webhook,
                              secret: inbox.channel.secret, delivery_id: SecureRandom.uuid)
+  end
+
+  def deliver_message_webhooks(payload, message)
+    inbox = message.inbox
+    suppress_bridge = Ryze::MessageDeletion.suppress_bridge_event?(message)
+    deliver_account_webhooks(payload, inbox.account, except_url: (inbox.channel.webhook_url if suppress_bridge))
+    return if suppress_bridge || Ryze::OutboundDelivery.direct?(message) || Ryze::OutboundDelivery.native_mirror?(message)
+
+    deliver_api_inbox_webhooks(payload, inbox)
   end
 
   def deliver_webhook_payloads(payload, inbox)

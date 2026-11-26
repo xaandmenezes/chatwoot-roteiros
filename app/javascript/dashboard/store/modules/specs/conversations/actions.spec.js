@@ -63,6 +63,63 @@ describe('#hasMessageFailedWithExternalError', () => {
 });
 
 describe('#actions', () => {
+  describe('delayed deletion confirmation', () => {
+    const row = {
+      id: 5,
+      conversation_id: 71,
+      content_attributes: { deleted: true },
+    };
+    const state = { selectedChatId: 71 };
+    const refresh = () =>
+      actions.refreshPendingDeletion(
+        { state, dispatch },
+        { conversationId: 71, messageId: 5 }
+      );
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      state.selectedChatId = 71;
+    });
+    afterEach(() => vi.useRealTimers());
+
+    it('refreshes just the original row when it becomes deleted', async () => {
+      axios.get
+        .mockResolvedValueOnce({
+          data: { payload: [{ ...row, content_attributes: {} }] },
+        })
+        .mockResolvedValueOnce({ data: { payload: [row] } });
+      const done = refresh();
+      await vi.runAllTimersAsync();
+      await done;
+      expect(axios.get).toHaveBeenCalledTimes(2);
+      expect(axios.get).toHaveBeenCalledWith(
+        '/api/v1/conversations/71/messages',
+        { params: { after: 5, before: 6 } }
+      );
+      expect(dispatch).toHaveBeenCalledExactlyOnceWith('updateMessage', row);
+    });
+
+    it('stops after bounded reads that cannot confirm the original', async () => {
+      axios.get
+        .mockRejectedValueOnce(new Error('timeout'))
+        .mockResolvedValue({ data: { payload: [{ ...row, id: 6 }] } });
+      const done = refresh();
+      await vi.runAllTimersAsync();
+      await done;
+      expect(axios.get).toHaveBeenCalledTimes(3);
+      expect(dispatch).not.toHaveBeenCalled();
+    });
+
+    it('stops when the agent leaves the conversation', async () => {
+      const done = refresh();
+      state.selectedChatId = 10;
+      await vi.runAllTimersAsync();
+      await done;
+      expect(axios.get).not.toHaveBeenCalled();
+      expect(dispatch).not.toHaveBeenCalled();
+    });
+  });
+
   describe('conversation history loading', () => {
     let store;
     let conversationA;
@@ -223,7 +280,11 @@ describe('#actions', () => {
         labels: ['support'],
       };
       actions.updateConversation(
-        { commit, rootState: { route: { name: 'home' } }, dispatch },
+        {
+          commit,
+          getters: { getConversationById: () => conversation },
+          dispatch,
+        },
         conversation
       );
       expect(commit.mock.calls).toEqual([
@@ -243,6 +304,86 @@ describe('#actions', () => {
           },
         ],
       ]);
+    });
+  });
+
+  describe('contact labels received after a partial conversation event', () => {
+    const contactEvent = {
+      id: 1,
+      account_id: 1,
+      meta: { sender: { id: 71 } },
+      labels: ['support'],
+    };
+
+    it('reads the contact labels once when the event inserts an incomplete row', () => {
+      const state = { allConversations: [], selectedChatId: null };
+      const mockDispatch = vi.fn();
+      const context = {
+        commit: (type, payload) => mutations[type](state, payload),
+        getters: {
+          getConversationById: id =>
+            state.allConversations.find(conversation => conversation.id === id),
+        },
+        dispatch: mockDispatch,
+      };
+
+      actions.updateConversation(context, contactEvent);
+      actions.updateConversation(context, {
+        ...contactEvent,
+        status: 'resolved',
+      });
+
+      const fetches = mockDispatch.mock.calls.filter(
+        ([action]) => action === 'fetchConversationContactLabels'
+      );
+      expect(fetches).toEqual([['fetchConversationContactLabels', 1]]);
+    });
+
+    it('hydrates only contact labels from the conversation response', async () => {
+      const initialConversation = {
+        ...contactEvent,
+        status: 'open',
+        messages: [{ id: 5 }],
+      };
+      const state = {
+        allConversations: [initialConversation],
+        selectedChatId: 1,
+      };
+      const context = {
+        commit: (type, payload) => mutations[type](state, payload),
+      };
+      const response = {
+        ...contactEvent,
+        status: 'pending',
+        messages: [],
+        contact_labels: ['direct-insta'],
+      };
+      axios.get.mockResolvedValueOnce({ data: response });
+
+      await actions.fetchConversationContactLabels(context, 1);
+
+      expect(state.allConversations[0]).toEqual({
+        ...initialConversation,
+        contact_labels: ['direct-insta'],
+        status: 'open',
+        messages: [{ id: 5 }],
+      });
+    });
+
+    it('ignores a response for a contact previously assigned to the conversation', async () => {
+      const state = {
+        allConversations: [{ ...contactEvent, meta: { sender: { id: 72 } } }],
+      };
+      const context = {
+        commit: (type, payload) => mutations[type](state, payload),
+      };
+      axios.get.mockResolvedValueOnce({
+        data: { ...contactEvent, contact_labels: ['direct-insta'] },
+      });
+
+      await actions.fetchConversationContactLabels(context, 1);
+
+      expect(state.allConversations[0].contact_labels).toBeUndefined();
     });
   });
 
@@ -476,6 +617,78 @@ describe('#actions', () => {
         ['getConversation', 10],
         ['getConversation', 20],
       ]);
+    });
+
+    it('removes revoked message attachments from the gallery', () => {
+      const localCommit = vi.fn();
+      const message = {
+        id: 71,
+        conversation_id: 10,
+        status: 'delivered',
+        content: 'This message was deleted',
+        content_attributes: { deleted: true },
+        attachments: [],
+      };
+
+      actions.updateMessage(
+        {
+          commit: localCommit,
+          dispatch: vi.fn(),
+          state: { allConversations: [] },
+        },
+        message
+      );
+
+      expect(localCommit.mock.calls).toEqual([
+        [types.ADD_MESSAGE, message],
+        [types.DELETE_CONVERSATION_ATTACHMENTS, message],
+      ]);
+    });
+
+    it('retries automatic translation when a newer Ryze edit arrives', () => {
+      const localCommit = vi.fn();
+      const localDispatch = vi.fn();
+      const currentMessage = {
+        id: 71,
+        conversation_id: 10,
+        content: 'Original text',
+        content_attributes: {},
+        additional_attributes: {},
+      };
+      const editedMessage = {
+        ...currentMessage,
+        content: 'Edited text',
+        content_attributes: { edited: true },
+        additional_attributes: {
+          ryze_edited_at: '2026-11-25T22:00:00.000Z',
+        },
+      };
+
+      actions.updateMessage(
+        {
+          commit: localCommit,
+          dispatch: localDispatch,
+          state: {
+            allConversations: [{ id: 10, messages: [currentMessage] }],
+            autoTranslating: { en: { 71: true }, fr: { 71: true } },
+            selectedChatId: 10,
+          },
+        },
+        editedMessage
+      );
+
+      expect(localCommit.mock.calls).toEqual([
+        [types.ADD_MESSAGE, editedMessage],
+        [
+          types.SET_AUTO_TRANSLATING,
+          { locale: 'en', messageIds: [71], translating: undefined },
+        ],
+        [
+          types.SET_AUTO_TRANSLATING,
+          { locale: 'fr', messageIds: [71], translating: undefined },
+        ],
+      ]);
+      expect(localDispatch).toHaveBeenCalledWith('autoTranslateMessages', 10);
     });
   });
 
@@ -1094,7 +1307,12 @@ describe('#addMentions', () => {
       const localDispatch = vi.fn();
 
       actions.updateConversation(
-        { commit: vi.fn(), dispatch: localDispatch, rootGetters: {} },
+        {
+          commit: vi.fn(),
+          dispatch: localDispatch,
+          getters: { getConversationById: () => undefined },
+          rootGetters: {},
+        },
         {
           id: 7,
           labels: [],

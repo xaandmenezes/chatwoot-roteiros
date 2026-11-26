@@ -9,7 +9,22 @@ RSpec.describe CustomFilter do
     account.enable_features!(:unread_count_for_filters)
   end
 
+  it 'limits team folders per account independently of personal folders and allows edits at the limit' do
+    stub_const('Limits::MAX_CUSTOM_FILTERS_PER_USER', 1)
+    create(:custom_filter, user: user, account: account)
+    folder = create(:custom_filter, visibility: :team, user: nil, account: account)
+    expect(build(:custom_filter, visibility: :team, user: nil, account: account)).not_to be_valid
+    expect(folder.update(name: 'Bookings')).to be(true)
+  end
+
   describe 'filtered unread count invalidation' do
+    it 'keeps team folders out of the personal unread count cache' do
+      folder = create(:custom_filter, visibility: :team, user: nil, account: account)
+      folder.update!(query: { payload: [] })
+      expect(store.filter_version(account_id: account.id, filter_id: folder.id)).to eq(0)
+      expect(store.folder_index_version(account_id: account.id, user_id: user.id)).to eq(0)
+    end
+
     it 'invalidates the folder index and filter version when a conversation filter is created' do
       custom_filter = nil
 

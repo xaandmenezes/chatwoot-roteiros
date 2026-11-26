@@ -6484,6 +6484,18 @@
                     "description": "Attributes based on the content type",
                     "example": {}
                   },
+                  "is_voice_message": {
+                    "type": "boolean",
+                    "description": "Marks the audio attachments in this message as recorded voice notes."
+                  },
+                  "voice_message_attachment_indices[]": {
+                    "type": "array",
+                    "description": "Zero-based positions of recorded audio in attachments[]. When provided, this selection takes precedence over is_voice_message.",
+                    "items": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
                   "attachments[]": {
                     "type": "array",
                     "description": "Files to attach to the message",
@@ -6495,6 +6507,10 @@
                 }
               },
               "encoding": {
+                "voice_message_attachment_indices[]": {
+                  "style": "form",
+                  "explode": true
+                },
                 "attachments[]": {
                   "style": "form",
                   "explode": true
@@ -6701,6 +6717,223 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/accounts/{account_id}/conversations/{conversation_id}/messages/{message_id}/edit_content": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/account_id"
+        },
+        {
+          "$ref": "#/components/parameters/conversation_id"
+        },
+        {
+          "$ref": "#/components/parameters/message_id"
+        }
+      ],
+      "post": {
+        "tags": [
+          "Messages"
+        ],
+        "operationId": "edit-outgoing-message-content",
+        "summary": "Edit a sent team message in the Ryze pilot",
+        "security": [
+          {
+            "userBearerAuth": []
+          },
+          {
+            "userApiKey": []
+          }
+        ],
+        "description": "Only the original agent can edit a public text message sent through the configured\nRyze pilot with a verified WhatsApp message ID. The provider's edit window applies.\nAn accepted command waits for confirmation. Clients should keep the current\nmessage visible and consume the message update event.\n",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "content"
+                ],
+                "properties": {
+                  "content": {
+                    "type": "string",
+                    "description": "New text for the same message"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Confirmed edit on the existing message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/message"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Awaiting provider confirmation"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "The agent cannot edit this message"
+          },
+          "404": {
+            "description": "Conversation or message unavailable"
+          },
+          "409": {
+            "description": "Another edit is pending"
+          },
+          "422": {
+            "description": "Invalid text, expired window or ineligible message"
+          },
+          "502": {
+            "description": "Provider request failed"
+          }
+        }
+      }
+    },
+    "/api/v1/accounts/{account_id}/conversations/{conversation_id}/messages/{message_id}/delete_for_everyone": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/account_id"
+        },
+        {
+          "$ref": "#/components/parameters/conversation_id"
+        },
+        {
+          "$ref": "#/components/parameters/message_id"
+        }
+      ],
+      "post": {
+        "tags": [
+          "Messages"
+        ],
+        "operationId": "delete-ryze-message-for-everyone",
+        "summary": "Revoke a sent Ryze pilot message for everyone",
+        "security": [
+          {
+            "userBearerAuth": []
+          },
+          {
+            "userApiKey": []
+          }
+        ],
+        "description": "Only the original agent can revoke an eligible public text message less than 15 minutes old.\nConfirmation must identify the same WhatsApp message and pilot chat. While confirmation is\npending, the original remains visible and repeated requests do not resend the command.\n",
+        "responses": {
+          "200": {
+            "description": "Updated Chatwoot message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/message"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Awaiting a correlated provider confirmation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "pending"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "The caller cannot perform this action"
+          },
+          "404": {
+            "description": "Conversation or message unavailable"
+          },
+          "409": {
+            "description": "Another message operation is in progress"
+          },
+          "422": {
+            "description": "Ineligible message or conversation"
+          },
+          "502": {
+            "description": "Provider lookup failed or the provider rejected the request"
+          }
+        }
+      }
+    },
+    "/api/v1/accounts/{account_id}/conversations/{conversation_id}/messages/{message_id}/delete_only_in_chatwoot": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/account_id"
+        },
+        {
+          "$ref": "#/components/parameters/conversation_id"
+        },
+        {
+          "$ref": "#/components/parameters/message_id"
+        }
+      ],
+      "post": {
+        "tags": [
+          "Messages"
+        ],
+        "operationId": "delete-ryze-message-only-in-chatwoot",
+        "summary": "Remove a Ryze pilot message only in Chatwoot",
+        "security": [
+          {
+            "userBearerAuth": []
+          },
+          {
+            "userApiKey": []
+          }
+        ],
+        "description": "An agent with access to the pilot conversation can remove a message from its Chatwoot\nhistory at any age. The action suppresses notification of the deletion to the native Ryze bridge.\n",
+        "responses": {
+          "200": {
+            "description": "Updated Chatwoot message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/message"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "The caller cannot perform this action"
+          },
+          "404": {
+            "description": "Conversation or message unavailable"
+          },
+          "409": {
+            "description": "Another message operation is in progress"
+          },
+          "422": {
+            "description": "Ineligible message or conversation"
           }
         }
       }
@@ -7687,7 +7920,7 @@
         ],
         "operationId": "list-all-filters",
         "summary": "List all custom filters",
-        "description": "List all custom filters in a category of a user",
+        "description": "List personal filters in the selected category. Conversation folders also include team filters for the current account.",
         "security": [
           {
             "userBearerAuth": []
@@ -7792,7 +8025,7 @@
         ],
         "operationId": "get-details-of-a-single-custom-filter",
         "summary": "Get a custom filter details",
-        "description": "Get the details of a custom filter in the account",
+        "description": "Read a personal filter or a team conversation filter in the current account.",
         "security": [
           {
             "userBearerAuth": []
@@ -7823,7 +8056,7 @@
             }
           },
           "404": {
-            "description": "The given team ID does not exist in the account",
+            "description": "The filter is unavailable to this user in the current account",
             "content": {
               "application/json": {
                 "schema": {
@@ -7848,7 +8081,7 @@
             "userApiKey": []
           }
         ],
-        "description": "Update a custom filter's attributes",
+        "description": "Update your own personal filter or, as an account administrator, a team conversation filter. Ownership and visibility are fixed at creation.",
         "requestBody": {
           "required": true,
           "content": {
@@ -7896,9 +8129,9 @@
             "userApiKey": []
           }
         ],
-        "description": "Delete a custom filter from the account",
+        "description": "Delete your own personal filter or, as an account administrator, a team conversation filter.",
         "responses": {
-          "200": {
+          "204": {
             "description": "Success"
           },
           "401": {
@@ -9503,11 +9736,12 @@
           },
           "event_name": {
             "type": "string",
-            "description": "Automation Rule event, on which we call the actions(conversation_created, conversation_updated, message_created)",
+            "description": "Event that triggers the automation rule",
             "enum": [
               "conversation_created",
               "conversation_updated",
-              "message_created"
+              "message_created",
+              "message_edited"
             ],
             "example": "message_created"
           },
@@ -10844,14 +11078,23 @@
             "type": "string",
             "description": "The name of the custom filter"
           },
-          "type": {
+          "filter_type": {
             "type": "string",
             "enum": [
               "conversation",
               "contact",
               "report"
             ],
-            "description": "The description about the custom filter"
+            "description": "The category of saved filter"
+          },
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "personal",
+              "team"
+            ],
+            "default": "personal",
+            "description": "Fixed at creation. Only account administrators can create team conversation filters. All members of the account can read them."
           },
           "query": {
             "type": "object",
@@ -11695,6 +11938,10 @@
             "type": "object",
             "description": "Metadata for contact attachments"
           },
+          "is_voice_message": {
+            "type": "boolean",
+            "description": "Present on audio attachments. True when the audio was marked as a voice note."
+          },
           "transcribed_text": {
             "type": "string",
             "description": "Transcribed text for audio attachments"
@@ -12526,7 +12773,7 @@
           },
           "source_id": {
             "type": "string",
-            "description": "External message ID, returned as `source_id`. Use it with\n`content_attributes.in_reply_to_external_id` to reference this message in a reply.\n",
+            "description": "External message ID, returned as `source_id`. Use it with\n`content_attributes.in_reply_to_external_id` to reference this message in a reply.\nIn an API inbox, retrying a public incoming text without attachments with the\nsame nonblank external ID in the same conversation returns the original message.\n",
             "example": "external-message-123"
           },
           "sender_type": {
@@ -13891,15 +14138,24 @@
             "description": "The name of the custom filter",
             "example": "My Custom Filter"
           },
-          "type": {
+          "filter_type": {
             "type": "string",
             "enum": [
               "conversation",
               "contact",
               "report"
             ],
-            "description": "The description about the custom filter",
+            "description": "The category of saved filter",
             "example": "conversation"
+          },
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "personal",
+              "team"
+            ],
+            "default": "personal",
+            "description": "Fixed at creation. Only account administrators can create team conversation filters. All members of the account can read them."
           },
           "query": {
             "type": "object",
@@ -14004,7 +14260,8 @@
               "conversation_created",
               "conversation_updated",
               "conversation_resolved",
-              "message_created"
+              "message_created",
+              "message_edited"
             ],
             "example": "message_created",
             "description": "The event when you want to execute the automation actions"
@@ -15420,6 +15677,10 @@
                 "thumb_url": {
                   "type": "string",
                   "description": "The thumbnail URL of the attached file"
+                },
+                "is_voice_message": {
+                  "type": "boolean",
+                  "description": "Present on audio attachments. True when the audio was marked as a voice note."
                 },
                 "file_size": {
                   "type": "number",

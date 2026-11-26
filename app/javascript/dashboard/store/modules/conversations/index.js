@@ -1,7 +1,7 @@
 import types from '../../mutation-types';
 import getters, { getSelectedChatConversation } from './getters';
 import actions from './actions';
-import { findPendingMessageIndex } from './helpers';
+import { findPendingMessageIndex, isOlderRyzeRevision } from './helpers';
 import { MESSAGE_STATUS } from 'shared/constants/messages';
 import wootConstants from 'dashboard/constants/globals';
 import { BUS_EVENTS } from '../../../../shared/constants/busEvents';
@@ -29,6 +29,18 @@ const state = {
 
 const getConversationById = _state => conversationId => {
   return _state.allConversations.find(c => c.id === conversationId);
+};
+
+const setMissingContactLabels = (chat, accountId, contactId, labels) => {
+  if (
+    chat &&
+    Array.isArray(labels) &&
+    chat.contact_labels === undefined &&
+    chat.account_id === accountId &&
+    chat.meta?.sender?.id === contactId
+  ) {
+    chat.contact_labels = labels;
+  }
 };
 
 const preserveConversationMessageState = (
@@ -217,6 +229,20 @@ export const mutations = {
     }
 
     const id = message.conversation_id;
+    const [conversation] = getSelectedChatConversation({
+      allConversations: _state.allConversations,
+      selectedChatId: id,
+    });
+    const currentMessage = conversation?.messages?.find(
+      item => item.id === message.id
+    );
+    if (
+      currentMessage?.content_attributes?.deleted ||
+      (currentMessage && isOlderRyzeRevision(currentMessage, message))
+    ) {
+      return;
+    }
+
     const existingAttachments = _state.attachments[id] || [];
 
     const attachmentsToAdd = message.attachments.filter(attachment => {
@@ -232,8 +258,6 @@ export const mutations = {
   },
 
   [types.DELETE_CONVERSATION_ATTACHMENTS](_state, message) {
-    if (message.status !== MESSAGE_STATUS.SENT) return;
-
     const { conversation_id: id } = message;
     const existingAttachments = _state.attachments[id] || [];
     if (!existingAttachments.length) return;
@@ -251,8 +275,42 @@ export const mutations = {
     });
     if (!chat) return;
 
+    const replacedMessageId =
+      message.additional_attributes?.ryze_replaced_message_id;
+    if (replacedMessageId) {
+      chat.messages = chat.messages.filter(
+        existing =>
+          existing.id !== replacedMessageId ||
+          existing.source_id !== message.source_id ||
+          !existing.additional_attributes?.ryze_native_bridge_mirror
+      );
+    }
+    if (
+      message.additional_attributes?.ryze_native_bridge_mirror &&
+      chat.messages.some(
+        existing =>
+          existing.source_id === message.source_id &&
+          existing.additional_attributes?.ryze_replaced_message_id ===
+            message.id
+      )
+    ) {
+      return;
+    }
+
     const pendingMessageIndex = findPendingMessageIndex(chat, message);
     if (pendingMessageIndex !== -1) {
+      const existingMessage = chat.messages[pendingMessageIndex];
+      if (
+        existingMessage.id === message.id &&
+        !message.content_attributes?.deleted &&
+        (existingMessage.content_attributes?.deleted ||
+          isOlderRyzeRevision(existingMessage, message) ||
+          (existingMessage.additional_attributes?.ryze_outbound_message_id &&
+            !message.source_id))
+      ) {
+        return;
+      }
+
       chat.messages[pendingMessageIndex] = message;
     } else {
       chat.messages.push(message);
@@ -273,9 +331,16 @@ export const mutations = {
   },
 
   [types.ADD_CONVERSATION](_state, conversation) {
-    const exists = _state.allConversations.some(c => c.id === conversation.id);
-    if (!exists) {
+    const existing = getConversationById(_state)(conversation.id);
+    if (!existing) {
       _state.allConversations.push(conversation);
+    } else {
+      setMissingContactLabels(
+        existing,
+        conversation.account_id,
+        conversation.meta?.sender?.id,
+        conversation.contact_labels
+      );
     }
   },
 
@@ -298,7 +363,16 @@ export const mutations = {
       }
 
       const { messages, ...updates } = conversation;
-      allConversations[index] = { ...selectedConversation, ...updates };
+      const updatedConversation = { ...selectedConversation, ...updates };
+      const contactId = updates.meta?.sender?.id;
+      if (
+        contactId &&
+        contactId !== selectedConversation.meta?.sender?.id &&
+        updates.contact_labels === undefined
+      ) {
+        delete updatedConversation.contact_labels;
+      }
+      allConversations[index] = updatedConversation;
       if (_state.selectedChatId === conversation.id) {
         emitter.emit(BUS_EVENTS.SCROLL_TO_MESSAGE);
       }
@@ -345,11 +419,27 @@ export const mutations = {
     }
   },
 
-  [types.UPDATE_CONVERSATION_CONTACT](_state, { conversationId, ...payload }) {
-    const [chat] = _state.allConversations.filter(c => c.id === conversationId);
-    if (chat) {
-      chat.meta.sender = payload;
+  [types.UPDATE_CONVERSATION_CONTACT](
+    _state,
+    { conversationId, contactLabels, ...sender }
+  ) {
+    const chat = getConversationById(_state)(conversationId);
+    if (!chat) return;
+
+    if (contactLabels !== undefined) {
+      chat.contact_labels = contactLabels;
+    } else if (sender.id && sender.id !== chat.meta.sender?.id) {
+      delete chat.contact_labels;
     }
+    chat.meta.sender = sender;
+  },
+
+  [types.SET_CONVERSATION_CONTACT_LABELS](
+    _state,
+    { conversationId, accountId, contactId, labels }
+  ) {
+    const chat = getConversationById(_state)(conversationId);
+    setMissingContactLabels(chat, accountId, contactId, labels);
   },
 
   [types.UPDATE_MESSAGE_CALL_STATUS](

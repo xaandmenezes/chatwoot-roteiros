@@ -184,6 +184,30 @@ describe('useConversationFilterContext', () => {
     useMapGetter.mockImplementation(key => storeValues[key] || ref([]));
   });
 
+  it.each(['text', 'number', 'link', 'checkbox', 'list', 'date'])(
+    'offers the absence operator without an input for %s conversation attributes',
+    type => {
+      useMapGetter.mockImplementation(key =>
+        key === 'attributes/getConversationAttributes'
+          ? ref([
+              {
+                attributeKey: 'booking',
+                attributeDisplayType: type,
+                attributeValues: [],
+              },
+            ])
+          : ref([])
+      );
+      const { attributeFilterTypes } = useConversationFilterContext();
+      const booking = attributeFilterTypes.value.find(
+        item => item.attributeKey === 'booking'
+      );
+      expect(booking.filterOperators).toContainEqual(
+        expect.objectContaining({ value: 'is_not_present', hasInput: false })
+      );
+    }
+  );
+
   it('exposes contact as an async searchable conversation filter', () => {
     const { filterTypes } = useConversationFilterContext();
     const contactFilter = filterTypes.value.find(

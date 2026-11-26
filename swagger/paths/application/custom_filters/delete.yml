@@ -5,9 +5,9 @@ summary: Delete a custom filter
 security:
   - userBearerAuth: []
   - userApiKey: []
-description: Delete a custom filter from the account
+description: Delete your own personal filter or, as an account administrator, a team conversation filter.
 responses:
-  '200':
+  '204':
     description: Success
   '401':
     description: Unauthorized

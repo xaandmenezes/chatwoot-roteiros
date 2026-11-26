@@ -136,7 +136,7 @@ class Conversations::UnreadCounts::FilteredCountInvalidator
 
   def affected_custom_attribute_filters(custom_attribute_definition)
     attribute_keys = custom_attribute_keys(custom_attribute_definition)
-    account.custom_filters.conversation.select do |custom_filter|
+    account.custom_filters.personal.conversation.select do |custom_filter|
       custom_filter_references_conversation_attribute?(custom_filter, attribute_keys)
     end
   end

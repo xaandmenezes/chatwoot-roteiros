@@ -2,6 +2,8 @@
 /* global axios */
 import ApiClient from '../ApiClient';
 
+const RYZE_ACTION_TIMEOUT_MS = 30_000;
+
 export const buildCreatePayload = ({
   message,
   isPrivate,
@@ -14,6 +16,7 @@ export const buildCreatePayload = ({
   subject,
   templateParams,
   isVoiceMessage = false,
+  voiceMessageAttachmentIndices,
   emailHtmlContent,
   forwardedAttachmentIds,
 }) => {
@@ -43,6 +46,9 @@ export const buildCreatePayload = ({
     if (isVoiceMessage) {
       payload.append('is_voice_message', true);
     }
+    voiceMessageAttachmentIndices?.forEach(index => {
+      payload.append('voice_message_attachment_indices[]', index);
+    });
     if (emailHtmlContent) {
       payload.append('email_html_content', emailHtmlContent);
     }
@@ -85,6 +91,7 @@ class MessageApi extends ApiClient {
     subject,
     templateParams,
     isVoiceMessage = false,
+    voiceMessageAttachmentIndices,
     emailHtmlContent,
     forwardedAttachmentIds,
   }) {
@@ -103,6 +110,7 @@ class MessageApi extends ApiClient {
         subject,
         templateParams,
         isVoiceMessage,
+        voiceMessageAttachmentIndices,
         emailHtmlContent,
         forwardedAttachmentIds,
       }),
@@ -111,6 +119,30 @@ class MessageApi extends ApiClient {
 
   delete(conversationID, messageId) {
     return axios.delete(`${this.url}/${conversationID}/messages/${messageId}`);
+  }
+
+  deleteOnlyInChatwoot(conversationId, messageId) {
+    return axios.post(
+      `${this.url}/${conversationId}/messages/${messageId}/delete_only_in_chatwoot`,
+      {},
+      { timeout: RYZE_ACTION_TIMEOUT_MS }
+    );
+  }
+
+  deleteForEveryone(conversationId, messageId) {
+    return axios.post(
+      `${this.url}/${conversationId}/messages/${messageId}/delete_for_everyone`,
+      {},
+      { timeout: RYZE_ACTION_TIMEOUT_MS }
+    );
+  }
+
+  editContent(conversationId, messageId, content) {
+    return axios.post(
+      `${this.url}/${conversationId}/messages/${messageId}/edit_content`,
+      { content },
+      { timeout: RYZE_ACTION_TIMEOUT_MS }
+    );
   }
 
   retry(conversationID, messageId) {

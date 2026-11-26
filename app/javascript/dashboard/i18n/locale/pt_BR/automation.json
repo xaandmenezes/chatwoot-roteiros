@@ -198,6 +198,7 @@
       "CONVERSATION_CREATED": "Conversa Criada",
       "CONVERSATION_UPDATED": "Conversa Atualizada",
       "MESSAGE_CREATED": "Mensagem Criada",
+      "MESSAGE_EDITED": "Mensagem editada",
       "CONVERSATION_RESOLVED": "Conversa Resolvida",
       "CONVERSATION_OPENED": "Conversa Aberta",
       "MONITOR_MATCHED": "Monitor encontrou uma correspondência"

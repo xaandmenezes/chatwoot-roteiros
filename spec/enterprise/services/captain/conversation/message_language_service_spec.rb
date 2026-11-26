@@ -26,6 +26,19 @@ RSpec.describe Captain::Conversation::MessageLanguageService do
     described_class.new(conversation: conversation.reload, message: message).perform
   end
 
+  it 'discards a stale language if the text changes during detection' do
+    message = contact_message('Bonjour tout le monde')
+    translator = instance_double(Captain::Conversation::TranslatorService)
+    allow(translator).to receive(:language) do
+      Message.find(message.id).update!(content: 'Bom dia')
+      'fr'
+    end
+
+    expect(described_class.new(conversation: conversation, message: message, translator: translator).perform).to be_nil
+    expect(message.reload.source_language).to be_nil
+    expect(conversation.reload.language).to eq('en')
+  end
+
   it 'keeps the conversation language when one short message is detected as another language' do
     4.times { |index| contact_message("Message number #{index}", language: 'en') }
     message = contact_message('Istanbul')

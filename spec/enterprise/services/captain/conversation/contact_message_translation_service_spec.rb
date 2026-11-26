@@ -71,6 +71,17 @@ RSpec.describe Captain::Conversation::ContactMessageTranslationService do
     expect(message.reload.translations).to eq('de' => 'Hallo', 'en' => 'Hello')
   end
 
+  it 'discards a stale translation if the contact edits the message during translation' do
+    allow(llm_service).to receive(:perform) do
+      Message.find(message.id).update!(content: 'Boa tarde')
+      { message: 'Hello' }
+    end
+
+    described_class.new(message: message, target_language: 'en').perform
+
+    expect(message.reload.translations).to be_nil
+  end
+
   it 'does not store a translation on a message deleted while the translator was running' do
     allow(llm_service).to receive(:perform) do
       message.reload.update!(content: 'This message was deleted', content_attributes: { deleted: true })

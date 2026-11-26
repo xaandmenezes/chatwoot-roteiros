@@ -1241,17 +1241,28 @@ export default {
       messagePayload = this.setReplyToInPayload(messagePayload);
 
       if (this.attachedFiles && this.attachedFiles.length) {
-        messagePayload.files = [];
-        this.attachedFiles.forEach(attachment => {
-          if (this.globalConfig.directUploadsEnabled) {
-            messagePayload.files.push(attachment.blobSignedId);
-            if (attachment.isVoiceMessage) {
-              messagePayload.isVoiceMessage = true;
-            }
-          } else {
-            messagePayload.files.push(attachment.resource.file);
+        const { directUploadsEnabled } = this.globalConfig;
+        const voiceMessageAttachmentIndices = [];
+        messagePayload.files = this.attachedFiles.map((attachment, index) => {
+          if (attachment.isVoiceMessage) {
+            voiceMessageAttachmentIndices.push(index);
           }
+          return directUploadsEnabled
+            ? attachment.blobSignedId
+            : attachment.resource.file;
         });
+
+        if (voiceMessageAttachmentIndices.length) {
+          if (
+            this.isAPIInbox &&
+            voiceMessageAttachmentIndices.length < messagePayload.files.length
+          ) {
+            messagePayload.voiceMessageAttachmentIndices =
+              voiceMessageAttachmentIndices;
+          } else if (this.isAPIInbox || directUploadsEnabled) {
+            messagePayload.isVoiceMessage = true;
+          }
+        }
       }
 
       if (this.ccEmails && !this.isOnPrivateNote) {

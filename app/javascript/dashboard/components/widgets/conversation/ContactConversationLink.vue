@@ -3,7 +3,8 @@ import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useTrack } from 'dashboard/composables';
 import { CONVERSATION_EVENTS } from 'dashboard/helper/AnalyticsHelper/events';
-import { dateFormat } from 'shared/helpers/timeHelper';
+import { useExactTimestamp } from 'shared/composables/useExactTimestamp';
+import { useLocale } from 'shared/composables/useLocale';
 import { getLastMessage } from 'dashboard/helper/conversationHelper';
 import Icon from 'dashboard/components-next/icon/Icon.vue';
 import MessagePreview from './MessagePreview.vue';
@@ -27,6 +28,8 @@ const props = defineProps({
 const emit = defineEmits(['navigate']);
 
 const { t } = useI18n();
+const exactTimestamp = useExactTimestamp();
+const { resolvedLocale } = useLocale();
 
 const isOlder = computed(() => props.direction === 'older');
 
@@ -44,7 +47,10 @@ const trackNavigation = () =>
   );
 
 const startedAt = computed(() =>
-  dateFormat(props.conversation.created_at, 'MMM d, yyyy')
+  new Intl.DateTimeFormat(resolvedLocale.value, {
+    dateStyle: 'medium',
+    calendar: 'gregory',
+  }).format(props.conversation.created_at * 1000)
 );
 
 const tooltip = computed(() =>
@@ -56,7 +62,7 @@ const tooltip = computed(() =>
       name:
         props.conversation.meta?.sender?.name ||
         t('CONVERSATION.CONTACT_HISTORY.CUSTOMER'),
-      time: dateFormat(props.conversation.created_at, 'MMM d, yyyy · h:mm a'),
+      time: exactTimestamp(props.conversation.created_at),
     }
   )
 );

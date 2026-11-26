@@ -293,6 +293,17 @@
     }
   },
   "CONTACTS_LAYOUT": {
+    "UMBLER_LABEL_SYNC": {
+      "ACTION": "Buscar etiquetas na Umbler",
+      "RETRY": "Tentar novamente",
+      "LOAD_ERROR": "Não foi possível consultar o status da busca na Umbler.",
+      "QUEUED": "Aguardando a verificação dos contatos…",
+      "RUNNING": "Verificando contatos… {processed} já verificados.",
+      "FAILED": "A verificação parou antes de terminar. Tente novamente.",
+      "START_ERROR": "Não foi possível iniciar a busca na Umbler. Tente novamente.",
+      "STATUS_ERROR": "Não foi possível atualizar o andamento. Reconectando…",
+      "RESULT": "{processed} verificados · {updated} atualizados · {unchanged} já atualizados · {noLabels} sem etiquetas na Umbler · {unmatched} sem correspondência · {ambiguous} com correspondência ambígua"
+    },
     "HEADER": {
       "TITLE": "Contatos",
       "SEARCH_TITLE": "Pesquisar contatos",

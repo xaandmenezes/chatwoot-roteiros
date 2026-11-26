@@ -153,6 +153,24 @@ describe('ActionCableConnector - Copilot Tests', () => {
     });
   });
 
+  it('passes the new contact labels through a conversation contact change', () => {
+    actionCable.onReceived({
+      event: 'conversation.contact_changed',
+      data: {
+        account_id: 1,
+        id: 1,
+        meta: { sender: { id: 72 } },
+        contact_labels: ['direct-insta'],
+      },
+    });
+
+    expect(mockDispatch).toHaveBeenCalledWith('updateConversationContact', {
+      conversationId: 1,
+      id: 72,
+      contactLabels: ['direct-insta'],
+    });
+  });
+
   describe('conversation unread count event handlers', () => {
     it('should register the conversation.unread_count_changed event handler', () => {
       expect(Object.keys(actionCable.events)).toContain(

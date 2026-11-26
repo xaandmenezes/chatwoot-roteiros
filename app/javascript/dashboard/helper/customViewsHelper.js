@@ -121,6 +121,7 @@ export const getValuesForFilter = (filter, params) => {
 
 export const generateValuesForEditCustomViews = (filter, params) => {
   const { attribute_key, filter_operator, values } = filter;
+  if (!values.length) return [];
   const { filterTypes, allCustomAttributes } = params;
   const inputType = getInputType(attribute_key, filter_operator, filterTypes);
 

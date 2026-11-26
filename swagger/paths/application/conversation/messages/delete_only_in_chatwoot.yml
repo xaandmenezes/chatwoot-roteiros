@@ -1,0 +1,27 @@
+tags:
+  - Messages
+operationId: delete-ryze-message-only-in-chatwoot
+summary: Remove a Ryze pilot message only in Chatwoot
+security:
+  - userBearerAuth: []
+  - userApiKey: []
+description: |
+  An agent with access to the pilot conversation can remove a message from its Chatwoot
+  history at any age. The action suppresses notification of the deletion to the native Ryze bridge.
+responses:
+  '200':
+    description: Updated Chatwoot message
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/message'
+  '401':
+    description: Authentication required
+  '403':
+    description: The caller cannot perform this action
+  '404':
+    description: Conversation or message unavailable
+  '409':
+    description: Another message operation is in progress
+  '422':
+    description: Ineligible message or conversation

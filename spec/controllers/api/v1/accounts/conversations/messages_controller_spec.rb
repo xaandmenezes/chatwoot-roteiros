@@ -3,6 +3,29 @@ require 'rails_helper'
 RSpec.describe 'Conversation Messages API', type: :request do
   let!(:account) { create(:account) }
 
+  it 'discards a stale Google translation when the original is revoked during the request' do
+    conversation = create(:conversation, account: account)
+    message = create(:message, conversation: conversation, account: account)
+    agent = create(:user, account: account, role: :administrator)
+    allow(Integrations::GoogleTranslate::CredentialsValidator).to receive(:valid?).and_return(true)
+    create(:integrations_hook, :google_translate, account: account)
+    account.update!(translation_provider: 'google_translate')
+    translator = instance_double(Integrations::GoogleTranslate::ProcessorService)
+    allow(Integrations::GoogleTranslate::ProcessorService).to receive(:new).and_return(translator)
+    allow(translator).to receive(:translate_message) do
+      message.mark_deleted!
+      'obsolete translation'
+    end
+
+    post translate_api_v1_account_conversation_message_url(account_id: account.id, conversation_id: conversation.display_id, id: message.id),
+         params: { target_language: 'en' }, headers: agent.create_new_auth_token, as: :json
+
+    expect(translator).to have_received(:translate_message)
+    expect(response).to have_http_status(:success)
+    expect(response.parsed_body['content']).to be_nil
+    expect(message.reload.translations).to be_nil
+  end
+
   describe 'POST /api/v1/accounts/{account.id}/conversations/<id>/messages' do
     let!(:inbox) { create(:inbox, account: account) }
     let!(:conversation) { create(:conversation, inbox: inbox, account: account) }
@@ -96,6 +119,32 @@ RSpec.describe 'Conversation Messages API', type: :request do
         expect(response).to have_http_status(:success)
         expect(conversation.messages.last.attachments.first.file.present?).to be(true)
         expect(conversation.messages.last.attachments.first.file_type).to eq('image')
+      end
+
+      context 'when a multipart message specifies which attachments are voice notes' do
+        let(:inbox) { create(:channel_api, account: account).inbox }
+        let(:audio) { fixture_file_upload('spec/assets/sample.ogg', 'audio/ogg') }
+        let(:url) { api_v1_account_conversation_messages_url(account_id: account.id, conversation_id: conversation.display_id) }
+
+        it 'marks only the selected audio even if the message-wide flag is set' do
+          signed_audio = get_blob_for('spec/assets/sample.mp3', 'audio/mpeg').signed_id
+          image = fixture_file_upload('spec/assets/avatar.png', 'image/png')
+          post url, headers: agent.create_new_auth_token,
+                    params: { attachments: [audio, signed_audio, image], is_voice_message: true, voice_message_attachment_indices: ['1'] }
+
+          expect(response).to have_http_status(:ok)
+          ordinary, recording, picture = response.parsed_body.fetch('attachments').sort_by { |item| item.fetch('id') }
+          expect(ordinary).to include('file_type' => 'audio', 'is_voice_message' => false)
+          expect(recording).to include('file_type' => 'audio', 'is_voice_message' => true)
+          expect(picture).not_to have_key('is_voice_message')
+        end
+
+        it 'rejects a position outside the submitted attachments' do
+          post url, headers: agent.create_new_auth_token, params: { attachments: [audio], voice_message_attachment_indices: ['1'] }
+
+          expect(response).to have_http_status(:unprocessable_entity)
+          expect(conversation.messages.reload).to be_empty
+        end
       end
 
       context 'when forwarding an email' do
@@ -255,6 +304,39 @@ RSpec.describe 'Conversation Messages API', type: :request do
 
       before do
         create(:inbox_member, inbox: conversation.inbox, user: agent)
+      end
+
+      it 'shows the retained text on the same message only in the agent history' do
+        api_inbox = create(:channel_api, account: account).inbox
+        create(:inbox_member, inbox: api_inbox, user: agent)
+        chat_id = 'test@lid'
+        chat = create(:conversation, inbox: api_inbox, account: account, additional_attributes: { whatsapp_jid: chat_id })
+        message = create(:message, conversation: chat, account: account, content: 'Last customer text', source_id: 'revoked-id')
+        message.mark_deleted!(by_customer: true)
+
+        get api_v1_account_conversation_messages_url(account_id: account.id, conversation_id: chat.display_id),
+            headers: agent.create_new_auth_token, as: :json
+
+        expect(response).to have_http_status(:ok)
+        entry = response.parsed_body.fetch('payload').sole
+        expect(entry).to include('content' => 'Last customer text', 'id' => message.id, 'created_at' => message.created_at.to_i)
+        expect(entry.fetch('content_attributes')).to include('deleted_by_customer' => true)
+        expect(entry.fetch('content_attributes')).to include('deleted' => true)
+
+        get public_api_v1_inbox_contact_conversation_messages_path(api_inbox.channel.identifier, chat.contact_inbox.source_id, chat.display_id)
+
+        expect(response).to have_http_status(:ok)
+        expect(response.parsed_body.sole.fetch('content_attributes')).to include('deleted' => true)
+        expect(response.body).not_to include('Last customer text')
+      end
+
+      it 'returns the Ryze revision when loading history so late events cannot overwrite a newer edit' do
+        revision = '2026-11-25T18:20:30.000000000Z'
+        create(:message, conversation: conversation, account: account, additional_attributes: { ryze_edited_at: revision, internal: 'unrelated' })
+
+        get api_v1_account_conversation_messages_url(account, conversation.display_id), headers: agent.create_new_auth_token, as: :json
+
+        expect(response.parsed_body.fetch('payload').first['additional_attributes']).to eq('ryze_edited_at' => revision)
       end
 
       it 'shows the conversation' do

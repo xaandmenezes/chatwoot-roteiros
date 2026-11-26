@@ -22,7 +22,7 @@ import {
   handleVoiceCallUpdated,
   syncConversationCallVisibility,
 } from 'dashboard/helper/voice';
-import { applyRoleFilter } from './helpers';
+import { applyRoleFilter, isNewerRyzeEdit } from './helpers';
 import {
   getUserPermissions,
   getUserRole,
@@ -72,6 +72,24 @@ export const hasMessageFailedWithExternalError = pendingMessage => {
 
 const conversationListRequest = useAbortableRequest();
 
+const fetchContactLabelsAfterSenderChange = (
+  getters,
+  dispatch,
+  conversationId,
+  contactId,
+  previousContactId
+) => {
+  if (!contactId || contactId === previousContactId) return;
+
+  const conversation = getters.getConversationById(conversationId);
+  if (
+    conversation?.meta?.sender?.id === contactId &&
+    conversation.contact_labels === undefined
+  ) {
+    dispatch('fetchConversationContactLabels', conversationId);
+  }
+};
+
 // actions
 const actions = {
   getConversation: async ({ commit, dispatch }, conversationId) => {
@@ -88,6 +106,23 @@ const actions = {
       });
     } catch (error) {
       // Ignore error
+    }
+  },
+
+  async fetchConversationContactLabels({ commit }, conversationId) {
+    try {
+      const { data } = await ConversationApi.show(conversationId);
+      if (!Array.isArray(data.contact_labels)) return;
+
+      // Leave conversation status, message history and selection untouched.
+      commit(types.SET_CONVERSATION_CONTACT_LABELS, {
+        conversationId,
+        accountId: data.account_id,
+        contactId: data.meta?.sender?.id,
+        labels: data.contact_labels,
+      });
+    } catch {
+      // A subsequent conversation list or detail request can restore the labels.
     }
   },
 
@@ -470,7 +505,35 @@ const actions = {
   },
 
   updateMessage({ commit, dispatch, rootGetters, state }, message) {
+    let isNewRyzeEdit = false;
+    if (message.additional_attributes?.ryze_edited_at) {
+      const conversation = state.allConversations.find(
+        item => item.id === message.conversation_id
+      );
+      const current = conversation?.messages?.find(
+        item => item.id === message.id
+      );
+      isNewRyzeEdit = isNewerRyzeEdit(message, current);
+    }
+
     commit(types.ADD_MESSAGE, message);
+    if (message.content_attributes?.deleted) {
+      commit(types.DELETE_CONVERSATION_ATTACHMENTS, message);
+    }
+    if (isNewRyzeEdit) {
+      Object.entries(state.autoTranslating).forEach(([locale, attempts]) => {
+        if (attempts[message.id] !== undefined) {
+          commit(types.SET_AUTO_TRANSLATING, {
+            locale,
+            messageIds: [message.id],
+            translating: undefined,
+          });
+        }
+      });
+      if (message.conversation_id === state.selectedChatId) {
+        dispatch('autoTranslateMessages', message.conversation_id);
+      }
+    }
 
     const contactInfoRequest =
       message.content_attributes?.whatsapp_contact_info;
@@ -553,10 +616,19 @@ const actions = {
     }
   },
 
-  updateConversation({ commit, dispatch, rootGetters }, conversation) {
+  updateConversation({ commit, dispatch, getters, rootGetters }, conversation) {
     const sender = conversation.meta?.sender;
+    const previousConversation = getters.getConversationById(conversation.id);
+    const previousContactId = previousConversation?.meta?.sender?.id;
 
     commit(types.UPDATE_CONVERSATION, conversation);
+    fetchContactLabelsAfterSenderChange(
+      getters,
+      dispatch,
+      conversation.id,
+      sender?.id,
+      previousContactId
+    );
     syncConversationCallVisibility(
       conversation,
       rootGetters?.getCurrentUserID,
@@ -610,11 +682,24 @@ const actions = {
     commit(types.UPDATE_ASSIGNEE, data);
   },
 
-  updateConversationContact({ commit }, data) {
-    if (data.id) {
-      commit(`contacts/${types.SET_CONTACT_ITEM}`, data);
+  updateConversationContact(
+    { commit, dispatch, getters },
+    { contactLabels, ...sender }
+  ) {
+    const { conversationId } = sender;
+    const previousContactId =
+      getters.getConversationById(conversationId)?.meta?.sender?.id;
+    if (sender.id) {
+      commit(`contacts/${types.SET_CONTACT_ITEM}`, sender);
     }
-    commit(types.UPDATE_CONVERSATION_CONTACT, data);
+    commit(types.UPDATE_CONVERSATION_CONTACT, { ...sender, contactLabels });
+    fetchContactLabelsAfterSenderChange(
+      getters,
+      dispatch,
+      conversationId,
+      sender.id,
+      previousContactId
+    );
   },
 
   setActiveInbox({ commit }, inboxId) {

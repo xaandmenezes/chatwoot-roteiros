@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_11_16_211055) do
+ActiveRecord::Schema[7.1].define(version: 2026_11_26_033040) do
   # These extensions should be enabled to support this database
   enable_extension "pg_stat_statements"
   enable_extension "pg_trgm"
@@ -1221,9 +1221,10 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_16_211055) do
     t.integer "filter_type", default: 0, null: false
     t.jsonb "query", default: "{}", null: false
     t.bigint "account_id", null: false
-    t.bigint "user_id", null: false
+    t.bigint "user_id"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "visibility", default: "personal", null: false
     t.index ["account_id"], name: "index_custom_filters_on_account_id"
     t.index ["user_id"], name: "index_custom_filters_on_user_id"
   end
@@ -1506,6 +1507,15 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_16_211055) do
     t.index ["conversation_id"], name: "index_mentions_on_conversation_id"
     t.index ["user_id", "conversation_id"], name: "index_mentions_on_user_id_and_conversation_id", unique: true
     t.index ["user_id"], name: "index_mentions_on_user_id"
+  end
+
+  create_table "message_revocations", force: :cascade do |t|
+    t.integer "message_id", null: false
+    t.text "content", null: false
+    t.boolean "edited", default: false, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["message_id"], name: "index_message_revocations_on_message_id", unique: true
   end
 
   create_table "messages", id: :serial, force: :cascade do |t|
@@ -1793,6 +1803,17 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_16_211055) do
     t.index ["name", "account_id"], name: "index_teams_on_name_and_account_id", unique: true
   end
 
+  create_table "umbler_label_syncs", force: :cascade do |t|
+    t.bigint "account_id", null: false
+    t.integer "status", default: 0, null: false
+    t.bigint "last_contact_id", default: 0, null: false
+    t.bigint "cursor", default: 0, null: false
+    t.jsonb "counts", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["account_id", "id"], name: "index_umbler_label_syncs_on_account_id_and_id"
+  end
+
   create_table "user_sessions", force: :cascade do |t|
     t.bigint "user_id", null: false
     t.string "client_id", null: false
@@ -1901,7 +1922,9 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_16_211055) do
   add_foreign_key "data_exports", "accounts"
   add_foreign_key "data_exports", "users", column: "initiated_by_id", on_delete: :nullify
   add_foreign_key "inboxes", "portals"
+  add_foreign_key "message_revocations", "messages", on_delete: :cascade
   add_foreign_key "shopify_custom_apps", "accounts"
+  add_foreign_key "umbler_label_syncs", "accounts", on_delete: :cascade
   add_foreign_key "user_sessions", "users"
   create_trigger("accounts_after_insert_row_tr", :generated => true, :compatibility => 1).
       on("accounts").

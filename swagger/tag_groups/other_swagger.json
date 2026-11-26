@@ -211,11 +211,12 @@
           },
           "event_name": {
             "type": "string",
-            "description": "Automation Rule event, on which we call the actions(conversation_created, conversation_updated, message_created)",
+            "description": "Event that triggers the automation rule",
             "enum": [
               "conversation_created",
               "conversation_updated",
-              "message_created"
+              "message_created",
+              "message_edited"
             ],
             "example": "message_created"
           },
@@ -1552,14 +1553,23 @@
             "type": "string",
             "description": "The name of the custom filter"
           },
-          "type": {
+          "filter_type": {
             "type": "string",
             "enum": [
               "conversation",
               "contact",
               "report"
             ],
-            "description": "The description about the custom filter"
+            "description": "The category of saved filter"
+          },
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "personal",
+              "team"
+            ],
+            "default": "personal",
+            "description": "Fixed at creation. Only account administrators can create team conversation filters. All members of the account can read them."
           },
           "query": {
             "type": "object",
@@ -2403,6 +2413,10 @@
             "type": "object",
             "description": "Metadata for contact attachments"
           },
+          "is_voice_message": {
+            "type": "boolean",
+            "description": "Present on audio attachments. True when the audio was marked as a voice note."
+          },
           "transcribed_text": {
             "type": "string",
             "description": "Transcribed text for audio attachments"
@@ -3234,7 +3248,7 @@
           },
           "source_id": {
             "type": "string",
-            "description": "External message ID, returned as `source_id`. Use it with\n`content_attributes.in_reply_to_external_id` to reference this message in a reply.\n",
+            "description": "External message ID, returned as `source_id`. Use it with\n`content_attributes.in_reply_to_external_id` to reference this message in a reply.\nIn an API inbox, retrying a public incoming text without attachments with the\nsame nonblank external ID in the same conversation returns the original message.\n",
             "example": "external-message-123"
           },
           "sender_type": {
@@ -4599,15 +4613,24 @@
             "description": "The name of the custom filter",
             "example": "My Custom Filter"
           },
-          "type": {
+          "filter_type": {
             "type": "string",
             "enum": [
               "conversation",
               "contact",
               "report"
             ],
-            "description": "The description about the custom filter",
+            "description": "The category of saved filter",
             "example": "conversation"
+          },
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "personal",
+              "team"
+            ],
+            "default": "personal",
+            "description": "Fixed at creation. Only account administrators can create team conversation filters. All members of the account can read them."
           },
           "query": {
             "type": "object",
@@ -4712,7 +4735,8 @@
               "conversation_created",
               "conversation_updated",
               "conversation_resolved",
-              "message_created"
+              "message_created",
+              "message_edited"
             ],
             "example": "message_created",
             "description": "The event when you want to execute the automation actions"
@@ -6128,6 +6152,10 @@
                 "thumb_url": {
                   "type": "string",
                   "description": "The thumbnail URL of the attached file"
+                },
+                "is_voice_message": {
+                  "type": "boolean",
+                  "description": "Present on audio attachments. True when the audio was marked as a voice note."
                 },
                 "file_size": {
                   "type": "number",

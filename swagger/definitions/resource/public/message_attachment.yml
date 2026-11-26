@@ -55,6 +55,9 @@ properties:
   meta:
     type: object
     description: Metadata for contact attachments
+  is_voice_message:
+    type: boolean
+    description: Present on audio attachments. True when the audio was marked as a voice note.
   transcribed_text:
     type: string
     description: Transcribed text for audio attachments

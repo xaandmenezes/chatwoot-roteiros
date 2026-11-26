@@ -15,6 +15,7 @@ properties:
       - conversation_updated
       - conversation_resolved
       - message_created
+      - message_edited
     example: message_created
     description: The event when you want to execute the automation actions
   active:

@@ -82,6 +82,21 @@ RSpec.describe 'Api::V1::Accounts::AutomationRulesController', type: :request do
         }
       end
 
+      it 'saves an instant edit rule and refuses to turn it into a wait' do
+        account.enable_features!('delayed_automations')
+        path = "/api/v1/accounts/#{account.id}/automation_rules"
+        params[:event_name] = 'message_edited'
+        params[:conditions] = [{ attribute_key: 'content', filter_operator: 'contains', values: ['transfer'] }]
+        post path, headers: administrator.create_new_auth_token, params: params
+        expect(response).to have_http_status(:success)
+        rule = account.automation_rules.sole
+        expect(rule.event_name).to eq('message_edited')
+
+        patch "#{path}/#{rule.id}", headers: administrator.create_new_auth_token, params: { execution_delay: 10 }
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(rule.reload.execution_delay).to be_nil
+      end
+
       it 'processes invalid query operator' do
         expect(account.automation_rules.count).to eq(0)
         params[:conditions] << {

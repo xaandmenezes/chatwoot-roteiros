@@ -123,6 +123,23 @@ describe('#ConversationAPI', () => {
       expect(formPayload.get('is_voice_message')).toBeNull();
     });
 
+    it('identifies the recorded files in a mixed audio payload', () => {
+      const files = ['uploaded.ogg', 'recorded.ogg', 'also-recorded.ogg'].map(
+        name => new File(['audio'], name, { type: 'audio/ogg' })
+      );
+      const formPayload = buildCreatePayload({
+        files,
+        voiceMessageAttachmentIndices: [1, 2],
+      });
+
+      expect(formPayload.getAll('attachments[]')).toEqual(files);
+      expect(formPayload.getAll('voice_message_attachment_indices[]')).toEqual([
+        '1',
+        '2',
+      ]);
+      expect(formPayload.get('is_voice_message')).toBeNull();
+    });
+
     it('appends the forwarded email fields to the form payload', () => {
       const formPayload = buildCreatePayload({
         message: 'Forwarding this',

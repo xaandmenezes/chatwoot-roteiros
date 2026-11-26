@@ -110,6 +110,7 @@ class Attachment < ApplicationRecord
       {
         # Resolve via the configured Active Storage route so proxy setups (S3/CORS) are honoured.
         data_url: inline_audio_url,
+        is_voice_message: meta&.[]('is_voice_message') == true,
         transcribed_text: meta&.[]('transcribed_text') || ''
       }
     )

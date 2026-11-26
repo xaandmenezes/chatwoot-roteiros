@@ -47,6 +47,20 @@ describe('ContactConversationLink', () => {
     expect(wrapper.find('a').attributes('href')).toBe('/conversations/11');
   });
 
+  it('puts the day before the month in Brazilian Portuguese', async () => {
+    const wrapper = mountComponent();
+    const { $i18n } = wrapper.vm;
+    const previousLocale = $i18n.locale;
+    try {
+      $i18n.locale = 'pt_BR';
+      await wrapper.vm.$nextTick();
+      expect(wrapper.text()).toContain('14 de nov. de 2023');
+    } finally {
+      $i18n.locale = previousLocale;
+      wrapper.unmount();
+    }
+  });
+
   it('labels the newer direction', () => {
     const wrapper = mountComponent({ direction: 'newer' });
 

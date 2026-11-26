@@ -14,6 +14,7 @@ import ContactEmptyState from 'dashboard/components-next/Contacts/EmptyState/Con
 import Spinner from 'dashboard/components-next/spinner/Spinner.vue';
 import ContactsList from 'dashboard/components-next/Contacts/Pages/ContactsList.vue';
 import ContactsBulkActionBar from '../components/ContactsBulkActionBar.vue';
+import UmblerLabelSync from '../components/UmblerLabelSync.vue';
 import Dialog from 'dashboard/components-next/dialog/Dialog.vue';
 import BulkActionsAPI from 'dashboard/api/bulkActions';
 
@@ -360,6 +361,24 @@ const fetchContactsBasedOnContext = async (page, options = {}) => {
 const onPageChange = page =>
   fetchContactsBasedOnContext(page, { clearSelection: false });
 
+const refreshAfterLabelSync = ref(false);
+const handleLabelSync = () => {
+  if (searchQuery.value || isActiveView.value) return;
+  if (
+    activeLabel.value ||
+    activeSegment.value?.query ||
+    hasAppliedFilters.value
+  ) {
+    refreshAfterLabelSync.value = true;
+  }
+};
+
+watch([refreshAfterLabelSync, isFetchingList], ([needsRefresh, fetching]) => {
+  if (!needsRefresh || fetching) return;
+  refreshAfterLabelSync.value = false;
+  fetchContactsBasedOnContext(pageNumber.value, { clearSelection: false });
+});
+
 const assignLabels = async labels => {
   if (!labels.length || !selectedContactIds.value.length) {
     return;
@@ -551,6 +570,10 @@ onMounted(async () => {
       @clear-filters="fetchContacts"
       @load-more="loadMoreSearchResults"
     >
+      <template #label-sync>
+        <UmblerLabelSync @labels-changed="handleLabelSync" />
+      </template>
+
       <div
         v-if="isFetchingList && !(isSearchView && hasContacts)"
         class="flex items-center justify-center py-10 text-n-slate-11"

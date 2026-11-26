@@ -84,7 +84,9 @@
       "CUSTOM_ATTRIBUTES": "Custom attributes"
     },
     "CUSTOM_VIEWS": {
+      "TEAM_FOLDER": "{name} (team)",
       "ADD": {
+        "SHARE_WITH_TEAM": "Share this folder with everyone in this account",
         "TITLE": "Do you want to save this filter?",
         "LABEL": "Name this filter",
         "PLACEHOLDER": "Name your filter to refer it later.",
@@ -101,6 +103,7 @@
         }
       },
       "EDIT": {
+        "ERROR_MESSAGE": "Could not update the folder.",
         "EDIT_BUTTON": "Edit folder"
       },
       "DELETE": {

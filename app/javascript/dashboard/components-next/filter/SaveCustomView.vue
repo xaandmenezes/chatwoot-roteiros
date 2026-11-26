@@ -5,11 +5,13 @@ import { useAlert } from 'dashboard/composables';
 import { CONTACTS_EVENTS } from 'dashboard/helper/AnalyticsHelper/events';
 import { vOnClickOutside } from '@vueuse/components';
 import { useTrack } from 'dashboard/composables';
+import Checkbox from 'next/checkbox/Checkbox.vue';
 import NextButton from 'next/button/Button.vue';
 import NextInput from 'dashboard/components-next/input/Input.vue';
 
 export default {
   components: {
+    Checkbox,
     NextButton,
     NextInput,
   },
@@ -17,6 +19,7 @@ export default {
     onClickOutside: vOnClickOutside,
   },
   props: {
+    canShare: { type: Boolean, default: false },
     filterType: {
       type: Number,
       default: 0,
@@ -36,7 +39,7 @@ export default {
   },
   data() {
     return {
-      show: true,
+      shareWithTeam: false,
       name: '',
     };
   },
@@ -68,6 +71,9 @@ export default {
           name: this.name,
           filter_type: this.filterType,
           query: this.customViewsQuery,
+          ...(this.canShare && this.filterType === 0 && this.shareWithTeam
+            ? { visibility: 'team' }
+            : {}),
         });
         this.alertMessage =
           this.filterType === 0
@@ -78,16 +84,16 @@ export default {
         useTrack(CONTACTS_EVENTS.SAVE_FILTER, {
           type: this.filterType === 0 ? 'folder' : 'segment',
         });
+        this.openLastSavedItem();
       } catch (error) {
-        const errorMessage = error?.message;
         this.alertMessage =
-          errorMessage || this.filterType === 0
-            ? errorMessage
-            : this.$t('FILTER.CUSTOM_VIEWS.ADD.API_SEGMENTS.ERROR_MESSAGE');
+          error?.message ||
+          (this.filterType === 0
+            ? this.$t('FILTER.CUSTOM_VIEWS.ADD.API_FOLDERS.ERROR_MESSAGE')
+            : this.$t('FILTER.CUSTOM_VIEWS.ADD.API_SEGMENTS.ERROR_MESSAGE'));
       } finally {
         useAlert(this.alertMessage);
       }
-      this.openLastSavedItem();
     },
   },
 };
@@ -108,10 +114,19 @@ export default {
       <NextInput
         v-model="name"
         :placeholder="$t('FILTER.CUSTOM_VIEWS.ADD.PLACEHOLDER')"
-        :message="v$.name.$error && $t('FILTER.CUSTOM_VIEWS.ADD.ERROR_MESSAGE')"
-        :message-type="v$.name.$error && 'error'"
+        :message="
+          v$.name.$error ? $t('FILTER.CUSTOM_VIEWS.ADD.ERROR_MESSAGE') : ''
+        "
+        :message-type="v$.name.$error ? 'error' : 'info'"
         @blur="v$.name.$touch"
       />
+      <label
+        v-if="canShare && filterType === 0"
+        class="flex items-center gap-2 text-sm text-n-slate-12"
+      >
+        <Checkbox v-model="shareWithTeam" />
+        {{ $t('FILTER.CUSTOM_VIEWS.ADD.SHARE_WITH_TEAM') }}
+      </label>
       <div class="flex flex-row justify-end w-full gap-2">
         <NextButton faded slate sm @click.prevent="onClose">
           {{ $t('FILTER.CUSTOM_VIEWS.ADD.CANCEL_BUTTON') }}

@@ -212,6 +212,9 @@ Rails.application.routes.draw do
                 member do
                   post :translate
                   post :retry
+                  post :edit_content
+                  post :delete_for_everyone
+                  post :delete_only_in_chatwoot
                 end
               end
               resource :contact_info_request, only: [:show, :create]
@@ -274,6 +277,7 @@ Rails.application.routes.draw do
               resource :enrichment, only: [:create] if ChatwootApp.enterprise?
             end
           end
+          resource :umbler_label_sync, only: [:show, :create]
           resources :contacts, only: [:index, :show, :update, :create, :destroy] do
             collection do
               get :active
@@ -756,6 +760,7 @@ Rails.application.routes.draw do
   get 'webhooks/instagram', to: 'webhooks/instagram#verify'
   post 'webhooks/instagram', to: 'webhooks/instagram#events'
   post 'webhooks/tiktok', to: 'webhooks/tiktok#events'
+  post 'webhooks/ryze', to: 'webhooks/ryze#events'
   post 'webhooks/shopify/accounts/:account_id', to: 'webhooks/shopify#events'
   post 'webhooks/stripe_app', to: 'webhooks/stripe_app#events'
   post 'webhooks/shopify', to: 'webhooks/shopify#events'

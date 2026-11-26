@@ -17,6 +17,13 @@ module Enterprise::Message
     end
   end
 
+  def mark_deleted_by_agent!(actor:, remote_ip: nil, **)
+    with_lock do
+      record_deletion_audit!(actor, remote_ip) unless deleted
+      super
+    end
+  end
+
   def push_event_data
     data = super
     data[:call] = call.push_event_data if content_type == 'voice_call' && call.present?
@@ -30,6 +37,19 @@ module Enterprise::Message
   end
 
   private
+
+  def record_deletion_audit!(actor, remote_ip)
+    context = {
+      'content' => content,
+      'conversation_id' => conversation_id,
+      'display_id' => conversation.display_id,
+      'inbox_id' => inbox_id,
+      'sender_type' => sender_type,
+      'sender_id' => sender_id
+    }
+    Enterprise::AuditLog.create!(auditable: self, action: 'destroy', user: actor, associated: account,
+                                 remote_address: remote_ip, audited_changes: context)
+  end
 
   def validate_anonymous_caller_reply
     return if private? || voice_call? || (!outgoing? && !template?)
