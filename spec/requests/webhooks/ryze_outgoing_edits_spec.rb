@@ -33,12 +33,21 @@ RSpec.describe 'Ryze outgoing edit confirmations', type: :request do
 
   it 'updates the same bound outgoing message and clears only the confirmed edit claim' do
     claim = Ryze::EditClaim.new(original.id)
-    expect(claim.acquire('depois')).to be_truthy
+    expect(claim.acquire('depois', original: original)).to be_truthy
     expect { confirm }.not_to change(Message, :count)
     expect(response).to have_http_status(:ok)
     expect(original.reload).to have_attributes(content: 'depois', content_attributes: include('edited' => true))
     expect(original.additional_attributes.fetch('ryze_edited_at')).to eq(revision.utc.iso8601(9))
-    expect(claim.acquire('again')).to be_truthy
+    expect(claim.acquire('again', original: original)).to be_truthy
+  end
+
+  it 'skips the provider lookup when the webhook already confirmed the pending edit' do
+    claim = Ryze::EditClaim.new(original.id)
+    claim.acquire('depois', original: original)
+    confirm
+    Ryze::ConfirmOutgoingEditJob.perform_now(original.id, claim.token, revision.to_i)
+    expect(WebMock).not_to have_requested(:get, %r{/chat/status/})
+    expect(original.reload.content).to eq('depois')
   end
 
   it 'preserves a newer revision across delayed and repeated confirmations' do
@@ -49,6 +58,36 @@ RSpec.describe 'Ryze outgoing edit confirmations', type: :request do
       confirm(content: 'atrasada', at: revision - 3.seconds)
     end.not_to(change { original.reload.updated_at })
     expect(original.content).to eq('depois')
+  end
+
+  it 'keeps delayed signed events in provider order after a readback with no provider timestamp' do
+    submitted_at = Time.current.utc.change(usec: 500_000)
+    claim = Ryze::EditClaim.new(original.id)
+    claim.acquire('snapshot', original: original)
+    provider = instance_double(Ryze::EditProvider, text: 'snapshot')
+    allow(Ryze::EditProvider).to receive(:new).and_return(provider)
+
+    Ryze::ConfirmOutgoingEditJob.perform_now(original.id, claim.token, submitted_at.to_i)
+    confirm(content: 'older webhook', at: submitted_at - 2.seconds)
+    expect(original.reload.content).to eq('snapshot')
+
+    # Ryze can report a later edit in the same second with whole-second precision.
+    confirm(content: 'signed correction', at: submitted_at.change(usec: 0))
+    expect(original.reload.content).to eq('signed correction')
+  end
+
+  it 'advances the previous signed revision when the command shares its timestamp' do
+    original
+    confirm(content: 'previous edit', at: revision)
+    expect(original.reload.content).to eq('previous edit')
+    claim = Ryze::EditClaim.new(original.id)
+    claim.acquire('next edit', original: original)
+    provider = instance_double(Ryze::EditProvider, text: 'next edit')
+    allow(Ryze::EditProvider).to receive(:new).and_return(provider)
+
+    Ryze::ConfirmOutgoingEditJob.perform_now(original.id, claim.token, revision.to_i)
+    confirm(content: 'previous edit', at: revision)
+    expect(original.reload.content).to eq('next edit')
   end
 
   it 'ignores caller-supplied IDs without a matching trusted delivery binding' do
