@@ -79,6 +79,35 @@ RSpec.describe AutomationRules::ProcessPendingExecutionJob do
     expect(conversation.reload.label_list).to be_empty
   end
 
+  it 'cancels the previous open episode after resolving and reopening a conversation' do
+    conversation.open!
+    rule.update!(conditions: [{ attribute_key: 'status', filter_operator: 'equal_to', values: ['open'] }])
+    row = pending_execution
+    conversation.update!(status: :resolved)
+    conversation.open!
+    job.perform(row.reload)
+
+    expect(row.reload).to have_attributes(status: 'skipped', skip_reason: 'episode_moved')
+    expect(conversation.reload.label_list).to be_empty
+  end
+
+  it 'preserves the awaiting-agent clock on reassignment and cancels it on an agent reply' do
+    waiting_rule = create(:automation_rule, account: account, event_name: 'message_created', execution_delay: 10,
+                                            conditions: [{ attribute_key: 'message_type', filter_operator: 'equal_to', values: ['incoming'] }])
+    conversation.update!(assignee: create(:user, account: account))
+    incoming = create(:message, account: account, conversation: conversation, message_type: :incoming)
+    row = AutomationRulePendingExecution.schedule(rule: waiting_rule, conversation: conversation.reload, message: incoming)
+    due_at = row.due_at
+    conversation.update!(assignee: create(:user, account: account))
+
+    expect(row.reload).to be_episode_current
+    expect(row.due_at).to eq(due_at)
+    create(:message, account: account, conversation: conversation, message_type: :outgoing)
+    travel_to(due_at + 1.second) { job.perform(row.reload) }
+
+    expect(row.reload).to have_attributes(status: 'skipped', skip_reason: 'episode_moved')
+  end
+
   it 'skips with conditions_changed when the conversation drifts but the episode is intact' do
     row = follow_up_execution
 

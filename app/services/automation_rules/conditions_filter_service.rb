@@ -126,7 +126,7 @@ class AutomationRules::ConditionsFilterService < FilterService
     case current_filter['attribute_type']
     when 'standard'
       if current_filter['data_type'] == 'text'
-        " LOWER(messages.#{attribute_key}) #{filter_operator_value} #{query_operator} "
+        " LOWER(#{message_text_operand(attribute_key)}) #{filter_operator_value} #{query_operator} "
       else
         " messages.#{attribute_key} #{filter_operator_value} #{query_operator} "
       end
@@ -169,6 +169,13 @@ class AutomationRules::ConditionsFilterService < FilterService
   end
 
   private
+
+  def message_text_operand(attribute_key)
+    return "messages.#{attribute_key}" unless attribute_key == 'processed_message_content' && @options.key?(:edited_content)
+
+    @filter_values[:edited_content] = @options[:edited_content]
+    ':edited_content'
+  end
 
   def captain_indexes
     @captain_indexes ||= @rule.conditions.each_index.select do |index|

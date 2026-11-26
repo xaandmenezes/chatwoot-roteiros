@@ -7,7 +7,7 @@ class Ryze::MessageEdit
     return false if metadata.fetch('ryze_edited_at', '') >= revision
 
     attributes = message.content_attributes.except('translations', 'translation_provider', 'translation_failed', 'source_language')
-    message.update!(content: content, content_attributes: attributes.merge('edited' => true),
-                    additional_attributes: metadata.merge('ryze_edited_at' => revision))
+    message.update_edited_content!(revision: revision, content: content, content_attributes: attributes.merge('edited' => true),
+                                   additional_attributes: metadata.merge('ryze_edited_at' => revision))
   end
 end

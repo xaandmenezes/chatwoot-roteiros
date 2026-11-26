@@ -51,6 +51,50 @@ RSpec.describe 'Ryze outgoing edit confirmations', type: :request do
     expect(original.content).to eq('depois')
   end
 
+  it 'runs a matching rule once per edited version despite receipts, repeated webhooks and replayed jobs' do
+    original
+    create(:automation_rule, account: account, event_name: 'message_edited',
+                             conditions: [{ attribute_key: 'content', filter_operator: 'contains', values: ['depois'] }],
+                             actions: [{ action_name: 'add_private_note', action_params: ['revisada'] }])
+
+    original.update!(status: :delivered)
+    confirm
+    confirm
+    original.reload.update!(status: :read)
+    confirm(at: revision + 1.second) # Same text, newer provider timestamp
+    confirm(content: 'outro', at: revision + 2.seconds)
+    confirm(at: revision + 3.seconds) # Returning to earlier text is a new edit
+    confirm(content: 'final', at: revision + 4.seconds)
+
+    jobs = enqueued_jobs.select { |job| job[:job] == AutomationRules::MessageEditedJob }
+    expect(jobs.length).to eq(4)
+    expect do
+      perform_enqueued_jobs(only: EventDispatcherJob) do
+        2.times { jobs.reverse_each { |job| ActiveJob::Base.execute(job) } }
+      end
+    end.not_to have_enqueued_job(AutomationRules::MessageEditedJob)
+
+    expect(conversation.messages.where(private: true).pluck(:content)).to eq(%w[revisada revisada])
+    expect(original.reload.content).to eq('final')
+  end
+
+  it 'ignores a content edit performed by an automation' do
+    rule = create(:automation_rule, account: account, event_name: 'message_edited')
+    original
+    allow(Current).to receive(:executed_by).and_return(rule)
+    expect { confirm }.not_to have_enqueued_job(AutomationRules::MessageEditedJob)
+  end
+
+  it 'skips an edit revoked before execution' do
+    create(:automation_rule, account: account, event_name: 'message_edited', conditions: [],
+                             actions: [{ action_name: 'add_private_note', action_params: ['revisada'] }])
+    original
+    confirm
+    original.reload.mark_deleted!
+    perform_enqueued_jobs(only: AutomationRules::MessageEditedJob)
+    expect(conversation.messages.where(private: true)).to be_empty
+  end
+
   it 'ignores caller-supplied IDs without a matching trusted delivery binding' do
     original.update!(additional_attributes: {})
     confirm

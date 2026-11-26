@@ -223,7 +223,7 @@ export const getFileName = (action, files = []) => {
 
 export const getDefaultConditions = eventName => {
   if (eventName === 'monitor_matched') return [];
-  if (eventName === 'message_created') {
+  if (['message_created', 'message_edited'].includes(eventName)) {
     return structuredClone(DEFAULT_MESSAGE_CREATED_CONDITION);
   }
   if (

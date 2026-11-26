@@ -172,20 +172,11 @@ export function useAutomation(startValue = null) {
       'contact_custom_attribute',
     ]);
 
-    [
-      'message_created',
-      'conversation_created',
-      'conversation_updated',
-      'conversation_opened',
-      'conversation_resolved',
-      'monitor_matched',
-    ].forEach(eventToUpdate => {
-      const standardConditions = automationTypes[
-        eventToUpdate
-      ].conditions.filter(
+    Object.values(automationTypes).forEach(eventType => {
+      const standardConditions = eventType.conditions.filter(
         c => !c.customAttributeType && !CUSTOM_ATTR_HEADER_KEYS.has(c.key)
       );
-      automationTypes[eventToUpdate].conditions = [
+      eventType.conditions = [
         ...standardConditions,
         ...manifestedCustomAttributes,
       ];

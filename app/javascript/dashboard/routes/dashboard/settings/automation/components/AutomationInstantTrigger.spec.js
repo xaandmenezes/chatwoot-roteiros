@@ -2,6 +2,8 @@ import { computed, defineComponent, h, nextTick, reactive } from 'vue';
 import { mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import { getDefaultConditions } from 'dashboard/helper/automationHelper';
+import ptBR from 'dashboard/i18n/locale/pt_BR/automation.json';
+import { AUTOMATION_RULE_EVENTS } from '../constants';
 import AutomationInstantTrigger from './AutomationInstantTrigger.vue';
 
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: key => key }) }));
@@ -12,6 +14,30 @@ const filterKeysByEvent = {
 };
 
 describe('AutomationInstantTrigger', () => {
+  it('offers the Portuguese edit trigger and emits the API event when selected', async () => {
+    const wrapper = mount(AutomationInstantTrigger, {
+      props: {
+        events: AUTOMATION_RULE_EVENTS.map(({ key, value }) => ({
+          key,
+          value: ptBR.AUTOMATION.EVENTS[value],
+        })),
+        eventName: 'message_created',
+        conditions: [],
+        filterTypes: [],
+        appendNewCondition: vi.fn(),
+        removeFilter: vi.fn(),
+        onEventChange: vi.fn(),
+      },
+      global: { mocks: { $t: key => key }, stubs: { NextButton: true } },
+    });
+
+    expect(wrapper.get('option[value="message_edited"]').text()).toBe(
+      'Mensagem editada'
+    );
+    await wrapper.get('select').setValue('message_edited');
+    expect(wrapper.emitted('update:eventName')).toEqual([['message_edited']]);
+  });
+
   it('switches to an event that lacks the current condition without breaking the condition row', async () => {
     const errors = [];
     const automation = reactive({

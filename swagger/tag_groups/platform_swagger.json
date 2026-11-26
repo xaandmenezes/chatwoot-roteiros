@@ -1102,11 +1102,12 @@
           },
           "event_name": {
             "type": "string",
-            "description": "Automation Rule event, on which we call the actions(conversation_created, conversation_updated, message_created)",
+            "description": "Event that triggers the automation rule",
             "enum": [
               "conversation_created",
               "conversation_updated",
-              "message_created"
+              "message_created",
+              "message_edited"
             ],
             "example": "message_created"
           },
@@ -5607,7 +5608,8 @@
               "conversation_created",
               "conversation_updated",
               "conversation_resolved",
-              "message_created"
+              "message_created",
+              "message_edited"
             ],
             "example": "message_created",
             "description": "The event when you want to execute the automation actions"
