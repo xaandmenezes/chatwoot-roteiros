@@ -399,11 +399,10 @@ const componentToRender = computed(() => {
 });
 
 const shouldShowContextMenu = computed(() => {
-  return !props.contentAttributes?.isUnsupported;
-});
-
-const isBubble = computed(() => {
-  return props.messageType !== MESSAGE_TYPES.ACTIVITY;
+  return (
+    props.messageType !== MESSAGE_TYPES.ACTIVITY &&
+    !props.contentAttributes?.isUnsupported
+  );
 });
 
 const isMessageDeleted = computed(() => {
@@ -711,26 +710,28 @@ provideMessageContext({
         :delivery-unconfirmed="deliveryUnconfirmed"
         @retry="emit('retry')"
       />
-    </div>
-    <div v-if="shouldShowContextMenu" class="context-menu-wrap">
-      <ContextMenu
-        v-if="isBubble"
-        :context-menu-position="contextMenuPosition"
-        :is-open="showContextMenu"
-        :enabled-options="contextMenuEnabledOptions"
-        :message="payloadForContextMenu"
-        :hide-button="!contextMenuEnabledOptions.edit"
-        @open="openContextMenu"
-        @close="closeContextMenu"
-        @reply-to="handleReplyTo"
-        @forward-email="openForwardEmail"
-      />
-      <ForwardEmailPanel
-        v-if="showForwardEmail"
-        :x="forwardEmailPosition.x"
-        :y="forwardEmailPosition.y"
-        @close="showForwardEmail = false"
-      />
+      <div
+        v-if="shouldShowContextMenu"
+        class="[grid-area:bubble] self-start justify-self-start"
+      >
+        <ContextMenu
+          :context-menu-position="contextMenuPosition"
+          :is-open="showContextMenu"
+          :enabled-options="contextMenuEnabledOptions"
+          :message="payloadForContextMenu"
+          :hide-button="!contextMenuEnabledOptions.edit"
+          @open="openContextMenu"
+          @close="closeContextMenu"
+          @reply-to="handleReplyTo"
+          @forward-email="openForwardEmail"
+        />
+        <ForwardEmailPanel
+          v-if="showForwardEmail"
+          :x="forwardEmailPosition.x"
+          :y="forwardEmailPosition.y"
+          @close="showForwardEmail = false"
+        />
+      </div>
     </div>
   </div>
 </template>
