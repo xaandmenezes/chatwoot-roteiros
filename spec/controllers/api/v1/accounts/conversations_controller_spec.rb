@@ -398,6 +398,20 @@ RSpec.describe 'Conversations API', type: :request do
         expect(JSON.parse(response.body, symbolize_names: true)[:id]).to eq(conversation.display_id)
       end
 
+      it 'opens the thread with the retained text and customer deletion notice for an inbox agent' do
+        create(:inbox_member, user: agent, inbox: conversation.inbox)
+        message = create(:message, conversation: conversation, account: account, content: 'Retained text')
+        message.mark_deleted!(by_customer: true)
+
+        get "/api/v1/accounts/#{account.id}/conversations/#{conversation.display_id}", headers: agent.create_new_auth_token, as: :json
+
+        expect(response).to have_http_status(:ok)
+        expect(response.parsed_body.fetch('messages').sole).to include(
+          'id' => message.id, 'content' => 'Retained text', 'processed_message_content' => 'Retained text',
+          'content_attributes' => include('deleted' => true, 'deleted_by_customer' => true)
+        )
+      end
+
       it 'includes imported contact labels when opening a conversation directly' do
         tag = ActsAsTaggableOn::Tag.create!(name: 'direct-insta')
         conversation.contact.taggings.create!(tag: tag, context: 'labels')
@@ -425,6 +439,18 @@ RSpec.describe 'Conversations API', type: :request do
     context 'when it is an authenticated bot' do
       let(:agent_bot) { create(:agent_bot, account: account) }
       let(:team) { create(:team, account: account) }
+
+      it 'keeps the customer-deleted text out of the conversation response for a bot' do
+        message = create(:message, conversation: conversation, account: account, content: 'Agent-only body')
+        message.mark_deleted!(by_customer: true)
+
+        get "/api/v1/accounts/#{account.id}/conversations/#{conversation.display_id}",
+            headers: { api_access_token: agent_bot.access_token.token }, as: :json
+
+        expect(response).to have_http_status(:ok)
+        expect(response.parsed_body.fetch('messages').sole.fetch('content')).to eq(message.reload.content)
+        expect(response.body).not_to include('Agent-only body')
+      end
 
       it 'shows a team-assigned conversation' do
         conversation.update!(team: team)
