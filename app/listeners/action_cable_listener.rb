@@ -48,6 +48,12 @@ class ActionCableListener < BaseListener
     broadcast_message_event(event.data[:message], MESSAGE_UPDATED, previous_changes: event.data[:previous_changes])
   end
 
+  def message_ryze_reactions_changed(event)
+    conversation = event.data.fetch(:message).conversation
+    tokens = Ryze::ReactionRecipients.new(conversation).tokens
+    broadcast(conversation.account, tokens, event.name, event.data.fetch(:payload))
+  end
+
   def first_reply_created(event)
     message, account = extract_message_and_account(event)
     conversation = message.conversation

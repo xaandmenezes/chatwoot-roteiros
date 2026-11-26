@@ -6821,6 +6821,100 @@
         }
       }
     },
+    "/api/v1/accounts/{account_id}/conversations/{conversation_id}/messages/{message_id}/reaction": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/account_id"
+        },
+        {
+          "$ref": "#/components/parameters/conversation_id"
+        },
+        {
+          "$ref": "#/components/parameters/message_id"
+        }
+      ],
+      "post": {
+        "tags": [
+          "Messages"
+        ],
+        "operationId": "set-ryze-message-reaction",
+        "summary": "Set or remove a WhatsApp reaction in the Ryze pilot",
+        "security": [
+          {
+            "userBearerAuth": []
+          },
+          {
+            "userApiKey": []
+          }
+        ],
+        "description": "Updates the reaction of the connected WhatsApp account on an eligible message\nin the configured direct conversation. An uncertain provider response stays\npending and a later request will return the current state without resending.\n",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "emoji"
+                ],
+                "properties": {
+                  "emoji": {
+                    "type": "string",
+                    "description": "One emoji to apply or an empty string to remove the reaction"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Current confirmed state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "conversation_id",
+                    "ryze_reactions"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    },
+                    "conversation_id": {
+                      "type": "integer"
+                    },
+                    "ryze_reactions": {
+                      "$ref": "#/components/schemas/ryze_reactions"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Awaiting provider confirmation for the same message"
+          },
+          "401": {
+            "description": "Authentication or conversation access required"
+          },
+          "403": {
+            "description": "Only agents can send reactions"
+          },
+          "404": {
+            "description": "Conversation or message unavailable"
+          },
+          "422": {
+            "description": "Invalid emoji or ineligible message"
+          },
+          "502": {
+            "description": "Provider rejected the command"
+          }
+        }
+      }
+    },
     "/api/v1/accounts/{account_id}/conversations/{conversation_id}/messages/{message_id}/delete_for_everyone": {
       "parameters": [
         {
@@ -10441,6 +10535,13 @@
             "type": "object",
             "description": "The additional attributes of the message"
           },
+          "can_react": {
+            "type": "boolean",
+            "description": "Whether an agent can set the connected WhatsApp account's reaction on this message"
+          },
+          "ryze_reactions": {
+            "$ref": "#/components/schemas/ryze_reactions"
+          },
           "processed_message_content": {
             "type": [
               "string",
@@ -10472,6 +10573,61 @@
           "sender": {
             "type": "object",
             "description": "User/Agent/AgentBot object"
+          }
+        }
+      },
+      "ryze_reactions": {
+        "type": "object",
+        "required": [
+          "revision",
+          "pending",
+          "incoming",
+          "outgoing"
+        ],
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "description": "Monotonic reaction state revision for this message"
+          },
+          "pending": {
+            "type": "boolean",
+            "description": "A command for the connected WhatsApp account is awaiting confirmation"
+          },
+          "incoming": {
+            "description": "The direct WhatsApp contact's current reaction",
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "emoji": {
+                "type": "string"
+              },
+              "author": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "outgoing": {
+            "description": "The connected WhatsApp account's current reaction",
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "emoji": {
+                "type": "string"
+              },
+              "author": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
           }
         }
       },

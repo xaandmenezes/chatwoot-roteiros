@@ -432,6 +432,15 @@
         "INVALID": "Enter valid message text.",
         "UNKNOWN": "Could not confirm the edit. Check the message before trying again."
       },
+      "REACTION": {
+        "ACTION": "React on WhatsApp",
+        "CONTACT": "WhatsApp contact",
+        "ACCOUNT": "Connected WhatsApp account",
+        "AUTHOR": "{author} reacted with {emoji}",
+        "PENDING": "Waiting for WhatsApp to confirm the reaction.",
+        "FAILED": "WhatsApp could not apply the reaction.",
+        "UNKNOWN": "The reaction is unconfirmed. Check the conversation before trying again."
+      },
       "COPY": "Copy",
       "REPLY_TO": "Reply to this message",
       "FORWARD_EMAIL": "Forward email",

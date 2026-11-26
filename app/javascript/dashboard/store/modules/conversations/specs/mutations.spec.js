@@ -2,6 +2,43 @@ import { mutations } from '../index';
 import types from '../../../mutation-types';
 
 describe('#mutations', () => {
+  it('applies reaction revisions only to the loaded original and keeps removals across stale updates', () => {
+    const injected = {
+      id: 71,
+      messages: [{ id: 101, content: 'Original', conversation_id: 71 }],
+    };
+    const other = {
+      id: 72,
+      messages: [{ id: 101, content: 'Different conversation' }],
+    };
+    const state = { allConversations: [injected, other] };
+    const patch = {
+      id: 101,
+      conversation_id: 71,
+      ryze_reactions: { revision: 3, incoming: null, pending: false },
+    };
+    const older = {
+      ...patch,
+      ryze_reactions: { revision: 2, incoming: { emoji: '👍' } },
+    };
+
+    mutations[types.UPDATE_MESSAGE_RYZE_REACTIONS](state, patch);
+    mutations[types.UPDATE_MESSAGE_RYZE_REACTIONS](state, older);
+    mutations[types.ADD_MESSAGE](state, {
+      ...older,
+      content: 'Updated original',
+    });
+    mutations[types.SET_MISSING_MESSAGES](state, {
+      id: 71,
+      data: [{ ...older, content: 'Updated original' }],
+    });
+
+    expect(injected.messages).toEqual([
+      { ...patch, content: 'Updated original' },
+    ]);
+    expect(other.messages[0].ryze_reactions).toBeUndefined();
+  });
+
   describe('#UPDATE_MESSAGE_CALL_STATUS', () => {
     it('does nothing if conversation is not found', () => {
       const state = { allConversations: [] };

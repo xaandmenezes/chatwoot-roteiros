@@ -53,6 +53,17 @@ const preserveConversationMessageState = (
   dataFetched: existingConversation.dataFetched,
 });
 
+const preserveNewerReactions = (message, previous) => {
+  const reactions = previous?.ryze_reactions;
+  if (
+    previous?.id === message.id &&
+    reactions?.revision > (message.ryze_reactions?.revision ?? 0)
+  ) {
+    return { ...message, ryze_reactions: reactions };
+  }
+  return message;
+};
+
 // mutations
 export const mutations = {
   [types.SET_ALL_CONVERSATION](_state, conversationList) {
@@ -139,7 +150,16 @@ export const mutations = {
   [types.SET_MISSING_MESSAGES](_state, { id, data }) {
     const [chat] = _state.allConversations.filter(c => c.id === id);
     if (!chat) return;
-    chat.messages = data;
+    const previousMessages = new Map(
+      (chat.messages ?? [])
+        .filter(message => message.ryze_reactions)
+        .map(message => [message.id, message])
+    );
+    chat.messages = previousMessages.size
+      ? data.map(message =>
+          preserveNewerReactions(message, previousMessages.get(message.id))
+        )
+      : data;
   },
 
   [types.SET_CHAT_DATA_FETCHED](_state, conversationId) {
@@ -311,7 +331,10 @@ export const mutations = {
         return;
       }
 
-      chat.messages[pendingMessageIndex] = message;
+      chat.messages[pendingMessageIndex] = preserveNewerReactions(
+        message,
+        existingMessage
+      );
     } else {
       chat.messages.push(message);
       chat.timestamp = message.created_at;
@@ -320,6 +343,17 @@ export const mutations = {
       if (selectedChatId === conversationId) {
         emitter.emit(BUS_EVENTS.SCROLL_TO_MESSAGE);
       }
+    }
+  },
+  [types.UPDATE_MESSAGE_RYZE_REACTIONS](_state, payload) {
+    const chat = getConversationById(_state)(payload.conversation_id);
+    const message = chat?.messages?.find(item => item.id === payload.id);
+    const reactions = payload.ryze_reactions;
+    if (
+      message &&
+      reactions?.revision > (message.ryze_reactions?.revision ?? 0)
+    ) {
+      message.ryze_reactions = reactions;
     }
   },
 

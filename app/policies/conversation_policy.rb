@@ -26,7 +26,9 @@ class ConversationPolicy < ApplicationPolicy
   end
 
   def inbox_access?
-    user.inboxes.where(account_id: account&.id).exists?(id: record.inbox_id)
+    user_context.fetch(:inbox_access) do
+      user.inboxes.where(account_id: account&.id).exists?(id: record.inbox_id)
+    end
   end
 
   def team_access?
@@ -40,7 +42,9 @@ class ConversationPolicy < ApplicationPolicy
   end
 
   def participant?
-    record.conversation_participants.exists?(user_id: user.id)
+    user_context.fetch(:conversation_participant) do
+      record.conversation_participants.exists?(user_id: user.id)
+    end
   end
 end
 

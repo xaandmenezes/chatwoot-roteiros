@@ -213,6 +213,7 @@ Rails.application.routes.draw do
                   post :translate
                   post :retry
                   post :edit_content
+                  post :reaction
                   post :delete_for_everyone
                   post :delete_only_in_chatwoot
                 end

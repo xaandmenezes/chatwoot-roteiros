@@ -46,6 +46,7 @@ import WhatsappFlowResponseBubble from './bubbles/WhatsappFlowResponse.vue';
 import WhatsappReferral from './bubbles/Text/WhatsappReferral.vue';
 
 import MessageError from './MessageError.vue';
+import MessageReactions from './MessageReactions.vue';
 import ForwardEmailPanel from './forward/ForwardEmailPanel.vue';
 import ForwardedEmailBanner from './forward/ForwardedEmailBanner.vue';
 import ContextMenu from 'dashboard/modules/conversations/components/MessageContextMenu.vue';
@@ -123,6 +124,8 @@ const props = defineProps({
   ryzeDeleteScopes: { type: Boolean, default: false },
   canEditContent: { type: Boolean, default: false },
   ryzeDeliveryPending: { type: Boolean, default: false },
+  canReact: { type: Boolean, default: false },
+  ryzeReactions: { type: Object, default: null },
   hasPendingFiles: { type: Boolean, default: false },
   call: { type: Object, default: null }, // eslint-disable-line vue/no-unused-properties
   content: { type: String, default: null },
@@ -703,7 +706,27 @@ provideMessageContext({
           :referral="contentAttributes.referral"
         />
         <ForwardedEmailBanner v-if="isForwardedEmail" />
-        <Component :is="componentToRender" />
+        <div
+          v-if="
+            !props.private &&
+            !contentAttributes.deleted &&
+            (canReact || ryzeReactions)
+          "
+          class="flex flex-col min-w-0"
+          :class="
+            orientation === ORIENTATION.RIGHT ? 'items-end' : 'items-start'
+          "
+        >
+          <Component :is="componentToRender" />
+          <MessageReactions
+            :message-id="id"
+            :conversation-id="conversationId"
+            :reactions="ryzeReactions"
+            :can-react="canReact"
+            :align-end="orientation === ORIENTATION.RIGHT"
+          />
+        </div>
+        <Component :is="componentToRender" v-else />
       </div>
       <MessageError
         v-if="
