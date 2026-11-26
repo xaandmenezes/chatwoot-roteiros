@@ -44,6 +44,7 @@ class Message < ApplicationRecord
   include MessageFilterHelpers
   include Liquidable
   NUMBER_OF_PERMITTED_ATTACHMENTS = 15
+  INCOMING_ATTACHMENT_FINGERPRINT_KEY = 'incoming_attachment_fingerprint'.freeze
   BOT_SENDER_TYPES = %w[AgentBot Captain::Assistant].freeze
 
   TEMPLATE_PARAMS_SCHEMA = {
@@ -187,6 +188,15 @@ class Message < ApplicationRecord
     @token ||= inbox.channel.try(:page_access_token)
   end
 
+  def incoming_attachment_fingerprint
+    additional_attributes&.[](INCOMING_ATTACHMENT_FINGERPRINT_KEY)
+  end
+
+  def attachments_event_data
+    files = incoming_attachment_fingerprint ? attachments.sort_by(&:id) : attachments
+    files.map(&:push_event_data)
+  end
+
   def push_event_data
     data = attributes.symbolize_keys.merge(
       created_at: created_at.to_i,
@@ -195,7 +205,7 @@ class Message < ApplicationRecord
       conversation: conversation.present? ? conversation_push_event_data : nil
     )
     data[:echo_id] = echo_id if echo_id.present?
-    data[:attachments] = attachments.map(&:push_event_data) if attachments.present?
+    data[:attachments] = attachments_event_data if attachments.present?
     merge_sender_attributes(data)
   end
 
@@ -281,7 +291,7 @@ class Message < ApplicationRecord
       sender: sender.try(:webhook_data),
       source_id: source_id
     }
-    data[:attachments] = attachments.map(&:push_event_data) if attachments.present?
+    data[:attachments] = attachments_event_data if attachments.present?
     data
   end
 
