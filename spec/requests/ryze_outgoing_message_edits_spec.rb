@@ -51,17 +51,19 @@ RSpec.describe 'Ryze outgoing message edits', type: :request do
   end
 
   it 'accepts a provider edit and waits for confirmation before changing the message' do
-    message
-    stub_verified_message
-    edit = stub_edit.to_return(body: { success: true, messageId: source_id, chatJid: jid, newContent: content }.to_json)
+    freeze_time do
+      message.update!(created_at: 899.seconds.ago)
+      stub_verified_message
+      edit = stub_edit.to_return(body: { success: true, messageId: source_id, chatJid: jid, newContent: content }.to_json)
 
-    expect { submit_edit }.not_to change(Message, :count)
+      expect { submit_edit }.not_to change(Message, :count)
 
-    expect(response).to have_http_status(:accepted)
-    expect(response.parsed_body['status']).to eq('pending')
-    expect(message.reload.content).to eq('Original text')
-    expect(message.additional_attributes.keys).to match_array(%w[ryze_outbound_message_id ryze_outbound_delivery])
-    expect(edit).to have_been_requested.once
+      expect(response).to have_http_status(:accepted)
+      expect(response.parsed_body['status']).to eq('pending')
+      expect(message.reload.content).to eq('Original text')
+      expect(message.additional_attributes.keys).to match_array(%w[ryze_outbound_message_id ryze_outbound_delivery])
+      expect(edit).to have_been_requested.once
+    end
   end
 
   it 'reopens the corrected message after a verified read when the edit webhook never arrives' do
@@ -277,12 +279,16 @@ RSpec.describe 'Ryze outgoing message edits', type: :request do
     expect(response.parsed_body['error_code']).to eq('edit_unavailable')
   end
 
-  it 'rejects messages past the local edit window before contacting the provider' do
-    message.update!(created_at: 15.minutes.ago)
-    submit_edit
+  [900, 901].each do |age|
+    it "rejects editing a message aged #{age} seconds before contacting the provider" do
+      freeze_time do
+        message.update!(created_at: age.seconds.ago)
+        submit_edit
 
-    expect(response).to have_http_status(422)
-    expect(response.parsed_body).to eq('error_code' => 'edit_expired')
+        expect(response).to have_http_status(422)
+        expect(response.parsed_body).to eq('error_code' => 'edit_expired')
+      end
+    end
   end
 
   it 'rejects messages outside the configured pilot before contacting the provider' do

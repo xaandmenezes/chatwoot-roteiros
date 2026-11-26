@@ -48,14 +48,17 @@ RSpec.describe 'Ryze pilot message deletion', type: :request do
   end
 
   it 'applies a correlated provider confirmation once to the original row' do
-    stub_status
-    revoke.to_return(body: confirmation.to_json)
-    2.times do
-      delete_message
-      expect(response).to have_http_status(:ok)
-      expect(response.parsed_body).to include('id' => message.id, 'content_attributes' => include('deleted' => true))
+    freeze_time do
+      message.update!(created_at: 899.seconds.ago)
+      stub_status
+      revoke.to_return(body: confirmation.to_json)
+      2.times do
+        delete_message
+        expect(response).to have_http_status(:ok)
+        expect(response.parsed_body).to include('id' => message.id, 'content_attributes' => include('deleted' => true))
+      end
+      expect(revoke).to have_been_requested.once
     end
-    expect(revoke).to have_been_requested.once
   end
 
   context 'when Ryze acknowledges a revoke with a different ID' do
@@ -191,14 +194,30 @@ RSpec.describe 'Ryze pilot message deletion', type: :request do
     expect(revoke).to have_been_requested.once
   end
 
-  it 'rejects the exact time boundary and a different author' do
+  it 'rejects deletion for everyone by another agent with access to the conversation' do
+    delete_message(user: other_agent)
+    expect(response).to have_http_status(:forbidden)
+  end
+
+  [900, 901].each do |age|
+    it "rejects deletion for everyone for a message aged #{age} seconds before contacting the provider" do
+      freeze_time do
+        message.update!(created_at: age.seconds.ago)
+        delete_message
+        expect(response).to have_http_status(422)
+        expect(response.parsed_body).to eq('error_code' => 'delete_expired')
+      end
+    end
+  end
+
+  it 'lets another agent delete a provider-tracked message locally at 15:01' do
     freeze_time do
-      delete_message(user: other_agent)
-      expect(response).to have_http_status(:forbidden)
-      message.update!(created_at: 15.minutes.ago)
-      delete_message
-      expect(response).to have_http_status(422)
-      expect(response.parsed_body).to eq('error_code' => 'delete_expired')
+      message.update!(created_at: 901.seconds.ago)
+      delete_message(:delete_only_in_chatwoot, user: other_agent)
+
+      expect(response).to have_http_status(:ok)
+      expect(message.reload.deleted).to be(true)
+      expect(WebMock).not_to have_requested(:delete, %r{/chat/delete/})
     end
   end
 
