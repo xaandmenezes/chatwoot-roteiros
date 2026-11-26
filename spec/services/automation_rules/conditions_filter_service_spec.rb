@@ -19,13 +19,7 @@ RSpec.describe AutomationRules::ConditionsFilterService do
 
   describe '#perform' do
     it 'matches saved conditions on a persisted legacy attribute' do
-      legacy_key = 'billing:region'
-      definition = create(:custom_attribute_definition,
-                          account: account,
-                          attribute_key: 'billing_region',
-                          attribute_model: 'conversation_attribute',
-                          attribute_display_type: 'text')
-      definition.update_column(:attribute_key, legacy_key)
+      legacy_key = create(:custom_attribute_definition, :legacy_colon_key, account: account, attribute_model: :conversation_attribute).attribute_key
       conversation.update!(custom_attributes: { legacy_key => 'West' })
       rule.update!(conditions: [
                      { attribute_key: legacy_key, custom_attribute_type: 'conversation_attribute',

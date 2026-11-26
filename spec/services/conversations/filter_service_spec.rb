@@ -489,9 +489,7 @@ describe Conversations::FilterService do
       let!(:params) { { payload: [], page: 1 } }
 
       it 'uses the persisted legacy attribute name for comparisons and missing values' do
-        legacy_key = 'billing:region'
-        definition = account.custom_attribute_definitions.find_by!(attribute_key: 'conversation_additional_information')
-        definition.update_column(:attribute_key, legacy_key)
+        legacy_key = create(:custom_attribute_definition, :legacy_colon_key, account: account, attribute_model: :conversation_attribute).attribute_key
         en_conversation_1.update!(custom_attributes: { legacy_key => 'West' })
         en_conversation_2.update!(custom_attributes: { legacy_key => 'East' })
         create(:conversation, account: account)
