@@ -73,6 +73,32 @@ describe('conversation messages', () => {
     vi.unstubAllGlobals();
   });
 
+  it('shows Brazilian 24-hour time on the message itself', async () => {
+    const wrapper = mountConversation(
+      {
+        id: 101,
+        status: 'sent',
+        message_type: 0,
+        content: 'Hello',
+        content_attributes: {},
+        conversation_id: CONVERSATION_ID,
+        created_at: new Date(2021, 10, 25, 23, 9).getTime() / 1000,
+        attachments: [],
+      },
+      { TextBubble: false }
+    );
+    const { $i18n } = wrapper.vm;
+    const previousLocale = $i18n.locale;
+    try {
+      $i18n.locale = 'pt_BR';
+      await wrapper.vm.$nextTick();
+      expect(wrapper.get('time').text()).toMatch(/25 de nov.*2021.*23:09/);
+    } finally {
+      $i18n.locale = previousLocale;
+      wrapper.unmount();
+    }
+  });
+
   it.each([
     {
       name: 'an uncaptioned microphone recording',

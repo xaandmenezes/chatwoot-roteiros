@@ -1,14 +1,13 @@
 <script setup>
 import { computed } from 'vue';
-import { messageTimestamp } from 'shared/helpers/timeHelper';
+import { useExactTimestamp } from 'shared/composables/useExactTimestamp';
 import BaseBubble from './Base.vue';
 import { useMessageContext } from '../provider.js';
 
 const { content, createdAt } = useMessageContext();
+const inlineTimestamp = useExactTimestamp({ omitCurrentYear: true });
 
-const readableTime = computed(() =>
-  messageTimestamp(createdAt.value, 'LLL d, h:mm a')
-);
+const readableTime = computed(() => inlineTimestamp(createdAt.value));
 </script>
 
 <template>
