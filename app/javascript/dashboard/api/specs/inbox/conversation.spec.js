@@ -61,6 +61,37 @@ describe('#ConversationAPI', () => {
       });
     });
 
+    it('sends the WhatsApp scope with the list, metadata, and filter', () => {
+      const filters = { whatsappScope: 'groups' };
+      conversationAPI.get(filters);
+      conversationAPI.meta(filters);
+      conversationAPI.filter({
+        ...filters,
+        queryData: { payload: [] },
+        page: 1,
+      });
+
+      expect(axiosMock.get).toHaveBeenCalledWith(
+        '/api/v1/conversations',
+        expect.objectContaining({
+          params: expect.objectContaining({ whatsapp_scope: 'groups' }),
+        })
+      );
+      expect(axiosMock.get).toHaveBeenCalledWith(
+        '/api/v1/conversations/meta',
+        expect.objectContaining({
+          params: expect.objectContaining({ whatsapp_scope: 'groups' }),
+        })
+      );
+      expect(axiosMock.post).toHaveBeenCalledWith(
+        '/api/v1/conversations/filter',
+        { payload: [] },
+        expect.objectContaining({
+          params: expect.objectContaining({ whatsapp_scope: 'groups' }),
+        })
+      );
+    });
+
     it('#search', () => {
       conversationAPI.search({
         q: 'leads',

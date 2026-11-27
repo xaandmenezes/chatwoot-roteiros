@@ -232,6 +232,12 @@ const labels = useMapGetter('labels/getLabelsOnSidebar');
 const allUnreadCount = useMapGetter(
   'conversationUnreadCounts/getAllUnreadCount'
 );
+const whatsAppGroupsUnreadCount = useMapGetter(
+  'conversationUnreadCounts/getWhatsAppGroupsUnreadCount'
+);
+const hasWhatsAppGroupsInbox = computed(() =>
+  inboxes.value.some(inbox => inbox.whatsapp_groups_enabled)
+);
 const getInboxUnreadCount = useMapGetter(
   'conversationUnreadCounts/getInboxUnreadCount'
 );
@@ -401,6 +407,18 @@ const menuItems = computed(() => {
           activeOn: ['inbox_conversation'],
           to: accountScopedRoute('home'),
         },
+        ...(hasWhatsAppGroupsInbox.value
+          ? [
+              {
+                name: 'WhatsAppGroups',
+                label: t('SIDEBAR.WHATSAPP_GROUPS'),
+                icon: 'i-lucide-users-round',
+                badgeCount: whatsAppGroupsUnreadCount.value,
+                activeOn: ['conversation_through_whatsapp_groups'],
+                to: accountScopedRoute('whatsapp_groups'),
+              },
+            ]
+          : []),
         {
           name: 'Mentions',
           label: t('SIDEBAR.MENTIONED_CONVERSATIONS'),

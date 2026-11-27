@@ -10,6 +10,7 @@ import { CONTENT_TYPES } from 'dashboard/components-next/message/constants.js';
 
 const state = {
   allConversations: [],
+  authorizedWhatsAppGroups: {},
   attachments: {},
   listLoadingStatus: true,
   chatStatusFilter: wootConstants.STATUS_TYPE.OPEN,
@@ -18,6 +19,7 @@ const state = {
   selectedChatId: null,
   appliedFilters: [],
   appliedFiltersSortBy: null,
+  appliedFiltersWhatsAppScope: undefined,
   contextMenuChatId: null,
   conversationParticipants: [],
   conversationLastSeen: null,
@@ -92,6 +94,7 @@ export const mutations = {
     _state.allConversations = newAllConversations;
   },
   [types.REPLACE_CONVERSATION_LIST](_state, conversationList) {
+    _state.authorizedWhatsAppGroups = {};
     const selectedConversation = getConversationById(_state)(
       _state.selectedChatId
     );
@@ -114,6 +117,7 @@ export const mutations = {
   },
   [types.EMPTY_ALL_CONVERSATION](_state) {
     _state.allConversations = [];
+    _state.authorizedWhatsAppGroups = {};
     _state.selectedChatId = null;
     _state.removedRyzeEchoIds = {};
   },
@@ -419,7 +423,14 @@ export const mutations = {
     }
   },
 
+  [types.CONFIRM_WHATSAPP_GROUP_ACCESS](_state, ids) {
+    ids.forEach(id => {
+      _state.authorizedWhatsAppGroups[id] = true;
+    });
+  },
+
   [types.DELETE_CONVERSATION](_state, conversationId) {
+    delete _state.authorizedWhatsAppGroups?.[conversationId];
     _state.allConversations = _state.allConversations.filter(
       c => c.id !== conversationId
     );
@@ -560,7 +571,11 @@ export const mutations = {
     _state.appliedFiltersSortBy = sortBy;
   },
 
+  [types.SET_CONVERSATION_FILTERS_WHATSAPP_SCOPE](_state, scope) {
+    _state.appliedFiltersWhatsAppScope = scope;
+  },
   [types.CLEAR_CONVERSATION_FILTERS](_state) {
+    _state.appliedFiltersWhatsAppScope = undefined;
     _state.appliedFilters = [];
     _state.appliedFiltersSortBy = null;
   },

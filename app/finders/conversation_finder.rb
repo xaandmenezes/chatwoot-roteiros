@@ -63,6 +63,7 @@ class ConversationFinder
     set_assignee_type
 
     find_all_conversations
+    @conversations = Ryze::GroupConversations.filter(@conversations, account: current_account, scope: params[:whatsapp_scope])
     filter_by_status unless params[:q]
     filter_by_team
     filter_by_labels
@@ -198,7 +199,7 @@ class ConversationFinder
 
   def conversations
     @conversations = conversations_base_query
-    @conversations = Conversations::SortService.apply(@conversations, params[:sort_by])
+    @conversations = Conversations::SortService.apply(@conversations, params[:sort_by], stable: params[:whatsapp_scope].present?)
 
     if params[:updated_within].present?
       @conversations.where('conversations.updated_at > ?', Time.zone.now - params[:updated_within].to_i.seconds)

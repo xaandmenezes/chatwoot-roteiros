@@ -36,8 +36,8 @@ class ConversationApi extends ApiClient {
     );
   }
 
-  getUnreadCounts() {
-    return axios.get(`${this.url}/unread_counts`);
+  getUnreadCounts(params = {}) {
+    return axios.get(`${this.url}/unread_counts`, { params });
   }
 }
 

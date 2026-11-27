@@ -177,6 +177,27 @@ describe ActionCableListener do
       )
     end
 
+    it 'includes the group classification with messages from the enabled Ryze inbox' do
+      api_inbox = create(:channel_api, account: account).inbox
+      jid = '120363000000000001@g.us'
+      group_contact = create(:contact, account: account, identifier: jid)
+      binding = create(:contact_inbox, inbox: api_inbox, contact: group_contact, source_id: jid)
+      group = create(:conversation, account: account, inbox: api_inbox, contact: group_contact, contact_inbox: binding)
+      group_message = create(:message, account: account, inbox: api_inbox, conversation: group, sender: group_contact)
+      allow(ActionCableBroadcastJob).to receive(:perform_later)
+
+      with_modified_env(RYZE_GROUPS_INBOX_ENABLED: 'true', RYZE_INBOX_ID: api_inbox.id.to_s) do
+        listener.message_created(Events::Base.new(event_name, Time.current, message: group_message))
+      end
+
+      expect(ActionCableBroadcastJob).to have_received(:perform_later).with(
+        [admin.pubsub_token], 'message.created', hash_including(conversation: hash_including(whatsapp_group: true))
+      ).once
+      expect(ActionCableBroadcastJob).to have_received(:perform_later).with(
+        [binding.pubsub_token], 'message.created', hash_including(conversation: hash_excluding(:whatsapp_group))
+      ).once
+    end
+
     it 'sends a Client API session the full message in the agents job' do
       api_inbox = create(:inbox, account: account, channel: create(:channel_api, account: account))
       api_conversation = create(:conversation, account: account, inbox: api_inbox)

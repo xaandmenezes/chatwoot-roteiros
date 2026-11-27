@@ -13,7 +13,10 @@ class Api::V1::Accounts::Conversations::UnreadCountsController < Api::V1::Accoun
   private
 
   def unread_counts
-    ::Conversations::UnreadCounts::Counter.new(account: Current.account, user: Current.user).perform
+    counts = ::Conversations::UnreadCounts::Counter.new(account: Current.account, user: Current.user).perform
+    return counts unless params[:whatsapp_scope] == 'inbox'
+
+    ::Conversations::UnreadCounts::WhatsappInboxCounter.new(account: Current.account, user: Current.user).perform(counts)
   end
 
   def filtered_unread_counts_enabled?

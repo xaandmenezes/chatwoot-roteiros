@@ -67,7 +67,7 @@ class Api::V1::Accounts::Conversations::ParticipantsController < Api::V1::Accoun
 
   def notify_unread_count_change
     return unless Current.account.feature_enabled?('conversation_unread_counts')
-    return unless Current.account.feature_enabled?('unread_count_for_filters')
+    return unless Current.account.feature_enabled?('unread_count_for_filters') || Ryze::GroupConversations.enabled_inbox?(@conversation.inbox)
 
     Rails.configuration.dispatcher.dispatch(CONVERSATION_UNREAD_COUNT_CHANGED, Time.zone.now, conversation: @conversation)
   end

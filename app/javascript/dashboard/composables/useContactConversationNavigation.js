@@ -109,6 +109,7 @@ export function useContactConversationNavigation() {
         ],
         // Match the chronological order of the in-thread navigation.
         sortBy: wootConstants.SORT_BY_TYPE.CREATED_AT_DESC,
+        includeAllWhatsAppConversations: true,
       })
       .catch(() => useAlert(t('CHAT_LIST.FETCH_ERROR')))
       .finally(() => {

@@ -55,6 +55,12 @@ describe('#getters', () => {
     expect(getters.getAllUnreadCount(state)).toBe(7);
   });
 
+  it('returns the number of unread WhatsApp groups', () => {
+    expect(
+      getters.getWhatsAppGroupsUnreadCount({ whatsappGroupsCount: 3 })
+    ).toBe(3);
+  });
+
   it('returns filtered unread counts', () => {
     const state = {
       allCount: 0,

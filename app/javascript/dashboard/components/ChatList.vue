@@ -52,6 +52,7 @@ import {
 } from 'dashboard/helper/permissionsHelper.js';
 import { createFiltersMatcher } from '../store/modules/conversations/helpers/filterHelpers';
 import { sortComparator } from '../store/modules/conversations/helpers';
+import { isOnOperationalInboxView } from '../store/modules/conversations/helpers/actionHelpers';
 import { CONVERSATION_EVENTS } from '../helper/AnalyticsHelper/events';
 import { ASSIGNEE_TYPE_TAB_PERMISSIONS } from 'dashboard/constants/permissions.js';
 
@@ -256,6 +257,20 @@ const conversationListPagination = computed(() => {
   return currentPage.value + 1;
 });
 
+const isWhatsAppGroupsView = computed(
+  () =>
+    props.conversationType === wootConstants.CONVERSATION_TYPE.WHATSAPP_GROUPS
+);
+
+const whatsappScope = computed(() => {
+  const { WHATSAPP_SCOPE } = wootConstants;
+  if (isWhatsAppGroupsView.value) return WHATSAPP_SCOPE.GROUPS;
+
+  return isOnOperationalInboxView(route.name)
+    ? WHATSAPP_SCOPE.INBOX
+    : undefined;
+});
+
 const conversationFilters = computed(() => {
   return {
     inboxId: props.conversationInbox ? props.conversationInbox : undefined,
@@ -265,7 +280,10 @@ const conversationFilters = computed(() => {
     page: conversationListPagination.value,
     labels: props.label ? [props.label] : undefined,
     teamId: props.teamId || undefined,
-    conversationType: props.conversationType || undefined,
+    conversationType: isWhatsAppGroupsView.value
+      ? undefined
+      : props.conversationType || undefined,
+    whatsappScope: whatsappScope.value,
   };
 });
 
@@ -277,6 +295,7 @@ const activeTeam = computed(() => {
 });
 
 const pageTitle = computed(() => {
+  if (isWhatsAppGroupsView.value) return t('SIDEBAR.WHATSAPP_GROUPS');
   if (hasAppliedFilters.value) {
     return t('CHAT_LIST.TAB_HEADING');
   }
@@ -430,11 +449,14 @@ function fetchSavedFilteredConversations(payload) {
     .finally(emitConversationLoaded);
 }
 
-function onApplyFilter(payload) {
+function onApplyFilter(payload, includeAllWhatsAppConversations = false) {
   payload = useSnakeCase(payload);
   showAdvancedFilters.value = false;
   store
-    .dispatch('applyConversationFilters', { filters: payload })
+    .dispatch('applyConversationFilters', {
+      filters: payload,
+      includeAllWhatsAppConversations,
+    })
     .catch(() => useAlert(t('CHAT_LIST.FETCH_ERROR')))
     .finally(emitConversationLoaded);
 }
@@ -448,7 +470,7 @@ function applyRouteFilters() {
   if (!filters) return false;
 
   store.dispatch('setConversationFilters', filters);
-  onApplyFilter(filters);
+  onApplyFilter(filters, true);
   return true;
 }
 
@@ -609,6 +631,7 @@ function resetAndFetchData() {
   store.dispatch('conversationPage/reset');
   store.dispatch('emptyAllConversations');
   store.dispatch('clearConversationFilters');
+  store.dispatch('setChatListFilters', conversationFilters.value);
   if (hasActiveFolders.value) {
     const payload = activeFolder.value.query;
     fetchSavedFilteredConversations(payload);
@@ -846,8 +869,8 @@ useEmitter(CMD_SWITCH_TAB, updateAssigneeTab);
 useEmitter(CMD_MARK_UNREAD, markAsUnread);
 
 onMounted(() => {
-  store.dispatch('setChatListFilters', conversationFilters.value);
   setFiltersFromUISettings();
+  store.dispatch('setChatListFilters', conversationFilters.value);
   store.dispatch('setChatStatusFilter', activeStatus.value);
   store.dispatch('setChatSortFilter', activeSortBy.value);
   if (!applyRouteFilters()) resetAndFetchData();
@@ -889,27 +912,22 @@ provide('assignPriority', assignPriority);
 provide('isConversationSelected', isConversationSelected);
 provide('deleteConversation', handleDelete);
 
-watch(activeTeam, () => resetAndFetchData());
-
-watch(
-  computed(() => props.conversationInbox),
-  () => resetAndFetchData()
-);
-watch(
-  computed(() => props.label),
-  () => resetAndFetchData()
-);
-watch(
-  computed(() => props.conversationType),
-  () => resetAndFetchData()
-);
-
-watch(activeFolder, (newVal, oldVal) => {
-  if (newVal !== oldVal) {
-    store.dispatch('customViews/setActiveConversationFolder', newVal || null);
-  }
-  resetAndFetchData();
+watch(activeFolder, folder => {
+  store.dispatch('customViews/setActiveConversationFolder', folder || null);
 });
+
+watch(
+  [
+    activeTeam,
+    activeFolder,
+    () => props.conversationInbox,
+    () => props.label,
+    () => props.conversationType,
+    () => props.foldersId,
+    whatsappScope,
+  ],
+  resetAndFetchData
+);
 
 watch(chatLists, () => {
   chatsOnView.value = conversationList.value;

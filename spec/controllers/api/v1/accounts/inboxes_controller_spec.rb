@@ -72,6 +72,19 @@ RSpec.describe 'Inboxes API', type: :request do
   end
 
   describe 'GET /api/v1/accounts/{account.id}/inboxes' do
+    it 'advertises group navigation only for the enabled Ryze API inbox' do
+      pilot = create(:channel_api, account: account).inbox
+      other = create(:channel_api, account: account).inbox
+
+      with_modified_env(RYZE_INBOX_ID: pilot.id.to_s, RYZE_GROUPS_INBOX_ENABLED: 'true') do
+        get "/api/v1/accounts/#{account.id}/inboxes", headers: admin.create_new_auth_token, as: :json
+
+        inboxes = response.parsed_body.fetch('payload').index_by { |item| item.fetch('id') }
+        expect(inboxes.fetch(pilot.id).fetch('whatsapp_groups_enabled')).to be(true)
+        expect(inboxes.fetch(other.id).fetch('whatsapp_groups_enabled')).to be(false)
+      end
+    end
+
     context 'when it is an unauthenticated user' do
       it 'returns unauthorized' do
         get "/api/v1/accounts/#{account.id}/inboxes"

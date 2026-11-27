@@ -3,6 +3,7 @@ import {
   MESSAGE_TYPE,
 } from 'shared/constants/messages';
 import { CONTENT_TYPES } from 'dashboard/components-next/message/constants.js';
+import wootConstants from 'dashboard/constants/globals';
 
 export const languageCode = locale => locale?.split(/[-_]/)[0];
 
@@ -89,8 +90,24 @@ export const filterByUnattended = (
     : shouldFilter;
 };
 
+export const matchesWhatsAppScope = (conversation, scope) => {
+  const { GROUPS, INBOX } = wootConstants.WHATSAPP_SCOPE;
+  const isGroup = conversation.whatsapp_group === true;
+  if (scope === GROUPS) return isGroup;
+  if (scope === INBOX) return !isGroup;
+  return true;
+};
+
 export const applyPageFilters = (conversation, filters) => {
-  const { inboxId, status, labels = [], teamId, conversationType } = filters;
+  const {
+    inboxId,
+    status,
+    labels = [],
+    teamId,
+    conversationType,
+    whatsappScope,
+  } = filters;
+  if (!matchesWhatsAppScope(conversation, whatsappScope)) return false;
   const {
     status: chatStatus,
     inbox_id: chatInboxId,
@@ -129,7 +146,8 @@ export const applyRoleFilter = (
   conversation,
   role,
   permissions,
-  currentUserId
+  currentUserId,
+  confirmedGroupAccess = false
 ) => {
   // the role === "agent" check is typically not correct on it's own
   // the backend handles this by checking the custom_role_id at the user model
@@ -145,8 +163,12 @@ export const applyRoleFilter = (
   }
 
   const conversationAssignee = conversation.meta.assignee;
-  const isUnassigned = !conversationAssignee;
-  const isAssignedToUser = conversationAssignee?.id === currentUserId;
+  const isGroupBot =
+    conversation.whatsapp_group === true &&
+    conversation.meta.assignee_type === 'AgentBot';
+  const isUnassigned = !conversationAssignee && !isGroupBot;
+  const isAssignedToUser =
+    conversationAssignee?.id === currentUserId && !isGroupBot;
 
   // Check unassigned management permission
   if (permissions.includes('conversation_unassigned_manage')) {
@@ -155,7 +177,7 @@ export const applyRoleFilter = (
 
   // Check participating conversation management permission
   if (permissions.includes('conversation_participating_manage')) {
-    return isAssignedToUser;
+    return isAssignedToUser || confirmedGroupAccess;
   }
 
   return false;

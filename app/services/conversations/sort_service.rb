@@ -19,8 +19,9 @@ class Conversations::SortService
     'sort_on_waiting_since' => %w[sort_on_waiting_since asc]
   }.with_indifferent_access.freeze
 
-  def self.apply(scope, sort_by)
+  def self.apply(scope, sort_by, stable: false)
     sort_method, sort_order = SORT_OPTIONS[sort_by] || SORT_OPTIONS[DEFAULT_SORT]
-    scope.public_send(sort_method, sort_order)
+    ordered = scope.public_send(sort_method, sort_order)
+    stable ? ordered.order(id: :desc) : ordered
   end
 end

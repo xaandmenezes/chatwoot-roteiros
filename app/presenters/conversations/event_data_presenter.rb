@@ -2,11 +2,9 @@ class Conversations::EventDataPresenter < SimpleDelegator
   def push_data
     {
       additional_attributes: additional_attributes,
-      **push_reply_state,
-      channel: inbox.try(:channel_type),
+      **push_channel_state,
       contact_inbox: contact_inbox,
       id: display_id,
-      inbox_id: inbox_id,
       messages: push_messages,
       labels: label_list,
       meta: push_meta,
@@ -23,7 +21,7 @@ class Conversations::EventDataPresenter < SimpleDelegator
 
   # Like #push_data but with message text normalized for external integrations (webhooks).
   def webhook_data
-    push_data.merge(
+    push_data.except(:whatsapp_group).merge(
       account: account.webhook_data,
       messages: webhook_push_messages
     )
@@ -49,11 +47,15 @@ class Conversations::EventDataPresenter < SimpleDelegator
     [messages.where(account_id: account_id).chat.last&.webhook_push_event_data].compact
   end
 
-  def push_reply_state
-    {
+  def push_channel_state
+    data = {
       anonymous_caller: contact_inbox&.anonymous_caller?,
-      can_reply: can_reply?
+      can_reply: can_reply?,
+      channel: inbox.try(:channel_type),
+      inbox_id: inbox_id
     }
+    data[:whatsapp_group] = Ryze::GroupConversations.group?(__getobj__) if Ryze::GroupConversations.enabled_inbox?(inbox)
+    data
   end
 
   def push_meta

@@ -29,6 +29,7 @@ module Events::Types
 
   CONVERSATION_STATUS_CHANGED = 'conversation.status_changed'
   CONVERSATION_CONTACT_CHANGED = 'conversation.contact_changed'
+  CONVERSATION_WHATSAPP_GROUP_CLASSIFICATION_CHANGED = 'conversation.whatsapp_group_classification_changed'
   CONVERSATION_UNREAD_COUNT_CHANGED = 'conversation.unread_count_changed'
   ASSIGNEE_CHANGED = 'assignee.changed'
   TEAM_CHANGED = 'team.changed'

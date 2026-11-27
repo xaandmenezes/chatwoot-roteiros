@@ -26,3 +26,11 @@ Para autoria estruturada, seria preciso confirmar a correspondência entre o eve
 1. Em uma caixa e instância de teste, use dois grupos novos com JIDs conferidos e dois participantes consentidos. Peça a A e B que enviem textos distintos no grupo A. Peça a B que cite o texto de A. Confira o corpo, a autoria exibida e o alvo da citação no painel. Mantenha o grupo B como controle.
 2. Pelo painel, cite a mensagem de A no grupo A e mencione B pela sintaxe documentada. Nos aparelhos dos dois participantes, confira que houve uma única entrega, que o trecho e o cabeçalho correspondem a A e que a menção identifica B. Confira que o grupo B ficou sem entrega.
 3. Adicione ao grupo A uma nota interna com a mesma sintaxe de menção e um marcador distinto. Confirme a nota no painel, ausência do marcador nos dois aparelhos e ausência de notificação de menção. Se a autoria da citação divergir, compare `chat.jid`, `sender` e `message.context` no evento, e os IDs de origem e de citação no Chatwoot antes de encaminhar a divergência à Ryze.
+
+## Separar os grupos no painel
+
+A opção `RYZE_GROUPS_INBOX_ENABLED` controla a seção **Grupos de WhatsApp** para a caixa API indicada por `RYZE_INBOX_ID`. O padrão é `false`. Cada conversa conserva seu ID e seu histórico. Para abrir um grupo confirmado, o agente precisa de acesso à caixa piloto e das permissões de conversa do seu perfil, inclusive ao seguir um link antigo. Destinos inconclusivos continuam na fila de atendimento.
+
+Para validar em homologação, anote os totais de um agente para a caixa com os filtros de status e responsável desejados. Defina a opção como `true`, recrie os serviços Rails e Sidekiq e recarregue o painel. Confira se a soma da lista da caixa e da lista de grupos reproduz o total anterior com os mesmos filtros. Abra um grupo por um link antigo e confira o histórico. Repita com um agente sem acesso à caixa e verifique a visibilidade da seção e dos grupos. Quando os contadores de não lidas estiverem ativos, confira um grupo e uma conversa individual com mensagens pendentes.
+
+Para reverter, defina a opção como `false`, aplique a configuração aos dois serviços e recarregue o painel. Os grupos voltam à fila da caixa. A reversão dispensa migração de conversas e limpeza manual do Redis.

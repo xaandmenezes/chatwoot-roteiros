@@ -33,6 +33,23 @@ describe('conversation count refresh races', () => {
     vi.useRealTimers();
   });
 
+  it('drops an operational count response after switching to WhatsApp groups with the same filter', () => {
+    const queryData = { payload: [] };
+    const operational = actions.onListRequestStarted(
+      {},
+      { queryData, whatsappScope: 'inbox' }
+    );
+    const groups = actions.onListRequestStarted(
+      {},
+      { queryData, whatsappScope: 'groups' }
+    );
+
+    actions.set({ commit }, { meta: { all_count: 2 }, request: groups });
+    actions.set({ commit }, { meta: { all_count: 12 }, request: operational });
+
+    expect(state.allCount).toBe(2);
+  });
+
   it('does not send a queued open-count request after filtered counts arrive', async () => {
     axios.get.mockResolvedValue({ data: { meta: { all_count: 30 } } });
     actions.get({ commit, state }, { status: 'open' });
