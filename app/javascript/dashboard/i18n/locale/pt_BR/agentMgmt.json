@@ -61,6 +61,16 @@
         "NO": "Não, Mantenha "
       }
     },
+    "INBOX_ACCESS": {
+      "TITLE": "Acesso às caixas de entrada",
+      "NONE": "Sem acesso",
+      "AGENT": "Agente",
+      "SUPERVISOR": "Supervisor",
+      "SAVE": "Aplicar",
+      "LOAD_ERROR": "Não foi possível carregar o acesso às caixas de entrada.",
+      "SAVE_SUCCESS": "Acesso à caixa de entrada atualizado.",
+      "SAVE_ERROR": "Não foi possível atualizar o acesso à caixa de entrada."
+    },
     "EDIT": {
       "TITLE": "Editar Agente",
       "FORM": {
