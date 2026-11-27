@@ -4,8 +4,8 @@ class Ryze::OutgoingMessageChange
     @event = event
   end
 
-  def perform(pilot_chat_id:)
-    return if pilot_chat_id.blank? || @event.outside_pilot?(pilot_chat_id)
+  def perform(pilot_chat_id: nil)
+    return unless Ryze::OutgoingEditEligibility.direct_inbox_enabled? || (pilot_chat_id.present? && !@event.outside_pilot?(pilot_chat_id))
 
     edited_id = Message.transaction { apply_change(bound_original) }
     Ryze::EditClaim.new(edited_id).confirm(@event.content, edited_at: @event.edited_at) if edited_id
@@ -31,7 +31,9 @@ class Ryze::OutgoingMessageChange
                                                 sender_type: 'User', source_id: @event.source_id)
     binding = Arel::Nodes::InfixOperation.new('->>', Message.arel_table[:additional_attributes], Arel::Nodes.build_quoted('ryze_outbound_message_id'))
     message = candidates.where(binding.eq(@event.source_id)).lock.sole
-    message if message.conversation.account_id == @inbox.account_id && Ryze::OutboundDelivery.configured_for?(message)
+    chat_jid = Ryze::OutgoingEditEligibility.conversation_jid(message.conversation)
+    message if message.conversation.account_id == @inbox.account_id && Ryze::OutboundDelivery.configured_for?(message) &&
+               @event.chat_ids.include?(chat_jid)
   rescue ActiveRecord::RecordNotFound
     # A phone-originated or historical edit has no trusted team delivery.
     nil

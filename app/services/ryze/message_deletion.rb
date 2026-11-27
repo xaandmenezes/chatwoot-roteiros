@@ -24,13 +24,14 @@ class Ryze::MessageDeletion
     return result if result
 
     source_id = @message.source_id
+    chat_jid = Ryze::OutgoingEditEligibility.conversation_jid(@message.conversation)
     provider = Ryze::MessageProvider.new
-    return :delete_unavailable unless provider.delivered_to_pilot?(source_id)
+    return :delete_unavailable unless provider.delivered_to_pilot?(source_id, chat_jid: chat_jid)
 
     result = @message.with_lock { claim(source_id) }
     return result if result
 
-    outcome = @eligibility.expired? ? :delete_expired : provider.request_delete(source_id)
+    outcome = @eligibility.expired? ? :delete_expired : provider.request_delete(source_id, chat_jid: chat_jid)
     finish_request(outcome, source_id)
   rescue Ryze::Client::ConnectionError
     :delete_failed

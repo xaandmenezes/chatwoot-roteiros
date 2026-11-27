@@ -32,7 +32,9 @@ class Ryze::SendReaction
       @source = "psr-cw-reaction-#{SecureRandom.hex(16)}"
       @target_id = @message.source_id
       @target_outgoing = @message.outgoing?
-      @chat_jid = ENV.fetch('RYZE_PILOT_CHAT_JID')
+      @chat_jid = Ryze::OutgoingEditEligibility.conversation_jid(@message.conversation)
+      next :reaction_unavailable unless @chat_jid
+
       pending = {
         'source' => @source, 'emoji' => @emoji, 'author' => @actor.name, 'agent_id' => @actor.id, 'previous_id' => state.dig('outgoing', 'id')
       }

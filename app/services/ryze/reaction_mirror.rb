@@ -49,7 +49,8 @@ class Ryze::ReactionMirror
   end
 
   def provider_key(*parts)
-    Digest::SHA256.hexdigest([ENV.fetch('RYZE_INSTANCE_NAME'), ENV.fetch('RYZE_PILOT_CHAT_JID'), *parts].join("\0"))
+    chat_jid = Ryze::OutgoingEditEligibility.conversation_jid(@conversation) || ENV.fetch('RYZE_PILOT_CHAT_JID', '')
+    Digest::SHA256.hexdigest([ENV.fetch('RYZE_INSTANCE_NAME'), chat_jid, *parts].join("\0"))
   end
 
   def receipt
@@ -89,8 +90,8 @@ class Ryze::ReactionMirror
   end
 
   def outgoing_reaction?(data)
-    chat = ENV.fetch('RYZE_PILOT_CHAT_JID')
-    data.is_a?(Hash) && data.values_at('type', 'chat', 'to', 'isGroup') == ['reaction', chat, chat, false] &&
+    chat = Ryze::OutgoingEditEligibility.conversation_jid(@conversation)
+    data.is_a?(Hash) && chat && data.values_at('type', 'chat', 'to', 'isGroup') == ['reaction', chat, chat, false] &&
       data['from'] != chat && data['from'].is_a?(String) && data['from'].match?(Ryze::OutboundDelivery::PILOT_JID)
   end
 
