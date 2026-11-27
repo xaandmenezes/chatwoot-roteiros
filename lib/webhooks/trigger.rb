@@ -98,7 +98,9 @@ class Webhooks::Trigger
   end
 
   def update_message_status(error)
-    Messages::StatusUpdateService.new(message, 'failed', error.message).perform
+    reason = error.message
+    reason = Ryze::AudioDelivery::UNKNOWN_ERROR if Ryze::AudioDelivery.uncertain_transport?(error) && Ryze::AudioDelivery.applies?(message)
+    Messages::StatusUpdateService.new(message, 'failed', reason, source: :api_inbox_webhook).perform
   end
 
   def message

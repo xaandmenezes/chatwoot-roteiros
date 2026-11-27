@@ -158,6 +158,165 @@ describe WebhookListener do
     end
   end
 
+  describe '#message_updated for Ryze audio delivery metadata' do
+    let(:event_name) { :'message.updated' }
+    let(:channel_api) { create(:channel_api, account: account) }
+    let(:inbox) { channel_api.inbox }
+    let(:conversation) { create(:conversation, account: account, inbox: inbox, assignee: user) }
+    let(:audio_message) do
+      create(:message, message_type: :outgoing, private: false, account: account, inbox: inbox,
+                       conversation: conversation).tap do |record|
+        record.attachments.create!(account: account, file_type: :audio, external_url: 'https://example.com/audio.ogg')
+      end
+    end
+
+    before do
+      create(:webhook, inbox: inbox, account: account, url: channel_api.webhook_url,
+                       subscriptions: ['message_updated'])
+      allow(Ryze::AudioDelivery).to receive(:applies?).with(audio_message).and_return(true)
+      allow(audio_message).to receive(:webhook_data).and_return({ id: audio_message.id })
+    end
+
+    def dispatch_update(changes)
+      event = Events::Base.new(:'message.updated', Time.current, message: audio_message, previous_changes: changes)
+      listener.message_updated(event)
+    end
+
+    def audit_webhook
+      create(:webhook, account: account, subscriptions: ['message_updated'])
+    end
+
+    it 'suppresses an empty or timestamp-only snapshot from the bridge but keeps account webhooks' do
+      audit = audit_webhook
+      changes = [
+        {},
+        { 'updated_at' => [1, 2] }
+      ]
+
+      allow(WebhookJob).to receive(:perform_later)
+      changes.each do |previous_changes|
+        dispatch_update(previous_changes)
+      end
+
+      expect(WebhookJob).to have_received(:perform_later).exactly(changes.length).times
+      expect(WebhookJob).to have_received(:perform_later).with(
+        audit.url, hash_including(event: 'message_updated'), :account_webhook,
+        secret: audit.secret, delivery_id: instance_of(String)
+      ).twice
+    end
+
+    it 'suppresses provider status and error changes when they are limited to delivery metadata' do
+      audit = audit_webhook
+      marker_key = Ryze::AudioDelivery::STATUS_KEY
+      previous_changes = {
+        'status' => %w[sent failed],
+        'source_id' => [nil, 'provider-id'],
+        'additional_attributes' => [
+          { 'existing' => 'value', marker_key => 'sent' },
+          { 'existing' => 'value', marker_key => 'failed' }
+        ],
+        'content_attributes' => [
+          { 'in_reply_to' => 'prior-message', 'external_error' => nil },
+          { 'in_reply_to' => 'prior-message', 'external_error' => 'temporary delivery error' }
+        ]
+      }
+
+      allow(WebhookJob).to receive(:perform_later)
+      dispatch_update(previous_changes)
+      expect(WebhookJob).to have_received(:perform_later).once
+      expect(WebhookJob).to have_received(:perform_later).with(
+        audit.url, hash_including(event: 'message_updated'), :account_webhook,
+        secret: audit.secret, delivery_id: instance_of(String)
+      ).once
+    end
+
+    it 'suppresses an unacknowledged status failure with its transport error' do
+      audit = audit_webhook
+      previous_changes = {
+        'status' => %w[sent failed],
+        'content_attributes' => [
+          nil,
+          { 'external_error' => 'transport timeout' }
+        ]
+      }
+
+      allow(WebhookJob).to receive(:perform_later)
+      dispatch_update(previous_changes)
+      expect(WebhookJob).to have_received(:perform_later).once
+      expect(WebhookJob).to have_received(:perform_later).with(
+        audit.url, hash_including(event: 'message_updated'), :account_webhook,
+        secret: audit.secret, delivery_id: instance_of(String)
+      ).once
+    end
+
+    it 'allows a failed-to-sent retry through to the bridge when no callback marker exists' do
+      audit = audit_webhook
+      allow(WebhookJob).to receive(:perform_later)
+      dispatch_update(
+        {
+          'status' => %w[failed sent],
+          'content_attributes' => [
+            { 'external_error' => 'temporary delivery error' },
+            { 'external_error' => nil }
+          ]
+        }
+      )
+
+      expect(WebhookJob).to have_received(:perform_later).with(
+        channel_api.webhook_url, hash_including(event: 'message_updated'), :api_inbox_webhook,
+        secret: channel_api.secret, delivery_id: instance_of(String)
+      ).once
+      expect(WebhookJob).to have_received(:perform_later).with(
+        audit.url, hash_including(event: 'message_updated'), :account_webhook,
+        secret: audit.secret, delivery_id: instance_of(String)
+      ).once
+    end
+
+    it 'allows nested content edits and deletions through to the bridge' do
+      audit = audit_webhook
+      allow(WebhookJob).to receive(:perform_later)
+      edits = [
+        { 'content' => %w[before after] },
+        {
+          'content_attributes' => [
+            { 'external_error' => 'temporary delivery error' },
+            { 'external_error' => 'temporary delivery error', 'deleted' => true }
+          ]
+        }
+      ]
+
+      edits.each do |previous_changes|
+        dispatch_update(previous_changes)
+      end
+      expect(WebhookJob).to have_received(:perform_later).exactly(6).times
+      expect(WebhookJob).to have_received(:perform_later).with(
+        channel_api.webhook_url, hash_including(event: 'message_updated'), :api_inbox_webhook,
+        secret: channel_api.secret, delivery_id: instance_of(String)
+      ).twice
+      expect(WebhookJob).to have_received(:perform_later).with(
+        audit.url, hash_including(event: 'message_updated'), :account_webhook,
+        secret: audit.secret, delivery_id: instance_of(String)
+      ).twice
+    end
+
+    it 'preserves the bridge update when the event has no change snapshot' do
+      audit = audit_webhook
+      event = Events::Base.new(:'message.updated', Time.current, message: audio_message)
+
+      allow(WebhookJob).to receive(:perform_later)
+      listener.message_updated(event)
+
+      expect(WebhookJob).to have_received(:perform_later).with(
+        channel_api.webhook_url, hash_including(event: 'message_updated'), :api_inbox_webhook,
+        secret: channel_api.secret, delivery_id: instance_of(String)
+      ).once
+      expect(WebhookJob).to have_received(:perform_later).with(
+        audit.url, hash_including(event: 'message_updated'), :account_webhook,
+        secret: audit.secret, delivery_id: instance_of(String)
+      ).once
+    end
+  end
+
   describe '#conversation_created' do
     let(:event_name) { :'conversation.created' }
 

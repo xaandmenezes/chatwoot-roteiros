@@ -40,7 +40,7 @@ class WebhookListener < BaseListener
     return unless message.webhook_sendable?
 
     payload = message.webhook_data.merge(event: __method__.to_s)
-    deliver_message_webhooks(payload, message)
+    deliver_message_webhooks(payload, message, suppress_inbox_webhook: suppress_audio_metadata_echo?(message, event))
   end
 
   def webwidget_triggered(event)
@@ -129,13 +129,46 @@ class WebhookListener < BaseListener
                              secret: inbox.channel.secret, delivery_id: SecureRandom.uuid)
   end
 
-  def deliver_message_webhooks(payload, message)
+  def deliver_message_webhooks(payload, message, suppress_inbox_webhook: false)
     inbox = message.inbox
     suppress_bridge = message.suppress_ryze_bridge_event?
-    deliver_account_webhooks(payload, inbox.account, except_url: (inbox.channel.webhook_url if suppress_bridge))
-    return if suppress_bridge || Ryze::OutboundDelivery.direct?(message) || Ryze::OutboundDelivery.native_mirror?(message)
+    excluded_url = inbox.channel.webhook_url if suppress_bridge || suppress_inbox_webhook
+    deliver_account_webhooks(payload, inbox.account, except_url: excluded_url)
+    return if suppress_bridge || suppress_inbox_webhook || Ryze::OutboundDelivery.direct?(message) || Ryze::OutboundDelivery.native_mirror?(message)
 
     deliver_api_inbox_webhooks(payload, inbox)
+  end
+
+  def suppress_audio_metadata_echo?(message, event)
+    return false unless Ryze::AudioDelivery.applies?(message)
+
+    changes = event.data[:previous_changes]
+    return false unless changes.is_a?(Hash)
+
+    changes = changes.stringify_keys
+    # The native bridge receives an agent retry as a failed-to-sent update.
+    return false if changes['status'] == %w[failed sent] && changes.dig('additional_attributes', 1, Ryze::AudioDelivery::STATUS_KEY).blank?
+
+    changes.all? { |attribute, values| audio_metadata_change?(attribute, values) }
+  end
+
+  def audio_metadata_change?(attribute, values)
+    case attribute
+    when 'updated_at', 'status', 'source_id'
+      true
+    when 'content_attributes'
+      only_metadata_key_changed?(values, 'external_error')
+    when 'additional_attributes'
+      key = Ryze::AudioDelivery::STATUS_KEY
+      values.last&.key?(key) && only_metadata_key_changed?(values, key)
+    else
+      false
+    end
+  end
+
+  def only_metadata_key_changed?(values, key)
+    previous, current = values
+    previous.to_h.except(key) == current.to_h.except(key)
   end
 
   def deliver_webhook_payloads(payload, inbox)

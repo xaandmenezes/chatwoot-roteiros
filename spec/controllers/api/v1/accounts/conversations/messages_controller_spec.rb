@@ -509,7 +509,7 @@ RSpec.describe 'Conversation Messages API', type: :request do
         it 'uses StatusUpdateService to perform status update' do
           service = instance_double(Messages::StatusUpdateService)
           expect(Messages::StatusUpdateService).to receive(:new)
-            .with(message, 'failed', 'err123')
+            .with(message, 'failed', 'err123', source: nil)
             .and_return(service)
           expect(service).to receive(:perform)
           patch api_v1_account_conversation_message_url(

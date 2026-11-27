@@ -40,7 +40,8 @@ class Api::V1::Accounts::Conversations::MessagesController < Api::V1::Accounts::
   end
 
   def update
-    Messages::StatusUpdateService.new(message, permitted_params[:status], permitted_params[:external_error]).perform
+    source = :ryze_bridge if @access_token && Ryze::OutboundDelivery.bridge_user?(Current.user)
+    Messages::StatusUpdateService.new(message, permitted_params[:status], permitted_params[:external_error], source: source).perform
     @message = message
   end
 
@@ -89,7 +90,10 @@ class Api::V1::Accounts::Conversations::MessagesController < Api::V1::Accounts::
   def retry
     return retry_ryze_delivery if Ryze::OutboundDelivery.direct?(message)
 
-    ::SendReplyJob.perform_later(message.id) if claim_message_retry
+    result = claim_message_retry
+    return render json: { error_code: 'ryze_retry_unavailable' }, status: :conflict if result == :unconfirmed
+
+    ::SendReplyJob.perform_later(message.id) if result
   rescue StandardError => e
     render_could_not_create_error(e.message)
   end
@@ -161,8 +165,9 @@ class Api::V1::Accounts::Conversations::MessagesController < Api::V1::Accounts::
   def claim_message_retry
     message.with_lock do
       next false unless message.failed?
+      next :unconfirmed if message.external_error == Ryze::AudioDelivery::UNKNOWN_ERROR && Ryze::AudioDelivery.applies?(message)
 
-      Messages::StatusUpdateService.new(message, 'sent').perform
+      Messages::StatusUpdateService.new(message, 'sent', source: :agent_retry).perform
       clear_source_id unless @conversation.inbox.api? || @conversation.inbox.web_widget?
       true
     end
