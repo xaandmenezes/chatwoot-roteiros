@@ -5,7 +5,7 @@ class Api::V1::Accounts::Conversations::RyzePresencesController < Api::V1::Accou
     state, composer_id = params.values_at(:state, :composer_id)
     return head :unprocessable_content if params.key?(:is_private) || !Ryze::Presence.valid_event?(state, composer_id)
 
-    Ryze::Presence.update(Current.user.id, composer_id, state)
+    Ryze::Presence.update(Current.user.id, composer_id, state, conversation: @conversation)
     head :no_content
   end
 end

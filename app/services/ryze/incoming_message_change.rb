@@ -16,12 +16,24 @@ class Ryze::IncomingMessageChange
   def original_message(pilot_chat_id)
     originals = @inbox.messages.incoming.where(account_id: @inbox.account_id, private: false, source_id: @event.source_id)
                       .lock('FOR UPDATE OF messages')
-    if @event.outside_pilot?(pilot_chat_id)
-      return pilot_revoked_message(originals, pilot_chat_id) if @event.customer_revoked?
+    return direct_original_message(originals) if Ryze::OutgoingEditEligibility.direct_inbox_enabled?
+    return revoked_or_skip(originals, pilot_chat_id) if @event.outside_pilot?(pilot_chat_id)
 
-      return
-    end
+    matched_conversation_message(originals)
+  end
 
+  def direct_original_message(originals)
+    return pilot_revoked_message(originals, nil) if @event.chat_ids.empty? && @event.customer_revoked?
+
+    message = matched_conversation_message(originals)
+    message if Ryze::OutgoingEditEligibility.pilot_conversation?(message.conversation)
+  end
+
+  def revoked_or_skip(originals, pilot_chat_id)
+    pilot_revoked_message(originals, pilot_chat_id) if @event.customer_revoked?
+  end
+
+  def matched_conversation_message(originals)
     chat_jid = Arel::Nodes::InfixOperation.new('->>', Conversation.arel_table[:additional_attributes], Arel::Nodes.build_quoted('whatsapp_jid'))
     originals.joins(:conversation).where(chat_jid.in(@event.chat_ids)).sole
   end
@@ -31,7 +43,13 @@ class Ryze::IncomingMessageChange
     message = originals.sole
     conversation = message.conversation
     return unless conversation.account_id == @inbox.account_id && conversation.inbox_id == @inbox.id
-    return unless conversation.additional_attributes&.fetch('whatsapp_jid', nil) == pilot_chat_id
+
+    allowed = if Ryze::OutgoingEditEligibility.direct_inbox_enabled?
+                Ryze::OutgoingEditEligibility.pilot_conversation?(conversation)
+              else
+                conversation.additional_attributes&.fetch('whatsapp_jid', nil) == pilot_chat_id
+              end
+    return unless allowed
 
     Rails.logger.info(@event.pilot_log_line)
     message

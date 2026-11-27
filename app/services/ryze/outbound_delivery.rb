@@ -9,15 +9,21 @@ class Ryze::OutboundDelivery
   SEND_DEADLINE = 2.minutes
   SCOPE_KEYS = %w[RYZE_INSTANCE_NAME RYZE_EDIT_API_TOKEN RYZE_INBOX_ID RYZE_PILOT_CHAT_JID RYZE_EDIT_CONVERSATION_ID
                   RYZE_NATIVE_BRIDGE_USER_ID].freeze
+  DIRECT_SCOPE_KEYS = %w[RYZE_INSTANCE_NAME RYZE_EDIT_API_TOKEN RYZE_INBOX_ID RYZE_NATIVE_BRIDGE_USER_ID].freeze
 
   class << self
     def configured_pilot?(conversation)
-      bridge_user_id.present? && ENV.fetch('RYZE_PILOT_CHAT_JID', '').match?(PILOT_JID) &&
-        Ryze::OutgoingEditEligibility.pilot_conversation?(conversation)
+      bridge_user_id.present? && Ryze::OutgoingEditEligibility.pilot_conversation?(conversation)
     end
 
     def configured_for?(message, conversation: message.conversation)
-      configured_pilot?(conversation) && message.additional_attributes.dig(DELIVERY_KEY, 'scope') == scope_fingerprint
+      return false unless configured_pilot?(conversation)
+
+      scope = message.additional_attributes&.dig(DELIVERY_KEY, 'scope')
+      return true if scope == scope_fingerprint
+
+      Ryze::OutgoingEditEligibility.direct_inbox_enabled? && legacy_pilot_conversation?(conversation) &&
+        scope == legacy_pilot_scope_fingerprint
     end
 
     def bridge_user?(user)
@@ -55,13 +61,22 @@ class Ryze::OutboundDelivery
       timeout && Ryze::DeliverOutboundMessageJob.perform_later(message_id, attempt)
     end
 
-    def confirm_event!(inbox:, event:, pilot_chat_id:)
-      return :ignored unless event.chat_ids.include?(pilot_chat_id) && provider_id?(event.source_id)
+    def confirm_event!(inbox:, event:, pilot_chat_id: nil)
+      return :ignored unless provider_id?(event.source_id)
 
       message = Ryze::OutboundMessageCorrelation.find_tracked_message(inbox, event.tracking_source)
-      return :ignored unless message && direct?(message)
+      return :ignored unless confirmable_event_message?(message, event, pilot_chat_id)
 
       Ryze::OutboundMessageCorrelation.new(message).confirm!(event.source_id, event.tracking_source, event.content)
+    end
+
+    def confirmable_event_message?(message, event, pilot_chat_id)
+      return false unless message && direct?(message) && configured_for?(message)
+
+      chat_jid = Ryze::OutgoingEditEligibility.conversation_jid(message.conversation)
+      return false unless chat_jid && event.chat_ids.include?(chat_jid)
+
+      Ryze::OutgoingEditEligibility.direct_inbox_enabled? || event.chat_ids.include?(pilot_chat_id)
     end
 
     def retry_rejected!(message)
@@ -71,8 +86,27 @@ class Ryze::OutboundDelivery
     private
 
     def scope_fingerprint
+      values = if Ryze::OutgoingEditEligibility.direct_inbox_enabled?
+                 [*ENV.values_at(*DIRECT_SCOPE_KEYS), 'direct_inbox']
+               else
+                 ENV.values_at(*SCOPE_KEYS)
+               end
+      hmac_scope(values)
+    end
+
+    def legacy_pilot_scope_fingerprint
+      hmac_scope(ENV.values_at(*SCOPE_KEYS))
+    end
+
+    def legacy_pilot_conversation?(conversation)
+      Ryze::OutgoingEditEligibility::PILOT_CONFIG_KEYS.all? { |key| ENV.fetch(key, nil).present? } &&
+        conversation.display_id == Integer(ENV.fetch('RYZE_EDIT_CONVERSATION_ID'), 10, exception: false) &&
+        Ryze::OutgoingEditEligibility.conversation_jid(conversation) == ENV.fetch('RYZE_PILOT_CHAT_JID')
+    end
+
+    def hmac_scope(values)
       key = Rails.application.key_generator.generate_key('ryze outbound delivery scope')
-      OpenSSL::HMAC.hexdigest('SHA256', key, ENV.values_at(*SCOPE_KEYS).join("\0"))
+      OpenSSL::HMAC.hexdigest('SHA256', key, values.join("\0"))
     end
   end
 
@@ -84,10 +118,13 @@ class Ryze::OutboundDelivery
   def perform(attempt)
     return unless claim_send!(attempt)
 
+    chat_jid = Ryze::OutgoingEditEligibility.conversation_jid(@message.conversation)
+    return finish_attempt(attempt, 'rejected') unless chat_jid
+
     client = Ryze::Client.new(instance: ENV.fetch('RYZE_INSTANCE_NAME'), token: ENV.fetch('RYZE_EDIT_API_TOKEN'))
     response = client.post(
       'message/text',
-      { number: ENV.fetch('RYZE_PILOT_CHAT_JID'), message: @message.webhook_content, source: @correlation.tracking_source }
+      { number: chat_jid, message: @message.webhook_content, source: @correlation.tracking_source }
     )
     handle_response(response, attempt)
   rescue Ryze::Client::ConnectionError, JSON::ParserError
@@ -156,8 +193,9 @@ class Ryze::OutboundDelivery
   end
 
   def confirm_response(data)
+    chat_jid = Ryze::OutgoingEditEligibility.conversation_jid(@message.conversation)
     return unless data['direction'] == 'outgoing' && data['messageType'] == 'text' && data['chat'].is_a?(Hash)
-    return unless [data['chat']['jid'], data['chat']['lid']].include?(ENV.fetch('RYZE_PILOT_CHAT_JID'))
+    return unless chat_jid && [data['chat']['jid'], data['chat']['lid']].include?(chat_jid)
     return unless self.class.provider_id?(data['messageId'])
 
     @correlation.confirm!(data['messageId'], data['source'], data['content'])

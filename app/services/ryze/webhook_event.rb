@@ -71,6 +71,10 @@ class Ryze::WebhookEvent
     pilot_chat_id.present? && chat_ids.exclude?(pilot_chat_id)
   end
 
+  def direct_chat?
+    chat_ids.any? { |identifier| identifier.match?(Ryze::OutgoingEditEligibility::DIRECT_JID) }
+  end
+
   def customer_revoked?
     revoked_message? && revoke_type == 'sender_revoke'
   end

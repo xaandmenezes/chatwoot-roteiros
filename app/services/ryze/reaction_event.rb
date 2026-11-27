@@ -5,7 +5,7 @@ class Ryze::ReactionEvent
   TARGET_CHAT_KEYS = %w[remotejid remote_jid chatjid chat_jid jid].freeze
   TARGET_KEYS = (TARGET_ID_KEYS + TARGET_CHAT_KEYS).freeze
 
-  attr_reader :id, :direction, :target_id, :emoji, :timestamp, :source, :author
+  attr_reader :id, :direction, :target_id, :emoji, :timestamp, :source, :author, :chat_ids
 
   def initialize(data)
     reaction = object(data[:message][:reaction])
@@ -22,6 +22,10 @@ class Ryze::ReactionEvent
 
   def in_pilot?(jid)
     @private_chat && @chat_ids.include?(jid)
+  end
+
+  def in_direct_chat?
+    @private_chat && @chat_ids.any?
   end
 
   def validation_error
