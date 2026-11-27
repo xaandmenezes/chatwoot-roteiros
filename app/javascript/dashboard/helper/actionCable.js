@@ -43,6 +43,7 @@ class ActionCableConnector extends BaseActionCableConnector {
       'message.created': this.onMessageCreated,
       'message.updated': this.onMessageUpdated,
       'message.ryze_reactions_changed': this.onMessageRyzeReactionsChanged,
+      'message.ryze_reaction_echo_removed': this.onRyzeReactionEchoRemoved,
       'conversation.created': this.onConversationCreated,
       'conversation.bot_handoff': this.onConversationBotHandoff,
       'conversation.status_changed': this.onStatusChange,
@@ -103,6 +104,12 @@ class ActionCableConnector extends BaseActionCableConnector {
 
   onMessageRyzeReactionsChanged = data => {
     this.app.$store.commit('UPDATE_MESSAGE_RYZE_REACTIONS', data);
+  };
+
+  onRyzeReactionEchoRemoved = data => {
+    if (!this.isAValidEvent(data)) return;
+
+    this.app.$store.commit('REMOVE_RYZE_REACTION_ECHO', data);
   };
 
   onPresenceUpdate = data => {
@@ -203,6 +210,8 @@ class ActionCableConnector extends BaseActionCableConnector {
   onLogout = () => AuthAPI.logout();
 
   onMessageCreated = data => {
+    if (this.app.$store.getters.isRemovedRyzeEcho?.(data.id)) return;
+
     const {
       conversation: { last_activity_at: lastActivityAt },
       conversation_id: conversationId,

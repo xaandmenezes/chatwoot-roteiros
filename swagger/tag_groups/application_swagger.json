@@ -6554,6 +6554,9 @@
               }
             }
           },
+          "204": {
+            "description": "A verified Ryze reaction from the configured pilot bridge was accepted without creating a message."
+          },
           "404": {
             "description": "Conversation not found",
             "content": {

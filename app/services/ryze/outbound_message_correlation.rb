@@ -77,18 +77,7 @@ class Ryze::OutboundMessageCorrelation
   end
 
   def same_content_without_dependencies?(mirror)
-    mirror.webhook_content == @message.webhook_content && !mirror.attachments.exists? && !referenced?(mirror.id)
-  end
-
-  def referenced?(id)
-    column = Message.arel_table[:content_attributes]
-    # ActiveRecord::Store wraps this JSON column in serialized JSON.
-    serialized = Arel::Nodes::InfixOperation.new('#>>', column, Arel::Nodes.build_quoted('{}'))
-    attributes = Arel::Nodes::NamedFunction.new('CAST', [Arel::Nodes::Grouping.new(serialized).as('jsonb')])
-    references = %w[in_reply_to forwarded_message_id].map do |attribute|
-      Arel::Nodes::InfixOperation.new('->>', attributes, Arel::Nodes.build_quoted(attribute)).eq(id.to_s)
-    end
-    @message.conversation.messages.where(references.reduce(&:or)).exists?
+    mirror.webhook_content == @message.webhook_content && !mirror.attachments.exists? && !mirror.referenced_in_conversation?
   end
 
   def delivery

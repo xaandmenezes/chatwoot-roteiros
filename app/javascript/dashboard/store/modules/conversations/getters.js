@@ -31,6 +31,10 @@ export const getSelectedChatConversation = ({
   allConversations.filter(conversation => conversation.id === selectedChatId);
 
 const getters = {
+  isRemovedRyzeEcho:
+    ({ removedRyzeEchoIds }) =>
+    id =>
+      !!removedRyzeEchoIds[id],
   getAllConversations: ({ allConversations, chatSortFilter: sortKey }) => {
     return allConversations.sort((a, b) => sortComparator(a, b, sortKey));
   },

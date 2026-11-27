@@ -13,6 +13,8 @@ RSpec.describe 'Ryze message reactions', type: :request do
   end
   let(:messages_path) { api_v1_account_conversation_messages_path(account.id, conversation.display_id) }
   let(:provider_url) { 'https://ryzeapi.cloud/api/message/reaction/psr-test' }
+  let(:echo_id) { 'NATIVE_REACTION_ID' }
+  let(:bridge_placeholder) { '💬 Reagiu a uma mensagem' }
 
   around do |example|
     with_modified_env(RYZE_REACTIONS_ENABLED: 'true', RYZE_INBOX_ID: inbox.id.to_s, RYZE_INSTANCE_NAME: 'psr-test',
@@ -32,6 +34,17 @@ RSpec.describe 'Ryze message reactions', type: :request do
 
   def post_event(payload, bearer: 'test-webhook-secret')
     post '/webhooks/ryze', params: payload, headers: { 'Authorization' => "Bearer #{bearer}" }, as: :json
+  end
+
+  def post_echo(content: bridge_placeholder, user: agent, source_id: echo_id)
+    post messages_path, params: { content: content, source_id: source_id, external_created_at: 1_795_738_838 },
+                        headers: { api_access_token: user.access_token.token }, as: :json
+  end
+
+  def provider_snapshot(type: 'reaction', chat: jid, id: echo_id)
+    stub_request(:get, 'https://ryzeapi.cloud/api/chat/getMessage/psr-test').with(query: { messageId: echo_id }).to_return(
+      body: { success: true, status: 'found', messageId: id, data: { type: type, from: session_jid, to: jid, chat: chat, isGroup: false } }.to_json
+    )
   end
 
   # Synthetic webhook derived from Ryze's event catalog and whatsmeow's MessageKey schema.
@@ -89,6 +102,21 @@ RSpec.describe 'Ryze message reactions', type: :request do
     expect(history.fetch('ryze_reactions')).to include('incoming' => nil)
   end
 
+  it 'normalizes the two WhatsApp key spellings and a device JID before applying a removal' do
+    post_event(event(id: 'OUTGOING_ADD', emoji: '👍', at: '2026-11-26T18:00:00Z', direction: 'outgoing'))
+    payload = event(id: 'OUTGOING_REMOVE', emoji: '', at: '2026-11-26T18:00:01Z', direction: 'outgoing')
+    payload[:data][:sender][:jid] = session_jid.sub('@', ':4@')
+    payload[:data][:message][:reaction][:targetMessageId] = { id: message.source_id, remoteJid: jid }
+
+    post_event(payload)
+    expect(response).to have_http_status(:ok)
+    expect(history.fetch('ryze_reactions')).to include('outgoing' => nil, 'revision' => 2)
+
+    payload[:data][:message][:reaction][:targetMessageId][:ID] = 'OTHER_TARGET'
+    post_event(payload)
+    expect(response).to have_http_status(:bad_request)
+  end
+
   it 'ignores an event for a different chat and rejects a mismatched target key and sender' do
     data = event(id: 'REACTION_ONE', emoji: '👍', at: '2026-11-26T18:00:00Z')
     out_of_scope = data.deep_dup
@@ -116,6 +144,126 @@ RSpec.describe 'Ryze message reactions', type: :request do
     expect(response).to have_http_status(:bad_request)
     expect(generic.reload.content).to eq('💬 Reagiu a uma mensagem')
     expect(history['ryze_reactions']).to be_nil
+  end
+
+  it 'suppresses a bridge-first reaction before message creation or notifications, including on replay' do
+    lookup = provider_snapshot
+
+    expect do
+      2.times do
+        post_echo
+        expect(response).to have_http_status(:no_content)
+      end
+    end.not_to change(Message, :count)
+
+    expect(lookup).to have_been_requested.once
+    expect(ActionCableBroadcastJob).not_to have_been_enqueued.with(anything, 'message.created', anything)
+  end
+
+  it 'suppresses a late bridge copy by exact ID after a verified webhook, independent of its text' do
+    post_event(event(id: echo_id, emoji: '👍', at: '2026-11-26T18:00:00Z', direction: 'outgoing'))
+
+    expect { post_echo(content: 'Provider copy') }.not_to change(Message, :count)
+    expect(response).to have_http_status(:no_content)
+  end
+
+  it 'preserves real text that matches the placeholder' do
+    provider_snapshot(type: 'text')
+
+    expect { post_echo }.to change(Message, :count).by(1)
+    expect(response).to have_http_status(:ok)
+    expect(response.parsed_body).to include('content' => bridge_placeholder, 'source_id' => echo_id)
+  end
+
+  it 'does not suppress a copy using an untrusted user token even if its ID is known' do
+    outsider = create(:user, account: account, role: :administrator)
+    post_event(event(id: echo_id, emoji: '👍', at: '2026-11-26T18:00:00Z', direction: 'outgoing'))
+
+    expect { post_echo(user: outsider) }.to change(Message, :count).by(1)
+    expect(response).to have_http_status(:ok)
+  end
+
+  it 'keeps an ordinary message when the provider lookup points to a different conversation' do
+    provider_snapshot(chat: '15550003333@s.whatsapp.net')
+
+    expect { post_echo }.to change(Message, :count).by(1)
+    expect(response).to have_http_status(:ok)
+  end
+
+  it 'does not remove an ordinary message with a colliding provider ID' do
+    ordinary = create(:message, conversation: conversation, account: account, inbox: inbox, sender: agent, source_id: echo_id)
+    payload = event(id: echo_id, emoji: '👍', at: '2026-11-26T18:00:00Z', direction: 'outgoing')
+
+    expect { post_event(payload) }.not_to change(Message, :count)
+
+    expect(response).to have_http_status(:conflict)
+    expect(ordinary.reload).to be_persisted
+    expect(history['ryze_reactions']).to be_nil
+  end
+
+  it 'rejects contradictory webhooks and does not advance the original when an old ID is replayed' do
+    data = event(id: echo_id, emoji: '👍', at: '2026-11-26T18:00:00Z', direction: 'outgoing')
+    post_event(data)
+    post_event(event(id: 'REACTION_REMOVED', emoji: '', at: '2026-11-26T18:00:01Z', direction: 'outgoing'))
+
+    data[:data][:timestamp] = '2026-11-26T18:00:02Z'
+    post_event(data)
+    expect(response).to have_http_status(:ok)
+
+    data[:data][:message][:reaction][:emoji] = '❤️'
+    post_event(data)
+    expect(response).to have_http_status(:conflict)
+
+    expect(history.fetch('ryze_reactions')).to include('outgoing' => nil, 'revision' => 2)
+  end
+
+  it 'removes a previously stored native echo and restores the last message when the webhook arrives' do
+    message
+    legacy = create(:message, conversation: conversation, account: account, inbox: inbox, message_type: :outgoing,
+                              sender: agent, source_id: echo_id,
+                              additional_attributes: { ryze_native_bridge_mirror: true, ryze_reactions: { revision: 2 } })
+    payload = event(id: echo_id, emoji: '👍', at: '2026-11-26T18:00:00Z', direction: 'outgoing')
+
+    expect do
+      2.times { post_event(payload) }
+    end.to have_enqueued_job(ActionCableBroadcastJob).with([agent.pubsub_token], 'message.ryze_reaction_echo_removed',
+                                                           hash_including(id: legacy.id, account_id: account.id,
+                                                                          last_non_activity_message: hash_including(id: message.id))).once
+
+    expect(Message.exists?(legacy.id)).to be(false)
+    expect(conversation.reload.last_activity_at).to eq(message.created_at)
+    expect(history.fetch('ryze_reactions')).to include('outgoing' => include('emoji' => '👍'))
+  end
+
+  it 'reconciles a legacy echo without a webhook and removes notifications tied to that row only' do
+    provider_snapshot
+    legacy = create(:message, conversation: conversation, account: account, inbox: inbox, message_type: :outgoing,
+                              sender: agent, source_id: echo_id, content: 'Previously mirrored',
+                              additional_attributes: { ryze_native_bridge_mirror: true, ryze_reactions: { revision: 2 } })
+    old_notification = create(:notification, account: account, user: agent, primary_actor: conversation, secondary_actor: legacy)
+    other_notification = create(:notification, account: account, user: agent, primary_actor: conversation, secondary_actor: message)
+
+    mirror = Ryze::ReactionMirror.new(conversation: conversation, provider_id: legacy.source_id)
+    expect(mirror.reconcile!).to eq(:recorded)
+
+    expect(Message.exists?(legacy.id)).to be(false)
+    expect(Notification.exists?(old_notification.id)).to be(false)
+    expect(Notification.exists?(other_notification.id)).to be(true)
+    expect(history['ryze_reactions']).to be_nil
+    expect(WebMock).not_to have_requested(:post, provider_url)
+  end
+
+  it 'applies the original reaction while retaining a native echo that another message references' do
+    legacy = create(:message, conversation: conversation, account: account, inbox: inbox, message_type: :outgoing,
+                              sender: agent, source_id: echo_id, additional_attributes: { ryze_native_bridge_mirror: true })
+    reply = create(:message, account: account, inbox: inbox, conversation: conversation, content_attributes: { in_reply_to: legacy.id })
+
+    post_event(event(id: echo_id, emoji: '👍', at: '2026-11-26T18:00:00Z', direction: 'outgoing'))
+
+    expect(response).to have_http_status(:ok)
+    expect(history.fetch('ryze_reactions')).to include('outgoing' => include('emoji' => '👍'))
+    expect(legacy.reload).to be_persisted
+    expect(reply.reload.in_reply_to).to eq(legacy.id)
   end
 
   it 'requests retry when the original has not reached the pilot inbox and rejects ambiguity' do
@@ -159,6 +307,52 @@ RSpec.describe 'Ryze message reactions', type: :request do
     expect(history.fetch('ryze_reactions')).to include('outgoing' => nil)
     expect(addition).to have_been_requested.once
     expect(removal).to have_been_requested.once
+  end
+
+  it 'confirms an explicit removal receipt whose empty content is absent' do
+    provider_accepts(id: 'ADD_ID', emoji: '👍', at: '2026-11-26T18:00:00Z')
+    submit_reaction('👍')
+
+    stub_request(:post, provider_url).to_return do |request|
+      source = JSON.parse(request.body).fetch('source')
+      {
+        body: {
+          success: true, status: 'sent', message: 'Reaction removed successfully',
+          data: {
+            messageId: 'REMOVE_ID', direction: 'sent', messageType: 'reaction', source: source, timestamp: '2026-11-26T18:00:01Z',
+            chat: { jid: jid, isGroup: false }, sender: { instance: 'psr-test' }, replyTo: { messageId: message.source_id }
+          }
+        }.to_json
+      }
+    end
+
+    submit_reaction('')
+
+    expect(response).to have_http_status(:ok)
+    expect(history.fetch('ryze_reactions')).to include('pending' => false, 'outgoing' => nil, 'revision' => 4)
+  end
+
+  it 'does not clear a pending removal when an explicit receipt with null content names another target' do
+    provider_accepts(id: 'ADD_ID', emoji: '👍', at: '2026-11-26T18:00:00Z')
+    submit_reaction('👍')
+
+    stub_request(:post, provider_url).to_return do |request|
+      source = JSON.parse(request.body).fetch('source')
+      {
+        body: {
+          success: true, status: 'sent', message: 'Reaction removed successfully',
+          data: {
+            messageId: 'REMOVE_ID', direction: 'sent', messageType: 'reaction', source: source, timestamp: '2026-11-26T18:00:01Z',
+            chat: { jid: jid, isGroup: false }, sender: { instance: 'psr-test' }, replyTo: { messageId: 'OTHER_TARGET' }, content: nil
+          }
+        }.to_json
+      }
+    end
+
+    submit_reaction('')
+
+    expect(response).to have_http_status(:accepted)
+    expect(history.fetch('ryze_reactions')).to include('pending' => true, 'outgoing' => include('emoji' => '👍'), 'revision' => 3)
   end
 
   it 'can react to a verified message sent by the connected account' do
