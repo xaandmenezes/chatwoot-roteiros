@@ -79,6 +79,7 @@ Rails.application.routes.draw do
           end
           resources :agents, only: [:index, :create, :update, :destroy] do
             post :bulk_create, on: :collection
+            resource :inbox_access, only: [:show, :update], controller: 'agents/inbox_access'
           end
           namespace :captain do
             resource :preferences, only: [:show, :update]
@@ -225,6 +226,7 @@ Rails.application.routes.draw do
               resource :direct_uploads, only: [:create]
               resource :draft_messages, only: [:show, :update, :destroy]
               resource :ryze_presence, only: [:create]
+              resources :attachments, only: [:show]
               resources :audio_transcriptions, only: [:index]
               resource :ryze_history, only: [:create] do
                 post 'media/:message_id', action: :repair

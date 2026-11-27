@@ -26,8 +26,7 @@ class AutoAssignment::AssignmentJob < ApplicationJob
     inbox = Inbox.find_by(id: inbox_id)
     return unless inbox
 
-    service = AutoAssignment::AssignmentService.new(inbox: inbox)
-    assigned_count = service.perform_bulk_assignment(limit: bulk_assignment_limit)
+    assigned_count = service_for(inbox).perform_bulk_assignment(limit: bulk_assignment_limit)
     Rails.logger.info "Assigned #{assigned_count} conversations for inbox #{inbox.id}"
   rescue StandardError => e
     Rails.logger.error "Bulk assignment failed for inbox #{inbox_id}: #{e.message}"
@@ -37,6 +36,14 @@ class AutoAssignment::AssignmentJob < ApplicationJob
   end
 
   private
+
+  def service_for(inbox)
+    if Conversations::AssignmentAccess.enabled?(inbox)
+      AutoAssignment::PilotAssignmentService.new(inbox: inbox)
+    else
+      AutoAssignment::AssignmentService.new(inbox: inbox)
+    end
+  end
 
   # Release the in-flight marker only if we still own it. The atomic
   # compare-and-delete ensures a job whose TTL lapsed can't delete a newer

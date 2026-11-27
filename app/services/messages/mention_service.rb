@@ -38,6 +38,8 @@ class Messages::MentionService
   end
 
   def valid_mentionable_user_ids
+    return Conversations::AssignmentRecipients.users(message.conversation).ids if Conversations::AssignmentAccess.enabled?(message.inbox)
+
     @valid_mentionable_user_ids ||= begin
       inbox = message.inbox
       inbox.account.administrators.pluck(:id) + inbox.members.pluck(:id)

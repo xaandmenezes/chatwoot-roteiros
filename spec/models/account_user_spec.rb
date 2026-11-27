@@ -28,6 +28,20 @@ RSpec.describe AccountUser do
     end
   end
 
+  describe 'pilot assignment on availability changes' do
+    it 'wakes the queue when a member becomes available for conversations' do
+      inbox.update!(enable_auto_assignment: true)
+      create(:inbox_member, inbox: inbox, user: account_user.user)
+      account_user.update!(availability: :offline, auto_offline: false)
+      expect(AutoAssignment::AssignmentJob).to receive(:enqueue_for_inbox).once.with(inbox.id)
+
+      with_modified_env(PSR_RESTRICTED_INBOX_ID: inbox.id.to_s, PSR_RANDOM_ASSIGNMENT_START_AT: 1.day.ago.iso8601) do
+        account_user.online!
+        account_user.busy!
+      end
+    end
+  end
+
   describe 'permissions' do
     it 'returns the right permissions' do
       expect(account_user.permissions).to eq(['agent'])

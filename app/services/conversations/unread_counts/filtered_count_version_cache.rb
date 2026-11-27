@@ -19,9 +19,26 @@ class Conversations::UnreadCounts::FilteredCountVersionCache
     }
   end
 
+  def restricted_inbox?
+    restricted_inbox_id.present?
+  end
+
   private
 
-  def account_version = @account_version ||= store.conversation_version(account.id)
+  def restricted_inbox_id
+    return @restricted_inbox_id if defined?(@restricted_inbox_id)
+
+    inbox_id = Conversations::AssignmentAccess.inbox_id
+    @restricted_inbox_id = inbox_id && account.inboxes.exists?(id: inbox_id) ? inbox_id : nil
+  end
+
+  def account_version
+    @account_version ||= begin
+      version = store.conversation_version(account.id)
+      # A pre-activation snapshot contains broader counts even if the account version is unchanged.
+      restricted_inbox? ? (version << 64) + restricted_inbox_id : version
+    end
+  end
 
   def built_in_filter_version = @built_in_filter_version ||= store.built_in_filter_version(account_id: account.id, user_id: user.id)
 

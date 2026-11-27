@@ -7,7 +7,7 @@ class Api::V1::Accounts::ConversationsController < Api::V1::Accounts::BaseContro
   include ConversationListingConcern
 
   before_action :conversation, except: [:create, *ConversationListingConcern::COLLECTION_ACTIONS]
-  before_action :validate_assignment_targets, :inbox, :contact, :contact_inbox, only: [:create]
+  before_action :validate_assignment_targets, :inbox, :contact, :contact_inbox, :validate_restricted_assignment, only: [:create]
 
   ATTACHMENT_RESULTS_PER_PAGE = 100
 
@@ -25,6 +25,7 @@ class Api::V1::Accounts::ConversationsController < Api::V1::Accounts::BaseContro
   def create
     ActiveRecord::Base.transaction do
       @conversation = ConversationBuilder.new(params: params, contact_inbox: @contact_inbox).perform
+      authorize @conversation, :show? if Conversations::AssignmentAccess.enabled?(@conversation.inbox_id)
       Messages::MessageBuilder.new(Current.user, @conversation, params[:message]).perform if params[:message].present?
     end
   end
@@ -152,6 +153,8 @@ class Api::V1::Accounts::ConversationsController < Api::V1::Accounts::BaseContro
   end
 
   def handle_human_open
+    return if Conversations::AssignmentAccess.enabled?(@conversation.inbox_id)
+
     @conversation.with_lock do
       @conversation.ai_assignee = nil
       @conversation.assignee = Current.user if Current.user.agent?
@@ -162,6 +165,13 @@ class Api::V1::Accounts::ConversationsController < Api::V1::Accounts::BaseContro
   def conversation
     @conversation ||= Current.account.conversations.find_by!(display_id: params[:id])
     authorize @conversation, :show?
+  end
+
+  def validate_restricted_assignment
+    return unless Conversations::AssignmentAccess.enabled?(@contact_inbox.inbox_id) && params[:assignee_id].present?
+    return if @contact_inbox.inbox.inbox_members.exists?(user_id: params[:assignee_id])
+
+    render_could_not_create_error('Invalid assignee_id')
   end
 
   def inbox

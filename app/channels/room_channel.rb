@@ -1,12 +1,16 @@
 class RoomChannel < ApplicationCable::Channel
+  include HmacConcern
+
   def subscribed
     # TODO: should we only do ensure stream  if current account is present?
     # for now going ahead with guard clauses in update_subscription and broadcast_presence
-    current_user
+    return reject unless current_user
+
     current_account
     ensure_stream
     update_subscription
     broadcast_presence
+    wake_pilot_assignment
   end
 
   def update_presence
@@ -15,6 +19,12 @@ class RoomChannel < ApplicationCable::Channel
   end
 
   private
+
+  def wake_pilot_assignment
+    return unless @current_account && @current_user.is_a?(User)
+
+    AutoAssignment::PilotAssignmentService.wake_for_user(account_id: @current_account.id, user_id: @current_user.id)
+  end
 
   def broadcast_presence
     return if @current_account.blank?
@@ -48,10 +58,19 @@ class RoomChannel < ApplicationCable::Channel
 
   def current_user
     @current_user ||= if params[:user_id].blank?
-                        ContactInbox.find_by!(pubsub_token: pubsub_token).contact
+                        contact_user
                       else
                         User.find_by!(pubsub_token: pubsub_token, id: params[:user_id])
                       end
+  end
+
+  def contact_user
+    binding = ContactInbox.find_by!(pubsub_token: pubsub_token)
+    return binding.contact unless binding.inbox_id == Conversations::AssignmentAccess.inbox_id
+
+    @contact = binding.contact
+    @inbox = binding.inbox
+    @contact if hmac_verified?
   end
 
   def current_account

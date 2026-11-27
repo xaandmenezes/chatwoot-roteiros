@@ -5,12 +5,13 @@ class Public::Api::V1::Inboxes::ContactsController < Public::Api::V1::InboxesCon
   def show; end
 
   def create
-    source_id = params[:source_id] || SecureRandom.uuid
-    @contact_inbox = ::ContactInboxWithContactBuilder.new(
-      source_id: source_id,
-      inbox: @inbox_channel.inbox,
-      contact_attributes: permitted_params.except(:identifier_hash)
-    ).perform
+    attributes = permitted_params.except(:identifier_hash)
+    unless Conversations::AssignmentAccess.enabled?(@inbox_channel.inbox)
+      @contact_inbox = build_contact_inbox(attributes)
+      return
+    end
+
+    create_verified_contact_inbox(attributes)
   end
 
   def update
@@ -24,12 +25,38 @@ class Public::Api::V1::Inboxes::ContactsController < Public::Api::V1::InboxesCon
 
   private
 
+  def create_verified_contact_inbox(attributes)
+    avatar_url = attributes.delete(:avatar_url)
+    @contact_inbox = ContactInbox.transaction(requires_new: true) do
+      binding = build_contact_inbox(attributes)
+      raise ActiveRecord::Rollback unless binding.contact.identifier == attributes[:identifier]
+
+      newly_created = binding.previously_new_record?
+      binding.update!(hmac_verified: true)
+      enqueue_avatar(binding.contact, avatar_url) if newly_created
+      binding
+    end
+    render_unauthorized('HMAC failed: Invalid Identifier Hash Provided') unless @contact_inbox
+  end
+
+  def build_contact_inbox(attributes)
+    ::ContactInboxWithContactBuilder.new(
+      source_id: params[:source_id] || SecureRandom.uuid,
+      inbox: @inbox_channel.inbox,
+      contact_attributes: attributes
+    ).perform
+  end
+
+  def enqueue_avatar(contact, avatar_url)
+    Avatar::AvatarFromUrlJob.perform_later(contact, avatar_url) if avatar_url.present? && !contact.avatar.attached?
+  end
+
   def contact_inbox
     @contact_inbox = @inbox_channel.inbox.contact_inboxes.find_by!(source_id: params[:id])
   end
 
   def process_hmac
-    return if params[:identifier_hash].blank? && !@inbox_channel.hmac_mandatory
+    return if params[:identifier_hash].blank? && !requires_contact_hmac?
     return render_unauthorized('HMAC failed: Invalid Identifier Hash Provided') unless valid_hmac?
 
     @contact_inbox.update(hmac_verified: true) if @contact_inbox.present?

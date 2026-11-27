@@ -1,6 +1,22 @@
 require 'rails_helper'
 
 RSpec.describe Conversation, type: :model do
+  describe 'pilot assignment after a ringing call ends' do
+    it 'resumes the pilot queue for the inbox instead of assigning synchronously with the legacy selector' do
+      account = create(:account)
+      account.disable_features!('assignment_v2')
+      inbox = create(:inbox, account: account, enable_auto_assignment: true)
+      conversation = create(:conversation, account: account, inbox: inbox, status: :open)
+
+      expect(AutoAssignment::AgentAssignmentService).not_to receive(:new)
+      expect(AutoAssignment::AssignmentJob).to receive(:enqueue_for_inbox).with(inbox.id)
+
+      with_modified_env(PSR_RESTRICTED_INBOX_ID: inbox.id.to_s, PSR_RANDOM_ASSIGNMENT_START_AT: 1.day.ago.iso8601) do
+        conversation.auto_assign_after_call
+      end
+    end
+  end
+
   describe 'captain audience routing on create' do
     let(:account) { create(:account) }
     let(:inbox) { create(:inbox, account: account) }

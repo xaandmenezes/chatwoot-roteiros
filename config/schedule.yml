@@ -86,6 +86,12 @@ periodic_assignment_job:
   class: 'AutoAssignment::PeriodicAssignmentJob'
   queue: scheduled_jobs
 
+# Recover the pilot queue when a presence transition or an earlier job did not enqueue a follow-up.
+pilot_periodic_assignment_job:
+  cron: '* * * * *'
+  class: 'AutoAssignment::PilotPeriodicAssignmentJob'
+  queue: scheduled_jobs
+
 # executed daily at 2230 UTC
 # removes old notifications (>1 month) and trims to 300 per user
 remove_old_notification_job:

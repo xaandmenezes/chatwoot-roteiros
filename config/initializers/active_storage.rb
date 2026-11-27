@@ -80,5 +80,17 @@ Rails.application.config.to_prepare do
     ActiveStorage::DirectUploadsController.include(ActiveStorageBareDirectUploadGuard)
   end
 
+  [ActiveStorage::Blobs::ProxyController, ActiveStorage::Blobs::RedirectController].each do |controller|
+    controller.include(RestrictedAttachmentRedirect) unless controller < RestrictedAttachmentRedirect
+  end
+
+  representations = ActiveStorage::Representations::BaseController
+  unless representations < RestrictedAttachmentRedirect
+    # Route restricted files after set_blob and before creating a representation.
+    representations.skip_before_action :set_representation
+    representations.include(RestrictedAttachmentRedirect)
+    representations.before_action :set_representation
+  end
+
   ActiveStorage::Streaming.prepend(ActiveStorageProxyRangeLimit) unless ActiveStorage::Streaming < ActiveStorageProxyRangeLimit
 end

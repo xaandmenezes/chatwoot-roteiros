@@ -72,6 +72,29 @@ RSpec.describe Ryze::HistoricalSync do
       expect { sync.perform }.to raise_error(ArgumentError, /not enabled/)
     end
 
+    it 'does not import Ryze history that belongs to an earlier or later restricted conversation' do
+      from = conversation.created_at
+      to = from + 2.hours
+      create(:conversation, account: account, inbox: inbox, contact: contact, created_at: from - 1.day)
+      create(:conversation, account: account, inbox: inbox, contact: contact, created_at: to)
+      history = {
+        success: true,
+        messages: [
+          { id: 'past', timestamp: (from - 1.minute).iso8601(6), type: 'text', content: 'Previous conversation' },
+          { id: 'current', timestamp: (from + 1.minute).iso8601(6), type: 'text', content: 'This conversation' },
+          { id: 'next', timestamp: to.iso8601(6), type: 'text', content: 'Next conversation' }
+        ]
+      }
+      allow(client).to receive(:post)
+        .with('chat/history', hash_including(from: from.utc.iso8601(6), to: to.utc.iso8601(6)))
+        .and_return(success_response(history))
+
+      with_modified_env(PSR_RESTRICTED_INBOX_ID: inbox.id.to_s) do
+        expect(sync.perform.imported_messages.map(&:source_id)).to eq(['current'])
+        expect(conversation.messages.history_imports.pluck(:source_id)).to eq(['current'])
+      end
+    end
+
     context 'with text messages' do
       let(:msg_time1) { 2.days.ago.change(usec: 0) }
       let(:msg_time2) { 3.days.ago.change(usec: 0) }

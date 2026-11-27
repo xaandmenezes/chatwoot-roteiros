@@ -1,6 +1,6 @@
 module Enterprise::AgentNotifications::ConversationNotificationsMailer
   def sla_missed_first_response(conversation, agent, sla_policy)
-    return unless smtp_config_set_or_development?
+    return unless send_to_agent?(conversation, agent)
 
     @agent = agent
     @conversation = conversation
@@ -11,7 +11,7 @@ module Enterprise::AgentNotifications::ConversationNotificationsMailer
   end
 
   def sla_missed_next_response(conversation, agent, sla_policy)
-    return unless smtp_config_set_or_development?
+    return unless send_to_agent?(conversation, agent)
 
     @agent = agent
     @conversation = conversation
@@ -21,7 +21,7 @@ module Enterprise::AgentNotifications::ConversationNotificationsMailer
   end
 
   def sla_missed_resolution(conversation, agent, sla_policy)
-    return unless smtp_config_set_or_development?
+    return unless send_to_agent?(conversation, agent)
 
     @agent = agent
     @conversation = conversation
@@ -31,7 +31,7 @@ module Enterprise::AgentNotifications::ConversationNotificationsMailer
   end
 
   def voice_call_missed(conversation, agent, message)
-    return unless smtp_config_set_or_development?
+    return unless send_to_agent?(conversation, agent)
 
     @agent = agent
     @conversation = conversation

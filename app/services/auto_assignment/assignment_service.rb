@@ -2,8 +2,7 @@ class AutoAssignment::AssignmentService
   pattr_initialize [:inbox!]
 
   def perform_bulk_assignment(limit: 100)
-    return 0 unless inbox.auto_assignment_v2_enabled?
-    return 0 unless inbox.enable_auto_assignment?
+    return 0 unless enabled?
 
     conversations = unassigned_conversations(limit).to_a
     return 0 if conversations.empty?
@@ -17,6 +16,10 @@ class AutoAssignment::AssignmentService
   end
 
   private
+
+  def enabled?
+    inbox.auto_assignment_v2_enabled? && inbox.enable_auto_assignment?
+  end
 
   def perform_for_conversation(conversation)
     return false unless assignable?(conversation)
@@ -38,6 +41,7 @@ class AutoAssignment::AssignmentService
     # Skip stale backlog with no activity beyond the age threshold
     policy = inbox.assignment_policy
     scope = apply_age_exclusions(scope, age_exclusion_hours(policy))
+    scope = apply_queue_exclusions(scope)
 
     # Apply conversation priority using assignment policy if available
     scope = if policy&.longest_waiting?
@@ -47,6 +51,14 @@ class AutoAssignment::AssignmentService
             end
 
     scope.limit(limit)
+  end
+
+  def apply_queue_exclusions(scope)
+    scope
+  end
+
+  def expiring_queue?
+    true
   end
 
   def age_exclusion_hours(policy)
@@ -66,13 +78,25 @@ class AutoAssignment::AssignmentService
   end
 
   def find_available_agent(conversation = nil)
-    agents = filter_agents_by_team(inbox.available_agents, conversation)
-    return nil if agents.nil?
-
-    agents = filter_agents_by_rate_limit(agents)
-    return nil if agents.empty?
+    agents = eligible_agents(conversation)
+    return if agents.empty?
 
     round_robin_selector.select_agent(agents)
+  end
+
+  def eligible_agents(conversation = nil)
+    agents = filter_agents_by_team(inbox.available_agents, conversation)
+    return [] unless agents
+
+    uses_assignment_rate_limit? ? filter_agents_by_rate_limit(agents) : agents.to_a
+  end
+
+  def uses_assignment_rate_limit?
+    true
+  end
+
+  def uses_legacy_capacity_limit?
+    false
   end
 
   def filter_agents_by_team(agents, conversation)
@@ -97,9 +121,7 @@ class AutoAssignment::AssignmentService
 
     conversation.reload
 
-    rate_limiter = build_rate_limiter(agent)
-    rate_limiter.track_assignment(conversation)
-
+    build_rate_limiter(agent).track_assignment(conversation) if uses_assignment_rate_limit?
     dispatch_assignment_event(conversation, agent)
     true
   end
@@ -114,13 +136,17 @@ class AutoAssignment::AssignmentService
                     .where(id: conversation.id).unassigned
                     .lock('FOR UPDATE SKIP LOCKED')
                     .first
-      next false unless locked
+      next false unless claimable?(locked, conversation, agent)
 
       locked.update!(assignee: agent)
       true
     end
   ensure
     Current.executed_by = nil
+  end
+
+  def claimable?(locked, _conversation, _agent)
+    locked.present?
   end
 
   def dispatch_assignment_event(conversation, agent)

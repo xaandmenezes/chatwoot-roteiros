@@ -25,16 +25,53 @@ class BulkActionsJob < ApplicationJob
   def bulk_conversation_update
     params = available_params(@params)
     records.each do |conversation|
-      bulk_add_labels(conversation)
-      bulk_snoozed_until(conversation)
-      conversation.update(params) if params
+      if Conversations::AssignmentAccess.enabled?(conversation.inbox_id)
+        update_restricted_conversation(conversation, params)
+      else
+        update_conversation(conversation, params)
+      end
     end
   end
 
   def bulk_remove_labels
     records.each do |conversation|
+      next if Conversations::AssignmentAccess.enabled?(conversation.inbox_id)
+
       remove_labels(conversation)
     end
+  end
+
+  def update_restricted_conversation(conversation, params)
+    conversation.with_lock do
+      next unless Conversations::AssignmentAccess.allowed?(conversation, @user)
+
+      updates = restricted_bulk_updates(conversation, params)
+      if updates.key?(:assignee_id)
+        assignee_id = updates.delete(:assignee_id)
+        Conversations::AssignmentService.new(conversation: conversation, actor: @user, assignee_id: assignee_id, updates: updates).perform
+      else
+        conversation.update(updates)
+      end
+    end
+  rescue Conversations::AssignmentService::InvalidDestination, Pundit::NotAuthorizedError
+    nil
+  end
+
+  def restricted_bulk_updates(conversation, params)
+    updates = (params || {}).with_indifferent_access
+    operation = @params[:labels]
+    if operation.present?
+      current_labels = conversation.label_list - Array(operation[:remove])
+      updates[:label_list] = current_labels + Array(operation[:add])
+    end
+    updates[:snoozed_until] = parse_date_time(@params[:snoozed_until].to_s) if @params[:snoozed_until]
+    updates
+  end
+
+  def update_conversation(conversation, params)
+    bulk_add_labels(conversation)
+    bulk_snoozed_until(conversation)
+    conversation.update(params) if params
   end
 
   def available_params(params)

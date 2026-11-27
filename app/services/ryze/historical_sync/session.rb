@@ -1,8 +1,9 @@
 class Ryze::HistoricalSync::Session
   attr_reader :chat_jid, :client, :deadline, :media
 
-  def initialize(conversation, client: nil)
+  def initialize(conversation, client: nil, actor: nil)
     @conversation = conversation
+    @actor = actor
     @deadline = Ryze::HistoricalSync::RUN_BUDGET.from_now
     @chat_jid = Ryze::OutgoingEditEligibility.conversation_jid(conversation)
     verify_target!
@@ -22,9 +23,17 @@ class Ryze::HistoricalSync::Session
   private
 
   def verify_target!
+    recheck_actor!
     return if Ryze::HistoricalSync.enabled?(@conversation) && chat_jid == Ryze::OutgoingEditEligibility.conversation_jid(@conversation)
 
     raise Ryze::HistoricalSync::NotEnabled, 'Ryze historical sync is not enabled for this conversation'
+  end
+
+  def recheck_actor!
+    return unless @actor && Conversations::AssignmentAccess.enabled?(@conversation.inbox_id)
+    return if Conversations::AssignmentAccess.allowed?(@conversation, @actor)
+
+    raise Pundit::NotAuthorizedError
   end
 
   def default_client
