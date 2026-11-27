@@ -162,6 +162,9 @@ export default {
     updateMessage(message) {
       this.$store.dispatch('updateMessage', message);
     },
+    refreshPendingEdit(payload) {
+      this.$store.dispatch('refreshPendingEdit', payload);
+    },
     refreshPendingDeletion() {
       this.$store.dispatch('refreshPendingDeletion', {
         conversationId: this.conversationId,
@@ -357,6 +360,7 @@ export default {
       :original-content="message.originalContent"
       @close="closeEditDialog"
       @confirmed="updateMessage"
+      @pending="refreshPendingEdit"
     />
     <ReportCaptainMessageDialog
       v-if="enabledOptions['report']"

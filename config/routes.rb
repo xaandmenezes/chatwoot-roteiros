@@ -213,6 +213,7 @@ Rails.application.routes.draw do
                   post :translate
                   post :retry
                   post :edit_content
+                  post :reaction
                   post :delete_for_everyone
                   post :delete_only_in_chatwoot
                 end
@@ -223,6 +224,7 @@ Rails.application.routes.draw do
               resource :participants, only: [:show, :create, :update, :destroy]
               resource :direct_uploads, only: [:create]
               resource :draft_messages, only: [:show, :update, :destroy]
+              resource :ryze_presence, only: [:create]
               resource :suggestions, only: [] do
                 get :labels
                 get :priority

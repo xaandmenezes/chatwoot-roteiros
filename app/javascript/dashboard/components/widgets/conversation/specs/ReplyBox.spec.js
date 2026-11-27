@@ -1,6 +1,7 @@
 import { flushPromises, shallowMount } from '@vue/test-utils';
 import { REPLY_EDITOR_MODES } from 'dashboard/components/widgets/WootWriter/constants';
-import { nextTick } from 'vue';
+import { nextTick, reactive } from 'vue';
+import ConversationApi from 'dashboard/api/conversations';
 import { createStore } from 'vuex';
 import ReplyBox from '../ReplyBox.vue';
 import WhatsappTemplates from '../WhatsappTemplates/Modal.vue';
@@ -104,6 +105,7 @@ const mountWith = ({
   uiSettings,
   signature,
   globalConfig,
+  route,
 }) => {
   const store = buildStore({
     inbox,
@@ -119,7 +121,7 @@ const mountWith = ({
   const wrapper = shallowMount(ReplyBox, {
     global: {
       plugins: [store],
-      mocks: { $t: key => key },
+      mocks: { $t: key => key, $route: route },
       // The bottom panel sits inside a <Transition>, which shallowMount stubs
       // without rendering its children.
       stubs: { transition: false },
@@ -136,6 +138,62 @@ const editor = wrapper =>
   wrapper.findComponent({ name: 'WootMessageEditor' }).props();
 
 describe('ReplyBox', () => {
+  it('wires public typing and recording and clears the original target on note or navigation', async () => {
+    const publish = vi
+      .spyOn(ConversationApi, 'publishRyzePresence')
+      .mockResolvedValue({});
+    const route = reactive({
+      params: { accountId: '1', conversation_id: '1' },
+    });
+    const { wrapper } = mountWith({
+      inbox: { channel_type: 'Channel::Api' },
+      chat: { account_id: 1, ryze_presence_enabled: true },
+      route,
+    });
+    try {
+      const messageEditor = () =>
+        wrapper.findComponent({ name: 'WootMessageEditor' });
+      messageEditor().vm.$emit('typingActivity');
+      await flushPromises();
+      wrapper.vm.setReplyMode(REPLY_EDITOR_MODES.NOTE);
+      await nextTick();
+      messageEditor().vm.$emit('typingActivity');
+      await flushPromises();
+      expect(
+        publish.mock.calls.map(([target, , state]) => [target, state])
+      ).toEqual([
+        ['1/1', 'typing'],
+        ['1/1', 'pause'],
+      ]);
+
+      wrapper.vm.setReplyMode(REPLY_EDITOR_MODES.REPLY);
+      wrapper.vm.toggleAudioRecorder();
+      await nextTick();
+      const recorder = wrapper.findComponent({ name: 'AudioRecorder' });
+      recorder.vm.$emit('recordingStarted');
+      await flushPromises();
+      recorder.vm.$emit('recordingStopped');
+      await flushPromises();
+      recorder.vm.$emit('recordingStarted');
+      await flushPromises();
+      route.params.conversation_id = '2';
+      await flushPromises();
+      expect(
+        publish.mock.calls.map(([target, , state]) => [target, state])
+      ).toEqual([
+        ['1/1', 'typing'],
+        ['1/1', 'pause'],
+        ['1/1', 'recording'],
+        ['1/1', 'pause'],
+        ['1/1', 'recording'],
+        ['1/1', 'pause'],
+      ]);
+    } finally {
+      wrapper.unmount();
+      publish.mockRestore();
+    }
+  });
+
   describe.each([false, true])(
     'sending audio in an API inbox with direct uploads set to %s',
     directUploadsEnabled => {

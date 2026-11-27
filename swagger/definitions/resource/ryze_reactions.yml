@@ -1,0 +1,25 @@
+type: object
+required: [revision, pending, incoming, outgoing]
+properties:
+  revision:
+    type: integer
+    description: Monotonic reaction state revision for this message
+  pending:
+    type: boolean
+    description: A command for the connected WhatsApp account is awaiting confirmation
+  incoming:
+    description: The direct WhatsApp contact's current reaction
+    type: [object, 'null']
+    properties:
+      emoji:
+        type: string
+      author:
+        type: [string, 'null']
+  outgoing:
+    description: The connected WhatsApp account's current reaction
+    type: [object, 'null']
+    properties:
+      emoji:
+        type: string
+      author:
+        type: [string, 'null']

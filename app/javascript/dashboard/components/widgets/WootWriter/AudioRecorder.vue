@@ -19,6 +19,8 @@ const emit = defineEmits([
   'pause',
   'play',
   'recordError',
+  'recordingStarted',
+  'recordingStopped',
 ]);
 
 const waveformContainer = ref(null);
@@ -28,6 +30,7 @@ const isRecording = ref(false);
 const isPlaying = ref(false);
 const hasRecording = ref(false);
 const recordedAudioUrl = ref(null);
+let disposed = false;
 
 const formatTimeProgress = time => {
   const duration = intervalToDuration({ start: 0, end: time });
@@ -82,9 +85,18 @@ const initWaveSurfer = () => {
     isPlaying.value = false;
   });
 
+  record.value.on('record-start', () => {
+    if (disposed) return;
+    isRecording.value = true;
+    emit('recordingStarted');
+  });
+
   record.value.on('record-end', async blob => {
+    if (disposed) return;
+    emit('recordingStopped');
     try {
       const audioBlob = await convertAudio(blob, props.audioRecordFormat);
+      if (disposed) return;
       // Use the converted blob's actual type, which may differ from the
       // requested format when the browser can't produce it (e.g. Safari falls
       // back to MP3 instead of OGG). This keeps the filename, content type, and
@@ -107,6 +119,7 @@ const initWaveSurfer = () => {
       hasRecording.value = true;
       isRecording.value = false;
     } catch (error) {
+      if (disposed) return;
       isRecording.value = false;
       hasRecording.value = false;
       emit('recordError', { error });
@@ -125,9 +138,17 @@ const stopRecording = () => {
   }
 };
 
-const startRecording = () => {
-  record.value.startRecording();
-  isRecording.value = true;
+const startRecording = async () => {
+  const recorder = record.value;
+  try {
+    await recorder.startRecording();
+    if (disposed) {
+      recorder.stopRecording();
+      recorder.stopMic();
+    }
+  } catch (error) {
+    if (!disposed) emit('recordError', { error });
+  }
 };
 
 const playPause = () => {
@@ -143,6 +164,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  disposed = true;
   if (recordedAudioUrl.value) {
     URL.revokeObjectURL(recordedAudioUrl.value);
     recordedAudioUrl.value = null;

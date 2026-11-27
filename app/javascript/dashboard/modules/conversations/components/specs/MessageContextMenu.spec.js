@@ -133,7 +133,12 @@ describe('MessageContextMenu', () => {
     await wrapper.get('form').trigger('submit');
     await flushPromises();
 
-    expect(dispatch).not.toHaveBeenCalled();
+    expect(dispatch).toHaveBeenCalledExactlyOnceWith('refreshPendingEdit', {
+      conversationId: 2,
+      messageId: 1,
+      content: 'Edited',
+      accountUrl: '/api/v1/conversations',
+    });
     expect(useAlert).toHaveBeenCalledWith(
       'Waiting for WhatsApp to confirm the edit.'
     );

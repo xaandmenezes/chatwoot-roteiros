@@ -60,7 +60,7 @@ RSpec.describe 'Incoming message replay in API inboxes', type: :request do
 
     expect(attachment_id).not_to eq(text_id)
     expect(deliver).to eq(text_id)
-    expect(deliver(attachments: [fixture_file_upload('spec/assets/avatar.png', 'image/png')])).not_to eq(text_id)
+    expect(deliver(attachments: [fixture_file_upload('spec/assets/avatar.png', 'image/png')])).to eq(attachment_id)
     expect(Message.find(attachment_id).attachments.count).to eq(1)
   end
 

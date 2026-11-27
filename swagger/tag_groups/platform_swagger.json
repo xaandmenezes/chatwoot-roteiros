@@ -1788,6 +1788,13 @@
             "type": "object",
             "description": "The additional attributes of the message"
           },
+          "can_react": {
+            "type": "boolean",
+            "description": "Whether an agent can set the connected WhatsApp account's reaction on this message"
+          },
+          "ryze_reactions": {
+            "$ref": "#/components/schemas/ryze_reactions"
+          },
           "processed_message_content": {
             "type": [
               "string",
@@ -1819,6 +1826,61 @@
           "sender": {
             "type": "object",
             "description": "User/Agent/AgentBot object"
+          }
+        }
+      },
+      "ryze_reactions": {
+        "type": "object",
+        "required": [
+          "revision",
+          "pending",
+          "incoming",
+          "outgoing"
+        ],
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "description": "Monotonic reaction state revision for this message"
+          },
+          "pending": {
+            "type": "boolean",
+            "description": "A command for the connected WhatsApp account is awaiting confirmation"
+          },
+          "incoming": {
+            "description": "The direct WhatsApp contact's current reaction",
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "emoji": {
+                "type": "string"
+              },
+              "author": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "outgoing": {
+            "description": "The connected WhatsApp account's current reaction",
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "emoji": {
+                "type": "string"
+              },
+              "author": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
           }
         }
       },

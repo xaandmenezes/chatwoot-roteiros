@@ -15,16 +15,22 @@ class Avatar::AvatarFromUrlJob < ApplicationJob
   MAX_DOWNLOAD_SIZE = 15.megabytes
   RATE_LIMIT_WINDOW = 1.minute
 
-  def perform(avatarable, avatar_url)
+  def perform(avatarable, avatar_url, only_if_missing: false)
+    @only_if_missing = only_if_missing
+    return if @only_if_missing && avatarable.avatar.attached?
     return unless syncable_avatar?(avatarable, avatar_url)
 
     fetch_and_attach_avatar(avatarable, avatar_url)
   rescue SafeFetch::HttpError => e
     log_http_error(avatar_url, e)
   rescue SafeFetch::Error => e
-    Rails.logger.error "AvatarFromUrlJob error for #{avatar_url}: #{e.class} - #{e.message}"
+    if @only_if_missing
+      Rails.logger.error "AvatarFromUrlJob profile image download failed (#{e.class})"
+    else
+      Rails.logger.error "AvatarFromUrlJob error for #{avatar_url}: #{e.class} - #{e.message}"
+    end
   ensure
-    update_avatar_sync_attributes(avatarable, avatar_url)
+    update_avatar_sync_attributes(avatarable, avatar_url) unless @only_if_missing
   end
 
   private
@@ -32,7 +38,7 @@ class Avatar::AvatarFromUrlJob < ApplicationJob
   def syncable_avatar?(avatarable, avatar_url)
     avatarable.respond_to?(:avatar) &&
       url_valid?(avatar_url) &&
-      should_sync_avatar?(avatarable, avatar_url)
+      (@only_if_missing || should_sync_avatar?(avatarable, avatar_url))
   end
 
   def fetch_and_attach_avatar(avatarable, avatar_url)
@@ -42,7 +48,13 @@ class Avatar::AvatarFromUrlJob < ApplicationJob
       allowed_content_type_prefixes: [],
       allowed_content_types: ALLOWED_CONTENT_TYPES
     ) do |avatar_file|
-      attach_avatar(avatarable, avatar_file)
+      if @only_if_missing
+        avatarable.with_lock do
+          attach_avatar(avatarable, avatar_file) unless avatarable.avatar.attached?
+        end
+      else
+        attach_avatar(avatarable, avatar_file)
+      end
     end
   end
 
@@ -57,7 +69,9 @@ class Avatar::AvatarFromUrlJob < ApplicationJob
   end
 
   def log_http_error(avatar_url, error)
-    if error.message.start_with?('404')
+    if @only_if_missing
+      Rails.logger.info 'AvatarFromUrlJob could not retrieve the profile image'
+    elsif error.message.start_with?('404')
       Rails.logger.info "AvatarFromUrlJob: avatar not found at #{avatar_url}"
     else
       Rails.logger.error "AvatarFromUrlJob error for #{avatar_url}: #{error.class} - #{error.message}"

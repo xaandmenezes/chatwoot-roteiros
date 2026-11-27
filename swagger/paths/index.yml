@@ -525,6 +525,13 @@
     - $ref: '#/components/parameters/message_id'
   post:
     $ref: ./application/conversation/messages/edit_content.yml
+/api/v1/accounts/{account_id}/conversations/{conversation_id}/messages/{message_id}/reaction:
+  parameters:
+    - $ref: '#/components/parameters/account_id'
+    - $ref: '#/components/parameters/conversation_id'
+    - $ref: '#/components/parameters/message_id'
+  post:
+    $ref: ./application/conversation/messages/reaction.yml
 /api/v1/accounts/{account_id}/conversations/{conversation_id}/messages/{message_id}/delete_for_everyone:
   parameters:
     - $ref: '#/components/parameters/account_id'

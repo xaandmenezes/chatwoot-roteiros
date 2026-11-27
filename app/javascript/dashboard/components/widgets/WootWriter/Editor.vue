@@ -107,6 +107,7 @@ const props = defineProps({
 const emit = defineEmits([
   'typingOn',
   'typingOff',
+  'typingActivity',
   'toggleUserMention',
   'toggleCannedMenu',
   'toggleVariablesMenu',
@@ -832,6 +833,9 @@ function createEditorView() {
       checkSelection(state);
     },
     handleDOMEvents: {
+      input: () => {
+        if (!props.disabled) emit('typingActivity');
+      },
       keyup: () => {
         if (!props.disabled) {
           typingIndicator.start();

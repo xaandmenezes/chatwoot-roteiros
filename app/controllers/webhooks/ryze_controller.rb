@@ -10,13 +10,20 @@ class Webhooks::RyzeController < ActionController::API
     return head :ok unless event.instance_name == ENV.fetch('RYZE_INSTANCE_NAME') && event.message_exchange?
 
     log_pilot_event(event)
-    return process_outgoing(event) if event.outgoing_change?
-    return head :ok unless event.message_change?
-
-    process_event(event)
+    dispatch_event(event)
   end
 
   private
+
+  def dispatch_event(event)
+    reaction = event.reaction if Ryze::MessageReactions.enabled?
+    return process_reaction(reaction) if reaction
+    return process_outgoing(event) if event.outgoing_change?
+    return process_event(event) if event.message_change?
+
+    Ryze::SyncProfileAvatarJob.enqueue_for(event)
+    head :ok
+  end
 
   def process_action(*args)
     request.set_header(
@@ -38,6 +45,15 @@ class Webhooks::RyzeController < ActionController::API
     return head :bad_request unless event.valid?
 
     Ryze::OutgoingMessageChange.new(inbox: inbox, event: event).perform(pilot_chat_id: pilot_chat_id)
+    head :ok
+  end
+
+  def process_reaction(reaction)
+    return head :ok unless reaction.in_pilot?(pilot_chat_id)
+    return head :bad_request unless reaction.valid?
+    return head :service_unavailable unless inbox&.api?
+
+    Ryze::ReactionWebhook.new(inbox: inbox, event: reaction).perform
     head :ok
   end
 

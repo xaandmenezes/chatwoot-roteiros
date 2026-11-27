@@ -6411,7 +6411,7 @@
         ],
         "operationId": "create-a-new-message-in-a-conversation",
         "summary": "Create New Message",
-        "description": "Create a new message in the conversation.\n\nUse `application/json` for text messages and `multipart/form-data` when the\nmessage includes file attachments.\n\n### Multipart attachment request\n\nSend files with the `attachments[]` form field. `curl -F` sets the\n`multipart/form-data` content type and boundary automatically.\n\n```bash\ncurl -X POST \"https://app.chatwoot.com/api/v1/accounts/{account_id}/conversations/{conversation_id}/messages\" \\\n  -H \"Authorization: Bearer <your-api-token>\" \\\n  -F \"content=Here is the screenshot\" \\\n  -F \"message_type=outgoing\" \\\n  -F \"private=false\" \\\n  -F \"attachments[]=@/path/to/screenshot.png\"\n```\n\n### Replying to a message\n\nSet `content_attributes.in_reply_to` to a Chatwoot message ID in this conversation,\nor `content_attributes.in_reply_to_external_id` to its `source_id`.\nChatwoot resolves the other reference and displays the quoted message.\n\n```json\n{\n  \"content\": \"Yes, that one is in stock\",\n  \"content_attributes\": {\n    \"in_reply_to_external_id\": \"external-message-123\"\n  }\n}\n```\n\n## WhatsApp Template Messages\n\nFor WhatsApp channels, you can send structured template messages using the `template_params` field. \nTemplates must be pre-approved in WhatsApp Business Manager.\n\nBy default, `content` is treated as the already-rendered transcript text for\ncompatibility with existing API and mobile clients. To submit the original\ntemplate body instead, set `template_params.content_mode` to `raw_template`;\nChatwoot will substitute `processed_params.body` before saving the transcript.\n\n### Example Templates\n\n**Text with Image Header:**\n```json\n{\n  \"content\": \"Hi your order 121212 is confirmed. Please wait for further updates\",\n  \"template_params\": {\n    \"name\": \"order_confirmation\",\n    \"category\": \"MARKETING\",\n    \"language\": \"en\",\n    \"processed_params\": {\n      \"body\": {\n        \"1\": \"121212\"\n      },\n      \"header\": {\n        \"media_url\": \"https://picsum.photos/200/300\",\n        \"media_type\": \"image\"\n      }\n    }\n  }\n}\n```\n\n**Text with Copy Code Button:**\n```json\n{\n  \"content\": \"Special offer! Get 30% off your next purchase. Use the code below\",\n  \"template_params\": {\n    \"name\": \"discount_coupon\",\n    \"category\": \"MARKETING\",\n    \"language\": \"en\",\n    \"processed_params\": {\n      \"body\": {\n        \"discount_percentage\": \"30\"\n      },\n      \"buttons\": [{\n        \"type\": \"copy_code\",\n        \"parameter\": \"SAVE20\"\n      }]\n    }\n  }\n}\n```\n",
+        "description": "Create a new message in the conversation.\n\nUse `application/json` for text messages and `multipart/form-data` when the\nmessage includes file attachments.\n\n### Multipart attachment request\n\nSend files with the `attachments[]` form field. `curl -F` sets the\n`multipart/form-data` content type and boundary automatically.\n\nIn an API inbox, retry a public incoming delivery with the same nonblank\n`source_id` in the same conversation and resend the complete ordered attachment\nlist. Matching compares file checksums, sizes, metadata, and voice-note flags.\nA matching retry returns the original message with its stored caption and\nreply reference. If a new upload fails, retry with all files. Complete any\ndirect upload before referencing its signed blob ID.\n\n```bash\ncurl -X POST \"https://app.chatwoot.com/api/v1/accounts/{account_id}/conversations/{conversation_id}/messages\" \\\n  -H \"Authorization: Bearer <your-api-token>\" \\\n  -F \"content=Here is the screenshot\" \\\n  -F \"message_type=outgoing\" \\\n  -F \"private=false\" \\\n  -F \"attachments[]=@/path/to/screenshot.png\"\n```\n\n### Replying to a message\n\nSet `content_attributes.in_reply_to` to a Chatwoot message ID in this conversation,\nor `content_attributes.in_reply_to_external_id` to its `source_id`.\nChatwoot resolves the other reference and displays the quoted message.\n\n```json\n{\n  \"content\": \"Yes, that one is in stock\",\n  \"content_attributes\": {\n    \"in_reply_to_external_id\": \"external-message-123\"\n  }\n}\n```\n\n## WhatsApp Template Messages\n\nFor WhatsApp channels, you can send structured template messages using the `template_params` field. \nTemplates must be pre-approved in WhatsApp Business Manager.\n\nBy default, `content` is treated as the already-rendered transcript text for\ncompatibility with existing API and mobile clients. To submit the original\ntemplate body instead, set `template_params.content_mode` to `raw_template`;\nChatwoot will substitute `processed_params.body` before saving the transcript.\n\n### Example Templates\n\n**Text with Image Header:**\n```json\n{\n  \"content\": \"Hi your order 121212 is confirmed. Please wait for further updates\",\n  \"template_params\": {\n    \"name\": \"order_confirmation\",\n    \"category\": \"MARKETING\",\n    \"language\": \"en\",\n    \"processed_params\": {\n      \"body\": {\n        \"1\": \"121212\"\n      },\n      \"header\": {\n        \"media_url\": \"https://picsum.photos/200/300\",\n        \"media_type\": \"image\"\n      }\n    }\n  }\n}\n```\n\n**Text with Copy Code Button:**\n```json\n{\n  \"content\": \"Special offer! Get 30% off your next purchase. Use the code below\",\n  \"template_params\": {\n    \"name\": \"discount_coupon\",\n    \"category\": \"MARKETING\",\n    \"language\": \"en\",\n    \"processed_params\": {\n      \"body\": {\n        \"discount_percentage\": \"30\"\n      },\n      \"buttons\": [{\n        \"type\": \"copy_code\",\n        \"parameter\": \"SAVE20\"\n      }]\n    }\n  }\n}\n```\n",
         "security": [
           {
             "userBearerAuth": []
@@ -6483,6 +6483,10 @@
                     "type": "object",
                     "description": "Attributes based on the content type",
                     "example": {}
+                  },
+                  "source_id": {
+                    "type": "string",
+                    "description": "External message ID. Reuse it when retrying the same incoming delivery in an API inbox."
                   },
                   "is_voice_message": {
                     "type": "boolean",
@@ -6566,6 +6570,21 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/bad_request_error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Message could not be created, including when an attachment upload is incomplete.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
                 }
               }
             }
@@ -6798,6 +6817,100 @@
           },
           "502": {
             "description": "Provider request failed"
+          }
+        }
+      }
+    },
+    "/api/v1/accounts/{account_id}/conversations/{conversation_id}/messages/{message_id}/reaction": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/account_id"
+        },
+        {
+          "$ref": "#/components/parameters/conversation_id"
+        },
+        {
+          "$ref": "#/components/parameters/message_id"
+        }
+      ],
+      "post": {
+        "tags": [
+          "Messages"
+        ],
+        "operationId": "set-ryze-message-reaction",
+        "summary": "Set or remove a WhatsApp reaction in the Ryze pilot",
+        "security": [
+          {
+            "userBearerAuth": []
+          },
+          {
+            "userApiKey": []
+          }
+        ],
+        "description": "Updates the reaction of the connected WhatsApp account on an eligible message\nin the configured direct conversation. An uncertain provider response stays\npending and a later request will return the current state without resending.\n",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "emoji"
+                ],
+                "properties": {
+                  "emoji": {
+                    "type": "string",
+                    "description": "One emoji to apply or an empty string to remove the reaction"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Current confirmed state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "conversation_id",
+                    "ryze_reactions"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    },
+                    "conversation_id": {
+                      "type": "integer"
+                    },
+                    "ryze_reactions": {
+                      "$ref": "#/components/schemas/ryze_reactions"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Awaiting provider confirmation for the same message"
+          },
+          "401": {
+            "description": "Authentication or conversation access required"
+          },
+          "403": {
+            "description": "Only agents can send reactions"
+          },
+          "404": {
+            "description": "Conversation or message unavailable"
+          },
+          "422": {
+            "description": "Invalid emoji or ineligible message"
+          },
+          "502": {
+            "description": "Provider rejected the command"
           }
         }
       }
@@ -10422,6 +10535,13 @@
             "type": "object",
             "description": "The additional attributes of the message"
           },
+          "can_react": {
+            "type": "boolean",
+            "description": "Whether an agent can set the connected WhatsApp account's reaction on this message"
+          },
+          "ryze_reactions": {
+            "$ref": "#/components/schemas/ryze_reactions"
+          },
           "processed_message_content": {
             "type": [
               "string",
@@ -10453,6 +10573,61 @@
           "sender": {
             "type": "object",
             "description": "User/Agent/AgentBot object"
+          }
+        }
+      },
+      "ryze_reactions": {
+        "type": "object",
+        "required": [
+          "revision",
+          "pending",
+          "incoming",
+          "outgoing"
+        ],
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "description": "Monotonic reaction state revision for this message"
+          },
+          "pending": {
+            "type": "boolean",
+            "description": "A command for the connected WhatsApp account is awaiting confirmation"
+          },
+          "incoming": {
+            "description": "The direct WhatsApp contact's current reaction",
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "emoji": {
+                "type": "string"
+              },
+              "author": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "outgoing": {
+            "description": "The connected WhatsApp account's current reaction",
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "emoji": {
+                "type": "string"
+              },
+              "author": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
           }
         }
       },

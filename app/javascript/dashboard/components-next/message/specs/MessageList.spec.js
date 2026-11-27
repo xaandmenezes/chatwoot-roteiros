@@ -75,6 +75,43 @@ describe('conversation messages', () => {
     vi.unstubAllGlobals();
   });
 
+  it('renders a reaction on the original and leaves an uncorrelated message visible', async () => {
+    const original = {
+      id: 101,
+      status: 'sent',
+      message_type: 1,
+      sender: { id: 1, type: 'user' },
+      content: 'Original message',
+      content_attributes: {},
+      conversation_id: CONVERSATION_ID,
+      created_at: NOW,
+      attachments: [],
+      ryze_reactions: { incoming: { emoji: '👍', author: 'WhatsApp contact' } },
+    };
+    const generic = {
+      ...original,
+      id: 102,
+      content: '💬 Reagiu a uma mensagem',
+      ryze_reactions: null,
+    };
+    const wrapper = mountConversation(original);
+    await wrapper.setProps({ messages: [original, generic] });
+
+    expect(wrapper.get('#message101 [role="img"]').text()).toBe('👍');
+    expect(wrapper.get('#message102').find('[role="img"]').exists()).toBe(
+      false
+    );
+
+    await wrapper.setProps({
+      messages: [{ ...original, ryze_reactions: { incoming: null } }, generic],
+    });
+    expect(wrapper.get('#message101').find('[role="img"]').exists()).toBe(
+      false
+    );
+    expect(wrapper.find('#message102').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
   it.each([
     [{ can_edit_content: true, sender: { id: 1, type: 'user' } }, true],
     [{ can_edit_content: true, sender_id: 1, sender_type: 'User' }, true],
