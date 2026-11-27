@@ -15,7 +15,6 @@ class Ryze::ReactionEvent
     @direction = data[:direction]
     @timestamp = parse_timestamp(data[:timestamp])
     @target_id = @target_details[:id]
-    @target_chat = @target_details[:chat]
     @emoji = reaction[:emoji]
     @source = data[:message][:source]
     extract_identities(object(data[:chat]), object(data[:sender]))
@@ -116,17 +115,8 @@ class Ryze::ReactionEvent
 
   def target_error
     return @target_details[:error] if @target_details[:error]
-    return :target_self if id == target_id
 
-    :target_chat_mismatch if target_chat_mismatch?
-  end
-
-  def target_chat_mismatch?
-    return false unless @target_chat
-
-    domain = @target_chat.split('@', 2).last
-    same_domain_ids = @chat_ids.select { |chat_id| chat_id.end_with?("@#{domain}") }
-    same_domain_ids.any? && same_domain_ids.exclude?(@target_chat)
+    :target_self if id == target_id
   end
 
   def target_value(key, names)
