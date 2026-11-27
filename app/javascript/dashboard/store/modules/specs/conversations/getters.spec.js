@@ -13,6 +13,64 @@ import conversations from './conversations.fixtures';
 commonHelpers();
 
 describe('#getters', () => {
+  describe('authorized group detail', () => {
+    const viewer = {
+      getCurrentAccountId: 1,
+      getCurrentUser: {
+        id: 7,
+        accounts: [
+          {
+            id: 1,
+            role: 'agent',
+            custom_role_id: 1,
+            permissions: ['conversation_participating_manage'],
+          },
+        ],
+      },
+    };
+    const group = {
+      id: 9,
+      whatsapp_group: true,
+      status: 'open',
+      meta: { assignee: { id: 2 } },
+    };
+
+    it('does not treat a bot with the same numeric ID as the viewing agent', () => {
+      const botGroup = {
+        ...group,
+        meta: { assignee: { id: 7 }, assignee_type: 'AgentBot' },
+      };
+      const state = { allConversations: [botGroup], selectedChatId: 9 };
+      const filters = { status: 'open', whatsappScope: 'groups' };
+
+      expect(getters.getSelectedChat(state, {}, {}, viewer)).toEqual({});
+      expect(getters.getMineChats(state, {}, {}, viewer)(filters)).toEqual([]);
+    });
+
+    it('only exposes a coworkers group after authorized server response', () => {
+      const state = {
+        allConversations: [{ ...group, authorizedWhatsAppGroups: { 9: true } }],
+        selectedChatId: 9,
+        authorizedWhatsAppGroups: {},
+      };
+      const filters = { status: 'open', whatsappScope: 'groups' };
+
+      expect(getters.getSelectedChat(state, {}, {}, viewer)).toEqual({});
+      expect(getters.getAllConversations(state, {}, {}, viewer)).toEqual([]);
+      expect(getters.getAllStatusChats(state, {}, {}, viewer)(filters)).toEqual(
+        []
+      );
+
+      state.authorizedWhatsAppGroups = { 9: true };
+      expect(getters.getSelectedChat(state, {}, {}, viewer)).toMatchObject(
+        group
+      );
+      expect(getters.getAllStatusChats(state, {}, {}, viewer)(filters)).toEqual(
+        state.allConversations
+      );
+    });
+  });
+
   describe('#getAllConversations', () => {
     it('returns conversations ordered by lastActivityAt in descending order if no sort order is available', () => {
       const state = { allConversations: [...conversations] };
@@ -495,6 +553,64 @@ describe('#getters', () => {
       },
       getCurrentAccountId: 1,
     };
+
+    it.each([
+      ['groups', [2]],
+      ['inbox', [1]],
+      [undefined, [2, 1]],
+    ])(
+      'applies WhatsApp scope %s to live conversations in a filtered list',
+      (whatsappScope, expected) => {
+        const state = {
+          allConversations: [
+            mockConversations[0],
+            { ...mockConversations[1], whatsapp_group: true },
+            { ...mockConversations[2], whatsapp_group: true },
+          ],
+          chatSortFilter: 'last_activity_at_desc',
+          appliedFilters: [
+            {
+              attribute_key: 'status',
+              filter_operator: 'equal_to',
+              values: ['open'],
+            },
+          ],
+          conversationFilters: { whatsappScope },
+        };
+
+        const result = getters.getFilteredConversations(
+          state,
+          {},
+          {},
+          mockRootGetters
+        );
+        expect(result.map(conversation => conversation.id)).toEqual(expected);
+      }
+    );
+
+    it.each(['inbox', 'groups'])(
+      'keeps the full explicit contact history from %s',
+      whatsappScope => {
+        const state = {
+          allConversations: [
+            mockConversations[0],
+            { ...mockConversations[1], whatsapp_group: true },
+          ],
+          appliedFilters: [],
+          chatSortFilter: 'last_activity_at_desc',
+          conversationFilters: { whatsappScope },
+          appliedFiltersWhatsAppScope: null,
+        };
+
+        const result = getters.getFilteredConversations(
+          state,
+          {},
+          {},
+          mockRootGetters
+        );
+        expect(result.map(conversation => conversation.id)).toEqual([2, 1]);
+      }
+    );
 
     it('filters conversations based on role permissions for administrator', () => {
       const state = {

@@ -132,6 +132,7 @@ class ActionCableListener < BaseListener
   def contact_updated(event)
     contact, account = extract_contact_and_account(event)
     broadcast(account, [account_token(account)], CONTACT_UPDATED, contact.push_event_data)
+    broadcast_contact_group_classification_changed(contact) if event.data[:changed_attributes]&.key?('identifier')
   end
 
   def contact_merged(event)
@@ -164,7 +165,11 @@ class ActionCableListener < BaseListener
     conversation = event.data[:conversation]
     user = event.data[:user]
     widget_tokens, client_tokens = split_contact_tokens(typing_contact_inboxes(conversation, user))
-    data = { conversation: conversation.push_event_data, user: user.push_event_data, is_private: event.data[:is_private] || false }
+    data = {
+      conversation: conversation.push_event_data.except(:whatsapp_group),
+      user: user.push_event_data,
+      is_private: event.data[:is_private] || false
+    }
 
     broadcast(conversation.account, typing_user_tokens(conversation, user) + client_tokens, event_name, data,
               widget: { tokens: widget_tokens, data: data.merge(conversation: conversation.widget_push_event_data) })

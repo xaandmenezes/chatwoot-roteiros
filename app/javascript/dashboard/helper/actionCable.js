@@ -62,6 +62,10 @@ class ActionCableConnector extends BaseActionCableConnector {
       'notification.updated': this.onNotificationUpdated,
       'conversation.read': this.onConversationRead,
       'conversation.updated': this.onConversationUpdated,
+      'conversation.whatsapp_group_access_changed':
+        this.onWhatsAppGroupAccessChanged,
+      'conversation.whatsapp_group_classification_changed':
+        this.onWhatsAppGroupClassificationChanged,
       'conversation.unread_count_changed':
         this.onConversationUnreadCountChanged,
       'account.cache_invalidated': this.onCacheInvalidate,
@@ -79,8 +83,8 @@ class ActionCableConnector extends BaseActionCableConnector {
     };
   }
 
-  // eslint-disable-next-line class-methods-use-this
   onReconnect = () => {
+    this.fetchConversationUnreadCounts();
     emitter.emit(BUS_EVENTS.WEBSOCKET_RECONNECT);
   };
 
@@ -235,6 +239,16 @@ class ActionCableConnector extends BaseActionCableConnector {
   onConversationUpdated = data => {
     this.app.$store.dispatch('updateConversation', data);
     this.fetchConversationStats();
+  };
+
+  onWhatsAppGroupAccessChanged = ({ conversation_id: conversationId }) => {
+    this.app.$store.dispatch('revalidateWhatsAppGroupAccess', conversationId);
+    this.onConversationUnreadCountChanged();
+  };
+
+  onWhatsAppGroupClassificationChanged = ({ inbox_id: inboxId }) => {
+    this.app.$store.dispatch('refreshWhatsAppClassification', inboxId);
+    this.onConversationUnreadCountChanged();
   };
 
   onConversationUnreadCountChanged = () => {

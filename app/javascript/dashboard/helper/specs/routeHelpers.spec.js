@@ -277,3 +277,18 @@ describe('isAInboxViewRoute', () => {
     expect(isAInboxViewRoute('inbox_view')).toBe(false);
   });
 });
+
+describe('WhatsApp groups routes', () => {
+  it('treats the list and detail as conversation routes', () => {
+    expect(isAConversationRoute('whatsapp_groups', true)).toBe(true);
+    expect(isAConversationRoute('conversation_through_whatsapp_groups')).toBe(
+      true
+    );
+  });
+
+  it('returns to the groups list from group detail', () => {
+    expect(
+      getConversationDashboardRoute('conversation_through_whatsapp_groups')
+    ).toBe('whatsapp_groups');
+  });
+});

@@ -1,8 +1,10 @@
+import wootConstants from 'dashboard/constants/globals';
 import { MESSAGE_STATUS, MESSAGE_TYPE } from 'shared/constants/messages';
 import { FEATURE_FLAGS } from 'dashboard/featureFlags';
 import languages from 'dashboard/components/widgets/conversation/advancedFilterItems/languages';
 import {
   applyPageFilters,
+  matchesWhatsAppScope,
   applyRoleFilter,
   isForeign,
   isTranslatable,
@@ -30,16 +32,47 @@ export const getSelectedChatConversation = ({
 }) =>
   allConversations.filter(conversation => conversation.id === selectedChatId);
 
+const canReadGroup = (conversation, authorizedGroups, rootGetters) => {
+  if (conversation.whatsapp_group !== true) return true;
+
+  const user = rootGetters?.getCurrentUser;
+  if (!user?.accounts) return false;
+  const accountId = rootGetters.getCurrentAccountId;
+  return applyRoleFilter(
+    conversation,
+    getUserRole(user, accountId),
+    getUserPermissions(user, accountId),
+    user.id,
+    !!authorizedGroups?.[conversation.id]
+  );
+};
+
 const getters = {
   isRemovedRyzeEcho:
     ({ removedRyzeEchoIds }) =>
     id =>
       !!removedRyzeEchoIds[id],
-  getAllConversations: ({ allConversations, chatSortFilter: sortKey }) => {
-    return allConversations.sort((a, b) => sortComparator(a, b, sortKey));
-  },
+  getAllConversations: (
+    { allConversations, chatSortFilter: sortKey, authorizedWhatsAppGroups },
+    _,
+    __,
+    rootGetters
+  ) =>
+    allConversations
+      .sort((a, b) => sortComparator(a, b, sortKey))
+      .filter(chat =>
+        canReadGroup(chat, authorizedWhatsAppGroups, rootGetters)
+      ),
   getFilteredConversations: (
-    { allConversations, chatSortFilter, appliedFilters, appliedFiltersSortBy },
+    {
+      allConversations,
+      chatSortFilter,
+      appliedFilters,
+      appliedFiltersSortBy,
+      appliedFiltersWhatsAppScope,
+      conversationFilters,
+      authorizedWhatsAppGroups,
+    },
     _,
     __,
     rootGetters
@@ -51,15 +84,25 @@ const getters = {
     const permissions = getUserPermissions(currentUser, currentAccountId);
     const userRole = getUserRole(currentUser, currentAccountId);
     const matchesFilters = createFiltersMatcher(appliedFilters);
+    const whatsappScope =
+      appliedFiltersWhatsAppScope === null
+        ? undefined
+        : conversationFilters?.whatsappScope;
 
     return allConversations
       .filter(conversation => {
+        if (!matchesWhatsAppScope(conversation, whatsappScope)) {
+          return false;
+        }
+
         const matchesFilterResult = matchesFilters(conversation);
         const allowedForRole = applyRoleFilter(
           conversation,
           userRole,
           permissions,
-          currentUserId
+          currentUserId,
+          conversation.whatsapp_group === true &&
+            !!authorizedWhatsAppGroups?.[conversation.id]
         );
 
         return matchesFilterResult && allowedForRole;
@@ -68,11 +111,19 @@ const getters = {
         sortComparator(a, b, appliedFiltersSortBy || chatSortFilter)
       );
   },
-  getSelectedChat: ({ selectedChatId, allConversations }) => {
+  getSelectedChat: (
+    { selectedChatId, allConversations, authorizedWhatsAppGroups },
+    _,
+    __,
+    rootGetters
+  ) => {
     const selectedChat = allConversations.find(
-      conversation => conversation.id === selectedChatId
+      chat => chat.id === selectedChatId
     );
-    return selectedChat || {};
+    return selectedChat &&
+      canReadGroup(selectedChat, authorizedWhatsAppGroups, rootGetters)
+      ? selectedChat
+      : {};
   },
   getSelectedChatAttachments: ({ selectedChatId, attachments }) => {
     return attachments[selectedChatId] || [];
@@ -103,8 +154,11 @@ const getters = {
     const currentUserID = rootGetters.getCurrentUser?.id;
 
     return _state.allConversations.filter(conversation => {
-      const { assignee } = conversation.meta;
-      const isAssignedToMe = assignee && assignee.id === currentUserID;
+      const { assignee, assignee_type: assigneeType } = conversation.meta;
+      const isGroupBot =
+        conversation.whatsapp_group === true && assigneeType === 'AgentBot';
+      const isAssignedToMe =
+        assignee && assignee.id === currentUserID && !isGroupBot;
       const shouldFilter = applyPageFilters(conversation, activeFilters);
       const isChatMine = isAssignedToMe && shouldFilter;
 
@@ -157,6 +211,8 @@ const getters = {
 
     const permissions = getUserPermissions(currentUser, currentAccountId);
     const userRole = getUserRole(currentUser, currentAccountId);
+    const scopedToGroups =
+      activeFilters.whatsappScope === wootConstants.WHATSAPP_SCOPE.GROUPS;
 
     return _state.allConversations.filter(conversation => {
       const shouldFilter = applyPageFilters(conversation, activeFilters);
@@ -164,7 +220,8 @@ const getters = {
         conversation,
         userRole,
         permissions,
-        currentUserId
+        currentUserId,
+        scopedToGroups && !!_state.authorizedWhatsAppGroups?.[conversation.id]
       );
 
       return shouldFilter && allowedForRole;

@@ -20,9 +20,11 @@ const getViewKey = ({
   teamId,
   conversationType,
   queryData,
+  whatsappScope,
 }) =>
   JSON.stringify([
     ConversationApi.url,
+    whatsappScope,
     queryData || {
       inboxId,
       status,
@@ -50,7 +52,11 @@ const fetchMetaData = async (commit, params, request) => {
 
   try {
     const response = params.queryData
-      ? await ConversationApi.filter({ queryData: params.queryData, page: 1 })
+      ? await ConversationApi.filter({
+          queryData: params.queryData,
+          page: 1,
+          whatsappScope: params.whatsappScope,
+        })
       : await ConversationApi.meta(params);
     const {
       data: { meta },

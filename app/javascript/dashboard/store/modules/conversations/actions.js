@@ -1,7 +1,9 @@
 import types from '../../mutation-types';
+import wootConstants from 'dashboard/constants/globals';
 import ConversationApi from '../../../api/inbox/conversation';
 import MessageApi from '../../../api/inbox/message';
 import { MESSAGE_STATUS, MESSAGE_TYPE } from 'shared/constants/messages';
+import { isAConversationRoute } from 'dashboard/helper/routeHelpers';
 import { createPendingMessage } from 'dashboard/helper/commons';
 import filterQueryGenerator, {
   withTimestampTimezone,
@@ -12,6 +14,8 @@ import {
   isOnParticipatingView,
   isOnUnattendedView,
   isOnFoldersView,
+  isOnWhatsAppGroupsView,
+  isOnOperationalInboxView,
 } from './helpers/actionHelpers';
 import messageReadActions from './actions/messageReadActions';
 import messageTranslateActions from './actions/messageTranslateActions';
@@ -32,6 +36,18 @@ import {
 const MESSAGES_PER_PAGE = 20;
 
 const pendingHistoryRequests = new Map();
+const pendingConversationDetails = new Map();
+const GROUP_QUEUE_REFRESH_DELAY = 1000;
+let groupQueueRefreshTimer = null;
+
+const scheduleGroupQueueRefresh = (dispatch, rootState) => {
+  if (groupQueueRefreshTimer !== null) return;
+
+  groupQueueRefreshTimer = setTimeout(() => {
+    groupQueueRefreshTimer = null;
+    if (isOnWhatsAppGroupsView(rootState)) dispatch('refreshWhatsAppQueue');
+  }, GROUP_QUEUE_REFRESH_DELAY);
+};
 
 const TERMINAL_CONTACT_INFO_REQUEST_STATES = ['shared', 'identity_conflict'];
 
@@ -93,8 +109,20 @@ const fetchContactLabelsAfterSenderChange = (
 // actions
 const actions = {
   getConversation: async ({ commit, dispatch }, conversationId) => {
+    const requestUrl = ConversationApi.url;
+    const requestKey = `${requestUrl}/${conversationId}`;
+    const request = Symbol('conversation detail');
+    pendingConversationDetails.set(requestKey, request);
     try {
       const response = await ConversationApi.show(conversationId);
+      if (
+        requestUrl !== ConversationApi.url ||
+        pendingConversationDetails.get(requestKey) !== request
+      )
+        return;
+      if (response.data.whatsapp_group === true) {
+        commit(types.CONFIRM_WHATSAPP_GROUP_ACCESS, [response.data.id]);
+      }
       // API refreshes can run in the background after reconnecting. Use the
       // list merge to preserve local message state without moving the agent's
       // scroll position or marking messages as read.
@@ -106,6 +134,10 @@ const actions = {
       });
     } catch (error) {
       // Ignore error
+    } finally {
+      if (pendingConversationDetails.get(requestKey) === request) {
+        pendingConversationDetails.delete(requestKey);
+      }
     }
   },
 
@@ -170,6 +202,10 @@ const actions = {
       // The contact scope pins its own order to match the in-thread navigation.
       const filterRequestParams = {
         ...requestParams,
+        whatsappScope:
+          state.appliedFiltersWhatsAppScope === null
+            ? undefined
+            : state.conversationFilters?.whatsappScope,
         sortBy: state.appliedFiltersSortBy || sortBy,
       };
       const countRequest = await dispatch(
@@ -491,8 +527,18 @@ const actions = {
     return data;
   },
 
-  addMessage({ commit, dispatch, rootGetters }, message) {
+  addMessage({ commit, dispatch, state, rootGetters, rootState }, message) {
     commit(types.ADD_MESSAGE, message);
+    if (
+      rootState?.route &&
+      isOnWhatsAppGroupsView(rootState) &&
+      state.conversationFilters.whatsappScope ===
+        wootConstants.WHATSAPP_SCOPE.GROUPS &&
+      message.conversation?.whatsapp_group === true &&
+      !state.allConversations.some(chat => chat.id === message.conversation_id)
+    ) {
+      scheduleGroupQueueRefresh(dispatch, rootState);
+    }
     if (message.message_type === MESSAGE_TYPE.INCOMING) {
       commit(types.SET_CONVERSATION_CAN_REPLY, {
         conversationId: message.conversation_id,
@@ -506,6 +552,90 @@ const actions = {
       rootGetters?.getCurrentUserID,
       rootGetters?.getCurrentUserReceivesCalls
     );
+  },
+
+  async refreshWhatsAppQueue(
+    { commit, dispatch, state, getters, rootState, rootGetters },
+    { inboxId, includeTransverse = false } = {}
+  ) {
+    const { name } = rootState.route;
+    const { whatsappScope, inboxId: activeInboxId } = state.conversationFilters;
+    const isScopedQueue =
+      whatsappScope &&
+      (isOnWhatsAppGroupsView(rootState) || isOnOperationalInboxView(name));
+    if (
+      !isScopedQueue &&
+      !(includeTransverse && isAConversationRoute(name, true))
+    )
+      return;
+    if (inboxId && activeInboxId && Number(inboxId) !== Number(activeInboxId))
+      return;
+
+    const appliedQuery = getters.getAppliedConversationFiltersQuery;
+    const folder = isOnFoldersView(rootState)
+      ? rootGetters?.['customViews/getConversationCustomViews']?.find(
+          view => view.id === Number(rootState.route.params.id)
+        )
+      : undefined;
+    const queryData = appliedQuery?.payload?.length
+      ? appliedQuery
+      : folder?.query;
+    if (queryData) {
+      try {
+        await dispatch('fetchFilteredConversations', {
+          queryData,
+          page: 1,
+          replaceExisting: true,
+        });
+      } catch {
+        // The next queue refresh can retry.
+      }
+      return;
+    }
+
+    commit(types.UPDATE_CHAT_LIST_FILTERS, { page: 1, updatedWithin: null });
+    await dispatch('fetchAllConversations', { replaceExisting: true });
+  },
+
+  async refreshWhatsAppClassification({ state, dispatch }, inboxId) {
+    const accountUrl = ConversationApi.url;
+    const selected = state.allConversations.find(
+      chat => chat.id === state.selectedChatId && chat.inbox_id === inboxId
+    );
+    if (selected)
+      pendingConversationDetails.delete(`${accountUrl}/${selected.id}`);
+
+    await dispatch('refreshWhatsAppQueue', { inboxId });
+    if (
+      selected &&
+      accountUrl === ConversationApi.url &&
+      selected.id === state.selectedChatId
+    ) {
+      await dispatch('getConversation', selected.id);
+    }
+  },
+
+  async revalidateWhatsAppGroupAccess(
+    { commit, dispatch, state, rootState },
+    conversationId
+  ) {
+    const wasSelected = state.selectedChatId === conversationId;
+    const requestUrl = ConversationApi.url;
+    const requestKey = `${requestUrl}/${conversationId}`;
+    pendingConversationDetails.delete(requestKey);
+    dispatch('invalidateConversationListRequests');
+    commit(types.DELETE_CONVERSATION, conversationId);
+
+    await dispatch('refreshWhatsAppQueue', { includeTransverse: true });
+
+    if (
+      wasSelected &&
+      requestUrl === ConversationApi.url &&
+      Number(rootState.route.params?.conversation_id) === conversationId &&
+      !state.authorizedWhatsAppGroups[conversationId]
+    ) {
+      await dispatch('getConversation', conversationId);
+    }
   },
 
   updateMessage({ commit, dispatch, rootGetters, state }, message) {
@@ -626,6 +756,25 @@ const actions = {
     const previousContactId = previousConversation?.meta?.sender?.id;
 
     commit(types.UPDATE_CONVERSATION, conversation);
+    if (
+      previousConversation?.whatsapp_group &&
+      conversation.meta &&
+      previousConversation.meta?.assignee?.id ===
+        rootGetters?.getCurrentUserID &&
+      conversation.meta.assignee?.id !== rootGetters?.getCurrentUserID
+    ) {
+      const user = rootGetters.getCurrentUser;
+      const accountId = rootGetters.getCurrentAccountId;
+      const permissions = getUserPermissions(user, accountId);
+      if (
+        getUserRole(user, accountId) === 'custom_role' &&
+        !permissions.includes('conversation_manage') &&
+        !permissions.includes('conversation_unassigned_manage') &&
+        permissions.includes('conversation_participating_manage')
+      ) {
+        dispatch('revalidateWhatsAppGroupAccess', conversation.id);
+      }
+    }
     fetchContactLabelsAfterSenderChange(
       getters,
       dispatch,
@@ -757,12 +906,17 @@ const actions = {
 
   // Replaces the list with page 1 of the snake_case filters; sortBy overrides the activity order.
   applyConversationFilters: (
-    { commit, dispatch },
-    { filters, sortBy = null }
+    { commit, dispatch, state },
+    { filters, sortBy = null, includeAllWhatsAppConversations = false }
   ) => {
     const appliedFilters = filters.map(withTimestampTimezone);
     commit(types.SET_CONVERSATION_FILTERS, appliedFilters);
     commit(types.SET_CONVERSATION_FILTERS_SORT, sortBy);
+    if (includeAllWhatsAppConversations) {
+      commit(types.SET_CONVERSATION_FILTERS_WHATSAPP_SCOPE, null);
+    } else if (state?.appliedFiltersWhatsAppScope === null) {
+      commit(types.SET_CONVERSATION_FILTERS_WHATSAPP_SCOPE, undefined);
+    }
     commit(types.EMPTY_ALL_CONVERSATION);
     dispatch('conversationPage/reset', {}, { root: true });
 

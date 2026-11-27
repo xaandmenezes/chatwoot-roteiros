@@ -17,6 +17,9 @@ module CacheKeys
       keys[model.name.underscore.to_sym] = fetch_value_for_key(id, model.name.underscore)
     end
 
+    # The dashboard caches inbox rows in IndexedDB across deployments.
+    groups_inbox = Ryze::GroupConversations.inbox(self)
+    keys[:inbox] = "#{keys.fetch(:inbox)}/whatsapp-groups/#{groups_inbox.id}" if groups_inbox
     keys
   end
 

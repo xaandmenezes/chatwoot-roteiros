@@ -52,7 +52,8 @@ describe('#ConversationApi', () => {
     it('#getUnreadCounts', () => {
       conversationsAPI.getUnreadCounts();
       expect(axiosMock.get).toHaveBeenCalledWith(
-        '/api/v1/conversations/unread_counts'
+        '/api/v1/conversations/unread_counts',
+        { params: {} }
       );
     });
   });

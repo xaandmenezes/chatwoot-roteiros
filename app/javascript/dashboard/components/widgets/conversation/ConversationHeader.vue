@@ -54,7 +54,18 @@ const backButtonUrl = computed(() => {
     conversation_through_mentions: 'mention',
     conversation_through_participating: 'participating',
     conversation_through_unattended: 'unattended',
+    conversation_through_whatsapp_groups:
+      wootConstants.CONVERSATION_TYPE.WHATSAPP_GROUPS,
   };
+  if (
+    props.chat.whatsapp_group &&
+    ['inbox_conversation', 'conversation_through_inbox'].includes(name)
+  ) {
+    return conversationListPageURL({
+      accountId: accountId.value,
+      conversationType: wootConstants.CONVERSATION_TYPE.WHATSAPP_GROUPS,
+    });
+  }
   return conversationListPageURL({
     accountId: accountId.value,
     inboxId,

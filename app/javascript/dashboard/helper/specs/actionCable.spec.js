@@ -50,6 +50,13 @@ describe('ActionCableConnector - Copilot Tests', () => {
     vi.clearAllTimers();
     vi.useRealTimers();
   });
+  it('refreshes unread badges after reconnecting', () => {
+    actionCable.onReconnect();
+
+    expect(mockDispatch).toHaveBeenCalledWith('conversationUnreadCounts/get');
+    expect(emitter.emit).toHaveBeenCalledWith(BUS_EVENTS.WEBSOCKET_RECONNECT);
+  });
+
   describe('copilot event handlers', () => {
     it('should register the copilot.message.created event handler', () => {
       expect(Object.keys(actionCable.events)).toContain(

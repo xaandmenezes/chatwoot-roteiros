@@ -20,6 +20,7 @@ const isConversationRoute = computed(() => {
   const CONVERSATION_ROUTES = [
     'inbox_conversation',
     'conversation_through_inbox',
+    'conversation_through_whatsapp_groups',
     'conversations_through_label',
     'team_conversations_through_label',
     'conversations_through_folders',

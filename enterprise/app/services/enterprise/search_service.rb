@@ -1,8 +1,14 @@
 module Enterprise::SearchService
+  ADVANCED_SEARCH_GROUP_DENIAL_LIMIT = 1000
+
   def advanced_search
     where_conditions = build_where_conditions
     apply_filters(where_conditions)
 
+    denied_group_ids = advanced_search_denied_group_ids(where_conditions)
+    return filter_messages_with_like if denied_group_ids.size > ADVANCED_SEARCH_GROUP_DENIAL_LIMIT
+
+    where_conditions[:conversation_id] = { not: denied_group_ids } if denied_group_ids.present?
     Message.search(
       search_query,
       fields: %w[content attachments.transcribed_text content_attributes.email.subject],
@@ -16,6 +22,47 @@ module Enterprise::SearchService
   end
 
   private
+
+  def conversation_base_query
+    exclude_hidden_whatsapp_groups(super, :id)
+  end
+
+  def message_base_query
+    exclude_hidden_whatsapp_groups(super, :conversation_id)
+  end
+
+  def exclude_hidden_whatsapp_groups(query, column)
+    return query unless restricted_whatsapp_group_inbox
+
+    query.where.not(column => hidden_whatsapp_groups.select(:id))
+  end
+
+  def hidden_whatsapp_groups
+    groups = Ryze::GroupConversations.scope(current_account)
+    accessible_groups = Conversations::PermissionFilterService.new(groups, current_user, current_account).perform
+    groups.where.not(id: accessible_groups.select(:id))
+  end
+
+  def advanced_search_denied_group_ids(where_conditions)
+    inbox = restricted_whatsapp_group_inbox
+    return [] unless inbox
+    return [] if where_conditions[:inbox_id].present? && Array(where_conditions[:inbox_id]).exclude?(inbox.id)
+
+    # One extra row detects overflow so the SQL fallback can enforce the full denial.
+    hidden_whatsapp_groups.limit(ADVANCED_SEARCH_GROUP_DENIAL_LIMIT + 1).ids
+  end
+
+  def restricted_whatsapp_group_inbox
+    return @restricted_whatsapp_group_inbox if defined?(@restricted_whatsapp_group_inbox)
+
+    inbox = Ryze::GroupConversations.inbox(current_account)
+    eligible = inbox && accessable_inbox_ids.include?(inbox.id) && restricted_group_role?
+    @restricted_whatsapp_group_inbox = eligible ? inbox : nil
+  end
+
+  def restricted_group_role?
+    account_user&.agent? && account_user.custom_role_id.present? && account_user.permissions.exclude?('conversation_manage')
+  end
 
   def build_where_conditions
     conditions = { account_id: current_account.id }

@@ -692,6 +692,62 @@ describe('#actions', () => {
   });
 
   describe('#addMessage', () => {
+    it('coalesces a burst from unseen groups into one authorized list refresh', async () => {
+      vi.useFakeTimers();
+      const localDispatch = vi.fn();
+      const state = {
+        allConversations: [{ id: 2 }],
+        conversationFilters: { whatsappScope: 'groups' },
+      };
+      const rootState = { route: { name: 'whatsapp_groups' } };
+      const message = {
+        id: 1,
+        message_type: 0,
+        conversation_id: 1,
+        conversation: { whatsapp_group: true },
+      };
+
+      for (let id = 1; id <= 5; id += 1) {
+        actions.addMessage(
+          { commit, dispatch: localDispatch, state, rootState },
+          {
+            ...message,
+            id,
+            conversation_id: 3,
+          }
+        );
+      }
+      await vi.runAllTimersAsync();
+
+      expect(
+        localDispatch.mock.calls.filter(
+          ([name]) => name === 'refreshWhatsAppQueue'
+        )
+      ).toEqual([['refreshWhatsAppQueue']]);
+      expect(localDispatch).not.toHaveBeenCalledWith('getConversation', 3);
+      vi.useRealTimers();
+    });
+
+    it('keeps group messages out of the operational list refresh', async () => {
+      vi.useFakeTimers();
+      const state = {
+        allConversations: [],
+        conversationFilters: { whatsappScope: 'inbox' },
+      };
+      const message = {
+        id: 1,
+        message_type: 0,
+        conversation_id: 1,
+        conversation: { whatsapp_group: true },
+      };
+
+      const rootState = { route: { name: 'home' } };
+      actions.addMessage({ commit, dispatch, state, rootState }, message);
+      await vi.runAllTimersAsync();
+      expect(dispatch).not.toHaveBeenCalledWith('refreshWhatsAppQueue');
+      vi.useRealTimers();
+    });
+
     it('sends correct mutations if message is incoming', () => {
       const message = {
         id: 1,
@@ -717,6 +773,115 @@ describe('#actions', () => {
       };
       actions.addMessage({ commit }, message);
       expect(commit.mock.calls).toEqual([[types.ADD_MESSAGE, message]]);
+    });
+  });
+
+  it('ignores a detail response started before the selected conversation changed classification', async () => {
+    let finish;
+    axios.get.mockReturnValueOnce(
+      new Promise(resolve => {
+        finish = resolve;
+      })
+    );
+    const context = {
+      commit,
+      dispatch: vi.fn(),
+      state: { selectedChatId: 7, allConversations: [{ id: 7, inbox_id: 2 }] },
+    };
+    const oldDetail = actions.getConversation(context, 7);
+    await actions.refreshWhatsAppClassification(context, 2);
+    finish({ data: { id: 7, whatsapp_group: true, meta: {} } });
+    await oldDetail;
+
+    expect(context.dispatch).toHaveBeenCalledWith('getConversation', 7);
+    expect(commit).not.toHaveBeenCalledWith(
+      types.CONFIRM_WHATSAPP_GROUP_ACCESS,
+      [7]
+    );
+    expect(commit).not.toHaveBeenCalledWith(
+      types.SET_ALL_CONVERSATION,
+      expect.anything()
+    );
+  });
+
+  describe('#revalidateWhatsAppGroupAccess', () => {
+    it('discards a stale team-list response after revoking group access', async () => {
+      const queryData = dataToSend.queryData;
+      let complete;
+      axios.post
+        .mockReturnValueOnce(
+          new Promise(resolve => {
+            complete = resolve;
+          })
+        )
+        .mockResolvedValueOnce({
+          data: { payload: [], meta: { all_count: 0 } },
+        });
+
+      const context = {
+        commit,
+        dispatch: (action, payload) => actions[action]?.(context, payload),
+        state: {
+          conversationFilters: { teamId: 2 },
+          authorizedWhatsAppGroups: {},
+        },
+        getters: { getAppliedConversationFiltersQuery: queryData },
+        rootState: { route: { name: 'team_conversations' } },
+      };
+      const beforeChange = actions.fetchFilteredConversations(context, {
+        queryData,
+        page: 1,
+      });
+      await vi.waitFor(() => expect(axios.post).toHaveBeenCalledOnce());
+      await actions.revalidateWhatsAppGroupAccess(context, 9);
+
+      complete({
+        data: {
+          payload: [{ id: 9, whatsapp_group: true, meta: {} }],
+          meta: {},
+        },
+      });
+      await beforeChange;
+
+      expect(axios.post).toHaveBeenCalledTimes(2);
+      expect(commit).toHaveBeenCalledWith(types.DELETE_CONVERSATION, 9);
+      expect(commit).not.toHaveBeenCalledWith(
+        types.CONFIRM_WHATSAPP_GROUP_ACCESS,
+        [9]
+      );
+    });
+
+    it('drops a stale approved detail response on access loss and checks the current view', async () => {
+      let complete;
+      axios.get.mockReturnValueOnce(
+        new Promise(resolve => {
+          complete = resolve;
+        })
+      );
+      const beforeChange = actions.getConversation({ commit, dispatch }, 9);
+      const rootState = {
+        route: {
+          name: 'conversation_through_whatsapp_groups',
+          params: { conversation_id: '9' },
+        },
+      };
+      const state = { authorizedWhatsAppGroups: {}, selectedChatId: 9 };
+      await actions.revalidateWhatsAppGroupAccess(
+        { commit, dispatch, state, rootState },
+        9
+      );
+      expect(commit).toHaveBeenCalledWith(types.DELETE_CONVERSATION, 9);
+      expect(dispatch).toHaveBeenCalledWith('refreshWhatsAppQueue', {
+        includeTransverse: true,
+      });
+      expect(dispatch).toHaveBeenCalledWith('getConversation', 9);
+
+      complete({ data: { id: 9, whatsapp_group: true, meta: {} } });
+      await beforeChange;
+      expect(commit).not.toHaveBeenCalledWith(
+        types.CONFIRM_WHATSAPP_GROUP_ACCESS,
+        [9]
+      );
     });
   });
 
@@ -997,6 +1162,66 @@ describe('#actions', () => {
   });
 
   describe('#fetchFilteredConversations', () => {
+    it('keeps the WhatsApp scope through advanced filter pagination and reconnect', async () => {
+      axios.post.mockResolvedValue({ data: dataReceived });
+      const state = {
+        conversationFilters: { whatsappScope: 'groups' },
+        chatSortFilter: 'last_activity_at_desc',
+      };
+      const queryData = { payload: [] };
+
+      await actions.fetchFilteredConversations(
+        { commit, dispatch, state },
+        { queryData, page: 2 }
+      );
+      await actions.fetchFilteredConversations(
+        { commit, dispatch, state },
+        { queryData, page: 1, replaceExisting: true }
+      );
+
+      expect(axios.post).toHaveBeenNthCalledWith(
+        1,
+        '/api/v1/conversations/filter',
+        queryData,
+        expect.objectContaining({
+          params: expect.objectContaining({
+            page: 2,
+            whatsapp_scope: 'groups',
+          }),
+        })
+      );
+      expect(axios.post).toHaveBeenNthCalledWith(
+        2,
+        '/api/v1/conversations/filter',
+        queryData,
+        expect.objectContaining({
+          params: expect.objectContaining({
+            page: 1,
+            whatsapp_scope: 'groups',
+          }),
+        })
+      );
+    });
+    it.each(['groups', 'inbox'])(
+      'keeps explicit contact history unscoped from %s',
+      async whatsappScope => {
+        axios.post.mockResolvedValue({ data: dataReceived });
+        const state = {
+          conversationFilters: { whatsappScope },
+          appliedFiltersWhatsAppScope: null,
+        };
+
+        await actions.fetchFilteredConversations(
+          { commit, dispatch, state },
+          { queryData: { payload: [] }, page: 2 }
+        );
+
+        expect(
+          axios.post.mock.calls[0][2].params.whatsapp_scope
+        ).toBeUndefined();
+      }
+    );
+
     it('ignores an older open-list response after applying an all-status filter', async () => {
       let resolveOpenResponse;
       axios.get.mockReturnValue(

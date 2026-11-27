@@ -9,6 +9,7 @@ class Conversations::FilterService < FilterService
   def perform
     validate_query_operator
     @conversations = query_builder(@filters['conversations'])
+    @conversations = Ryze::GroupConversations.filter(@conversations, account: @account, scope: @params[:whatsapp_scope])
     mine_count, unassigned_count, all_count, = set_count_for_all_conversations
     assigned_count = all_count - unassigned_count
 
@@ -54,7 +55,7 @@ class Conversations::FilterService < FilterService
   end
 
   def conversations
-    Conversations::SortService.apply(@conversations, @params[:sort_by]).page(current_page)
+    Conversations::SortService.apply(@conversations, @params[:sort_by], stable: @params[:whatsapp_scope].present?).page(current_page)
   end
 
   private

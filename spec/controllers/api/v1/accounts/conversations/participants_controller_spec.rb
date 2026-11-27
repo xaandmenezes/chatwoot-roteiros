@@ -100,6 +100,27 @@ RSpec.describe 'Conversation Participants API', type: :request do
           conversation: conversation
         )
       end
+
+      it 'refreshes unread counts when participation changes in the separated WhatsApp inbox' do
+        account.enable_features!(:conversation_unread_counts)
+        inbox = conversation.inbox
+        inbox.update!(channel: create(:channel_api, account: account))
+        allow(Rails.configuration.dispatcher).to receive(:dispatch)
+
+        with_modified_env(RYZE_GROUPS_INBOX_ENABLED: 'true', RYZE_INBOX_ID: inbox.id.to_s) do
+          post api_v1_account_conversation_participants_url(account_id: account.id, conversation_id: conversation.display_id),
+               params: { user_ids: [participant.id] },
+               headers: agent.create_new_auth_token,
+               as: :json
+        end
+
+        expect(response).to have_http_status(:success)
+        expect(Rails.configuration.dispatcher).to have_received(:dispatch).with(
+          'conversation.unread_count_changed',
+          kind_of(ActiveSupport::TimeWithZone),
+          conversation: conversation
+        )
+      end
     end
   end
 

@@ -32,6 +32,7 @@ class ActionCableBroadcastJob < ApplicationJob
 
   def refreshed_data(conversation, event_name, data)
     broadcast_data = conversation.push_event_data.merge(account_id: data[:account_id])
+    broadcast_data.delete(:whatsapp_group) unless data.key?(:whatsapp_group)
     if event_name == ASSIGNEE_CHANGED
       # Keep the original assignment together even when the conversation is
       # refreshed. The dashboard checks its identity against the current owner.

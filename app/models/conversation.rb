@@ -349,9 +349,13 @@ class Conversation < ApplicationRecord
   end
 
   def notify_conversation_updation
-    return unless previous_changes.keys.present? && allowed_keys?
+    return if previous_changes.empty?
 
-    dispatch_conversation_updated_event(previous_changes)
+    classification_changed = ryze_group_classification_changed?
+    dispatch_conversation_updated_event(previous_changes) if allowed_keys? || classification_changed
+    return unless classification_changed
+
+    Rails.configuration.dispatcher.dispatch(CONVERSATION_WHATSAPP_GROUP_CLASSIFICATION_CHANGED, Time.current, inbox: inbox)
   end
 
   def list_of_keys
@@ -362,6 +366,12 @@ class Conversation < ApplicationRecord
   def allowed_keys?
     previous_changes.keys.intersect?(list_of_keys) ||
       additional_attributes_changed?(CONVERSATION_UPDATED_ADDITIONAL_ATTRIBUTE_KEYS)
+  end
+
+  def ryze_group_classification_changed?
+    identifiers = Array(previous_changes['additional_attributes']).map { |attributes| attributes&.[]('whatsapp_jid') }
+    binding_changed = previous_changes.key?('contact_inbox_id') || previous_changes.key?('contact_id') || identifiers.uniq.many?
+    binding_changed && Ryze::GroupConversations.enabled_inbox?(inbox)
   end
 
   def invalidate_filtered_unread_count_conversation

@@ -3,6 +3,7 @@ import types from '../mutation-types';
 
 export const state = {
   allCount: 0,
+  whatsappGroupsCount: 0,
   inboxes: {},
   labels: {},
   teams: {},
@@ -31,6 +32,9 @@ const normalizeCounts = counts => {
 export const getters = {
   getAllUnreadCount($state) {
     return $state.allCount;
+  },
+  getWhatsAppGroupsUnreadCount($state) {
+    return $state.whatsappGroupsCount;
   },
   getInboxUnreadCount: $state => inboxId => {
     return $state.inboxes[String(inboxId)] || 0;
@@ -67,22 +71,33 @@ export const getters = {
   },
 };
 
+let latestRequest = 0;
+
 export const actions = {
   get: async function getUnreadCounts({ commit }) {
+    latestRequest += 1;
+    const request = latestRequest;
+    const accountUrl = ConversationAPI.url;
     try {
-      const response = await ConversationAPI.getUnreadCounts();
-      commit(types.SET_CONVERSATION_UNREAD_COUNTS, response.data.payload);
+      const response = await ConversationAPI.getUnreadCounts({
+        whatsapp_scope: 'inbox',
+      });
+      if (request === latestRequest && accountUrl === ConversationAPI.url) {
+        commit(types.SET_CONVERSATION_UNREAD_COUNTS, response.data.payload);
+      }
     } catch (error) {
       // Ignore errors so the sidebar can continue rendering without badges.
     }
   },
   clear({ commit }) {
+    latestRequest += 1;
     commit(types.SET_CONVERSATION_UNREAD_COUNTS, {});
   },
 };
 
 export const mutations = {
   [types.SET_CONVERSATION_UNREAD_COUNTS]($state, payload = {}) {
+    $state.whatsappGroupsCount = normalizeCount(payload.whatsapp_groups_count);
     $state.allCount = normalizeCount(payload.all_count);
     $state.inboxes = normalizeCounts(payload.inboxes);
     $state.labels = normalizeCounts(payload.labels);

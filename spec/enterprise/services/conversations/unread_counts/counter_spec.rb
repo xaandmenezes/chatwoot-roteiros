@@ -74,4 +74,26 @@ RSpec.describe Conversations::UnreadCounts::Counter do
     expect(store.base_ready?(account.id)).to be(false)
     expect(store.assignment_ready?(account.id)).to be(false)
   end
+
+  it 'counts a visible group for a participating agent while excluding an unrelated group' do
+    inbox = create(:inbox, account: account, channel: create(:channel_api, account: account))
+    create(:inbox_member, user: agent, inbox: inbox)
+    account_user.update!(custom_role: create(:custom_role, account: account, permissions: ['conversation_participating_manage']))
+    groups = %w[120363123456789001@g.us 120363123456789002@g.us].map do |jid|
+      group = create_unread_conversation(account: account, inbox: inbox, assignee: other_agent)
+      group.contact.update!(identifier: jid)
+      group.contact_inbox.update!(source_id: jid)
+      group.update!(additional_attributes: { 'whatsapp_jid' => jid })
+      group
+    end
+    create(:conversation_participant, account: account, conversation: groups.first, user: agent)
+    create_unread_conversation(account: account, inbox: inbox, assignee: agent)
+
+    with_modified_env(RYZE_GROUPS_INBOX_ENABLED: 'true', RYZE_INBOX_ID: inbox.id.to_s) do
+      counts = described_class.new(account: account, user: agent).perform
+      result = Conversations::UnreadCounts::WhatsappInboxCounter.new(account: account, user: agent).perform(counts)
+
+      expect(result).to include(all_count: 1, inboxes: { inbox.id.to_s => 1 }, whatsapp_groups_count: 1)
+    end
+  end
 end

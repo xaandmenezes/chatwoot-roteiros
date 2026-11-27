@@ -38,6 +38,17 @@ export const isOnParticipatingView = ({ route: { name: routeName } }) => {
   return PARTICIPATING_ROUTES.includes(routeName);
 };
 
+export const isOnOperationalInboxView = name =>
+  [
+    'home',
+    'inbox_conversation',
+    'inbox_dashboard',
+    'conversation_through_inbox',
+  ].includes(name);
+
+export const isOnWhatsAppGroupsView = ({ route: { name } }) =>
+  ['whatsapp_groups', 'conversation_through_whatsapp_groups'].includes(name);
+
 export const isOnFoldersView = ({ route: { name: routeName } }) => {
   const FOLDER_ROUTES = [
     'folder_conversations',
@@ -60,6 +71,12 @@ export const buildConversationList = (
   } else {
     context.commit(types.SET_ALL_CONVERSATION, conversationList);
   }
+  const groupIds = conversationList
+    .filter(chat => chat.whatsapp_group === true)
+    .map(chat => chat.id);
+  if (groupIds.length)
+    context.commit(types.CONFIRM_WHATSAPP_GROUP_ACCESS, groupIds);
+
   context.dispatch('conversationStats/set', {
     meta: metaData,
     request: countRequest,

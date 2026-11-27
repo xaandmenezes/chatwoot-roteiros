@@ -1,7 +1,48 @@
 import { describe, it, expect } from 'vitest';
-import { applyRoleFilter } from '../helpers';
+import { applyPageFilters, applyRoleFilter } from '../helpers';
 
 describe('Conversation Helpers', () => {
+  describe('#applyPageFilters', () => {
+    const filters = { status: 'open', inboxId: 2 };
+    const group = { status: 'open', inbox_id: 2, whatsapp_group: true };
+    const direct = { status: 'open', inbox_id: 2, whatsapp_group: false };
+    const unclassified = { status: 'open', inbox_id: 2 };
+
+    it('keeps only confirmed groups in the group queue', () => {
+      expect(
+        applyPageFilters(group, { ...filters, whatsappScope: 'groups' })
+      ).toBe(true);
+      expect(
+        applyPageFilters(direct, { ...filters, whatsappScope: 'groups' })
+      ).toBe(false);
+      expect(
+        applyPageFilters(unclassified, { ...filters, whatsappScope: 'groups' })
+      ).toBe(false);
+      expect(
+        applyPageFilters(
+          { ...group, status: 'resolved' },
+          { ...filters, whatsappScope: 'groups' }
+        )
+      ).toBe(false);
+    });
+
+    it('keeps direct and unclassified conversations in the inbox queue', () => {
+      expect(
+        applyPageFilters(group, { ...filters, whatsappScope: 'inbox' })
+      ).toBe(false);
+      expect(
+        applyPageFilters(direct, { ...filters, whatsappScope: 'inbox' })
+      ).toBe(true);
+      expect(
+        applyPageFilters(unclassified, { ...filters, whatsappScope: 'inbox' })
+      ).toBe(true);
+    });
+
+    it('keeps group conversations when no WhatsApp scope is selected', () => {
+      expect(applyPageFilters(group, filters)).toBe(true);
+    });
+  });
+
   describe('#applyRoleFilter', () => {
     // Test data for conversations
     const conversationWithAssignee = {

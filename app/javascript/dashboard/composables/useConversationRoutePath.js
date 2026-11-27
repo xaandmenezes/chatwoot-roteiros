@@ -10,6 +10,7 @@ import {
   isOnParticipatingView,
   isOnUnattendedView,
   isOnFoldersView,
+  isOnWhatsAppGroupsView,
 } from 'dashboard/store/modules/conversations/helpers/actionHelpers';
 import wootConstants from 'dashboard/constants/globals';
 
@@ -33,6 +34,8 @@ export function useConversationRoutePath() {
       conversationType = 'participating';
     } else if (isOnUnattendedView({ route: { name } })) {
       conversationType = 'unattended';
+    } else if (isOnWhatsAppGroupsView({ route: { name } })) {
+      conversationType = wootConstants.CONVERSATION_TYPE.WHATSAPP_GROUPS;
     }
 
     const isOnFolder = isOnFoldersView({ route: { name } });
@@ -64,6 +67,8 @@ export function useConversationRoutePath() {
       conversationType = CONVERSATION_TYPE.PARTICIPATING;
     } else if (isOnUnattendedView({ route: { name } })) {
       conversationType = CONVERSATION_TYPE.UNATTENDED;
+    } else if (isOnWhatsAppGroupsView({ route: { name } })) {
+      conversationType = CONVERSATION_TYPE.WHATSAPP_GROUPS;
     }
 
     const isOnFolder = isOnFoldersView({ route: { name } });
