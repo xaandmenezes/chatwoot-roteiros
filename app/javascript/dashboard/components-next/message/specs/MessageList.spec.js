@@ -1,4 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils';
+import { defineComponent, h, nextTick } from 'vue';
 import VueDOMPurifyHTML from 'vue-dompurify-html';
 import { domPurifyConfig } from 'shared/helpers/HTMLSanitizer';
 import { createStore } from 'vuex';
@@ -6,6 +7,7 @@ import { withFullI18n } from 'test-i18n';
 import { routeLocationKey } from 'vue-router';
 import MessagesView from 'dashboard/components/widgets/conversation/MessagesView.vue';
 import { createPendingMessage } from 'dashboard/helper/commons';
+import conversations from 'dashboard/store/modules/conversations';
 import actions from 'dashboard/store/modules/conversations/actions';
 import MessageList from '../MessageList.vue';
 import Message from '../Message.vue';
@@ -63,6 +65,7 @@ const mountConversation = (message, stubs = {}) => {
 describe('conversation messages', () => {
   const axios = vi.fn();
   axios.post = vi.fn();
+  axios.get = vi.fn();
 
   beforeEach(() => {
     vi.stubGlobal('axios', axios);
@@ -72,7 +75,136 @@ describe('conversation messages', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it('renders both confirmed edits on the same sent bubble without waiting for an animation frame', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    // Browsers can suspend animation frames for a background tab.
+    vi.stubGlobal('requestAnimationFrame', vi.fn());
+
+    const chat = { id: CONVERSATION_ID, inbox_id: 2, messages: [] };
+    const store = createStore({
+      ...conversations,
+      state: {
+        selectedChatId: CONVERSATION_ID,
+        allConversations: [chat],
+        attachments: {},
+        autoTranslating: {},
+      },
+      getters: {
+        ...conversations.getters,
+        'inboxes/getInbox': () => () => ({ channel_type: 'Channel::Api' }),
+        'inboxes/getInboxById': () => () => ({ channel_type: 'Channel::Api' }),
+        'globalConfig/get': () => ({}),
+        'globalConfig/isOnChatwootCloud': () => false,
+        getAutoTranslate: () => ({}),
+      },
+    });
+    const Timeline = defineComponent({
+      setup: () => () =>
+        h(MessageList, {
+          messages: store.getters.getSelectedChat.messages,
+          currentUserId: 1,
+        }),
+    });
+    const wrapper = mount(Timeline, {
+      global: {
+        plugins: [store, [VueDOMPurifyHTML, domPurifyConfig]],
+        provide: { [routeLocationKey]: { query: {} } },
+        stubs: {
+          Avatar: true,
+          ContextMenu: true,
+          MessageReactions: true,
+          Transition: false,
+        },
+      },
+    });
+
+    const pending = createPendingMessage({
+      conversationId: CONVERSATION_ID,
+      message: 'Test **v1**',
+      private: false,
+    });
+    const sent = {
+      id: 101,
+      echo_id: pending.id,
+      status: 'sent',
+      message_type: 1,
+      content: pending.content,
+      content_attributes: {},
+      conversation_id: CONVERSATION_ID,
+      created_at: pending.created_at,
+      sender: { id: 1, type: 'user' },
+      can_edit_content: true,
+      can_react: true,
+      source_id: 'remote-message-id',
+    };
+    const firstEdit = {
+      ...sent,
+      content: 'Test **v2**',
+      content_attributes: { edited: true },
+      additional_attributes: { ryze_edited_at: '2026-11-26T10:00:00Z' },
+    };
+    const secondEdit = {
+      ...firstEdit,
+      content: 'Test **v3**',
+      additional_attributes: { ryze_edited_at: '2026-11-26T10:01:00Z' },
+    };
+
+    try {
+      axios.mockResolvedValueOnce({ data: sent });
+      const send = store.dispatch('sendMessageWithData', pending);
+      await nextTick();
+      expect(wrapper.get('.prose-bubble strong').text()).toBe('v1');
+      expect(wrapper.getComponent(MessageStatus).props('status')).toBe(
+        'progress'
+      );
+      await send;
+      const bubble = wrapper.get('#message101');
+      const visibleVersion = () => bubble.get('.prose-bubble strong').text();
+      const versions = [visibleVersion()];
+      expect(wrapper.findAll('[data-message-id]')).toHaveLength(1);
+      expect(wrapper.getComponent(MessageStatus).props('status')).toBe('sent');
+
+      await store.dispatch('updateMessage', firstEdit);
+      expect(bubble.get('time + span').text()).toBe('Editada');
+      expect(
+        wrapper.getComponent({ name: 'ContextMenu' }).props('message')
+      ).toMatchObject({ originalContent: firstEdit.content });
+      versions.push(visibleVersion());
+
+      axios.get.mockResolvedValueOnce({ data: { payload: [secondEdit] } });
+      const confirmation = store.dispatch('refreshPendingEdit', {
+        conversationId: CONVERSATION_ID,
+        messageId: sent.id,
+        content: secondEdit.content,
+        accountUrl: '/api/v1/conversations',
+      });
+      await nextTick();
+      expect(store.getters.getSelectedChat.messages[0].content).toBe(
+        firstEdit.content
+      );
+      versions.push(visibleVersion());
+      await vi.advanceTimersByTimeAsync(4000);
+      await confirmation;
+
+      expect(store.getters.getSelectedChat.messages[0].content).toBe(
+        secondEdit.content
+      );
+      versions.push(visibleVersion());
+      expect(versions).toEqual(['v1', 'v2', 'v2', 'v3']);
+      expect(axios.get).toHaveBeenCalledExactlyOnceWith(
+        '/api/v1/conversations/71/messages',
+        { params: { after: 101, before: 102 } }
+      );
+      expect(axios.post).not.toHaveBeenCalled();
+      expect(wrapper.get('#message101').element).toBe(bubble.element);
+      expect(wrapper.findAll('[data-message-id]')).toHaveLength(1);
+    } finally {
+      wrapper.unmount();
+    }
   });
 
   it('renders a reaction on the original and leaves an uncorrelated message visible', async () => {
