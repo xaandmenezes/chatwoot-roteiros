@@ -12,6 +12,15 @@ Para mudar nesta sessão, diga **“Use a família Claude nos papéis nesta sess
 
 Ao delegar, consulte o catálogo real do executor e escolha, na família ativa, um modelo com a capacidade, as ferramentas e a prioridade necessárias. Passe modelo, esforço e Fast explicitamente. Os modelos na tabela são referências para Codex. Se faltar modelo, ferramenta ou Fast, declare a limitação e as opções disponíveis antes de usar outra família ou prioridade. Uma instrução no chat orienta as próximas delegações; o seletor do T3 controla o modelo da conversa principal.
 
+**Regra temporária — DeepSeek V4.1 Flash nas delegações**
+
+Pedido expresso de Vinicius, vigente enquanto houver créditos: todas as tarefas delegadas deste projeto usam DeepSeek V4.1 Flash via OpenCode (`deepseek/deepseek-flash`), em todos os papéis. O chat principal e o orquestrador mantêm o modelo já escolhido no seletor do T3. A regra vale sem instalar nada e, nas delegações, prevalece sobre a linha **Família padrão dos papéis**.
+
+- Ao delegar, indique o papel, `deepseek/deepseek-flash` como modelo, o esforço equivalente e a entrega esperada. Use apenas o provedor e as ferramentas já configurados no OpenCode; não instale modelos, plugins ou dependências.
+- Um erro transitório (timeout, 429, falha de rede, ferramenta indisponível, resposta incompleta) não indica saldo esgotado. Repita a delegação ou relate a falha e peça orientação; não troque de família, modelo ou executor por conta própria.
+- Só trate o saldo como esgotado com confirmação do responsável ou erro explícito do provedor. Confirmado o esgotamento, retome a matriz já aprovada nesta seção — as referências Codex da tabela de papéis, salvo outra família indicada no Linear ou na sessão — e registre a troca na issue ou na sessão.
+- O mesmo registro vigora nas Regras para IA do projeto no Linear. Ao encerrar a vigência, atualize os dois lugares.
+
 ### Papéis e instalação de skills
 
 Acione somente os papéis e as skills úteis à tarefa. A identifica skills do acervo da equipe. B identifica práticas da equipe. C identifica a skill pública de Vue, com instalação reproduzível abaixo.

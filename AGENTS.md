@@ -8,7 +8,9 @@ Projeto: https://linear.app/porto-seguro-roteiros/project/implementacao-chatwoot
 
 ### Orquestração e escolha de modelo
 
-A família dos modelos delegados é selecionável no Linear ou por sessão; os modelos indicados são referências. Use Fast para todos os delegados e prefira Astra High com Fast desligado no chat principal. Leia [Orquestração de IA da PSR](docs/orquestracao-ia-psr.md) para o prompt de inicialização, as skills e a escolha dos papéis e modelos.
+A família dos modelos delegados é selecionável no Linear ou por sessão; os modelos indicados são referências. Use Fast, quando o modelo oferecer, para todos os delegados e prefira Astra High com Fast desligado no chat principal. Leia [Orquestração de IA da PSR](docs/orquestracao-ia-psr.md) para o prompt de inicialização, as skills e a escolha dos papéis e modelos.
+
+Regra temporária, por pedido expresso de Vinicius: enquanto houver créditos, toda tarefa delegada deste projeto usa DeepSeek V4.1 Flash via OpenCode (`deepseek/deepseek-flash`), em todos os papéis, sem instalar nada; o chat principal e o orquestrador mantêm o modelo escolhido no T3. Erro transitório não indica saldo esgotado; só a confirmação de esgotamento autoriza retomar a matriz aprovada.
 
 ### PR, deploy e testes em produção
 
