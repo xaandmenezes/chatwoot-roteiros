@@ -1,5 +1,6 @@
 class Ryze::ReactionEvent
   DIRECTIONS = %w[incoming outgoing].freeze
+  DEVICE_JID = /\A(\d{8,20}):\d{1,5}@(s\.whatsapp\.net|lid)\z/
 
   attr_reader :id, :direction, :target_id, :emoji, :timestamp, :source, :author
 
@@ -9,8 +10,8 @@ class Ryze::ReactionEvent
     @id = data[:id]
     @direction = data[:direction]
     @timestamp = parse_timestamp(data[:timestamp])
-    @target_id = target[:ID]
-    @target_chat = target[:remoteJID]
+    @target_id = key_value(target, :ID, :id)
+    @target_chat = direct_id(key_value(target, :remoteJID, :remoteJid))
     @emoji = reaction[:emoji]
     @source = data[:message][:source]
     extract_identities(object(data[:chat]), object(data[:sender]))
@@ -20,8 +21,13 @@ class Ryze::ReactionEvent
     @private_chat && @chat_ids.include?(jid)
   end
 
-  def valid?
-    timestamp.present? && DIRECTIONS.include?(direction) && valid_identifiers? && Ryze::MessageReactions.valid_emoji?(emoji)
+  def validation_error
+    return :event_metadata unless timestamp && DIRECTIONS.include?(direction) && Ryze::OutboundDelivery.provider_id?(id)
+    return :target_key unless valid_target?
+    return :sender unless valid_sender?
+    return :emoji unless Ryze::MessageReactions.valid_emoji?(emoji)
+
+    nil
   end
 
   def attributes
@@ -43,14 +49,29 @@ class Ryze::ReactionEvent
     nil
   end
 
-  def valid_identifiers?
-    Ryze::OutboundDelivery.provider_id?(id) && Ryze::OutboundDelivery.provider_id?(target_id) && id != target_id &&
-      @chat_ids.include?(@target_chat) && @sender_ids.present? &&
-      @sender_ids.intersect?(@chat_ids) == (direction == 'incoming')
+  def valid_sender?
+    @sender_ids.present? && @sender_ids.intersect?(@chat_ids) == (direction == 'incoming')
+  end
+
+  def valid_target?
+    Ryze::OutboundDelivery.provider_id?(target_id) && id != target_id && @chat_ids.include?(@target_chat)
   end
 
   def direct_ids(identity)
-    identity.values_at(:jid, :lid).select { |jid| jid.is_a?(String) && jid.match?(Ryze::OutboundDelivery::PILOT_JID) }
+    identity.values_at(:jid, :lid).filter_map { |value| direct_id(value) }
+  end
+
+  def direct_id(value)
+    return unless value.is_a?(String)
+    return value if value.match?(Ryze::OutboundDelivery::PILOT_JID)
+
+    device_jid = DEVICE_JID.match(value)
+    "#{device_jid[1]}@#{device_jid[2]}" if device_jid
+  end
+
+  def key_value(key, *aliases)
+    values = key.values_at(*aliases.select { |name| key.key?(name) }).uniq
+    values.first if values.one?
   end
 
   def object(value)

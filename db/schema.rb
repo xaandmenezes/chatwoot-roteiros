@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_11_26_033040) do
+ActiveRecord::Schema[7.1].define(version: 2026_11_27_002924) do
   # These extensions should be enabled to support this database
   enable_extension "pg_stat_statements"
   enable_extension "pg_trgm"
@@ -1709,6 +1709,15 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_26_033040) do
     t.index ["account_id", "metric", "date"], name: "index_rollup_timeseries"
   end
 
+  create_table "ryze_reaction_echoes", force: :cascade do |t|
+    t.bigint "conversation_id", null: false
+    t.string "provider_key", limit: 64, null: false
+    t.string "reaction_key", limit: 64
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["conversation_id", "provider_key"], name: "index_ryze_reaction_echoes_on_conversation_id_and_provider_key", unique: true
+  end
+
   create_table "shopify_custom_apps", force: :cascade do |t|
     t.bigint "account_id", null: false
     t.string "shop_domain", null: false
@@ -1923,6 +1932,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_26_033040) do
   add_foreign_key "data_exports", "users", column: "initiated_by_id", on_delete: :nullify
   add_foreign_key "inboxes", "portals"
   add_foreign_key "message_revocations", "messages", on_delete: :cascade
+  add_foreign_key "ryze_reaction_echoes", "conversations", on_delete: :cascade
   add_foreign_key "shopify_custom_apps", "accounts"
   add_foreign_key "umbler_label_syncs", "accounts", on_delete: :cascade
   add_foreign_key "user_sessions", "users"

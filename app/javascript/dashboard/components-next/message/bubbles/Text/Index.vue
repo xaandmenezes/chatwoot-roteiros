@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import { usePreferredReducedMotion } from '@vueuse/core';
 import { useMapGetter } from 'dashboard/composables/store';
 import BaseBubble from 'next/message/bubbles/Base.vue';
@@ -41,7 +41,6 @@ const translationState = useMapGetter('getMessageTranslationState');
 const isTranslating = computed(() => translationState.value(id.value).pending);
 
 const contentWrapper = ref(null);
-let heightBeforeChange = 0;
 
 const renderContent = computed(() => {
   if (showingOriginal.value) {
@@ -73,19 +72,24 @@ const handleSeeOriginal = () => {
   showingOriginal.value = !showingOriginal.value;
 };
 
-const measureHeight = () => {
-  heightBeforeChange = contentWrapper.value.offsetHeight;
-};
-
-const morphHeight = () => {
-  if (reducedMotion.value === 'reduce') return;
-
+watch(renderContent, async newContent => {
   const wrapper = contentWrapper.value;
+  if (!newContent || !wrapper || reducedMotion.value === 'reduce') return;
+
+  const previousHeight = wrapper.offsetHeight;
+  // Commit the new text before animating the size of the bubble.
+  await nextTick();
+  if (contentWrapper.value !== wrapper || renderContent.value !== newContent)
+    return;
+
+  const currentHeight = wrapper.offsetHeight;
+  if (previousHeight === currentHeight) return;
+
   wrapper.animate(
-    { height: [`${heightBeforeChange}px`, `${wrapper.offsetHeight}px`] },
+    { height: [`${previousHeight}px`, `${currentHeight}px`] },
     HEIGHT_MORPH
   );
-};
+});
 </script>
 
 <template>
@@ -103,27 +107,15 @@ const morphHeight = () => {
         class="overflow-hidden"
         :aria-busy="isTranslating"
       >
-        <Transition
-          mode="out-in"
-          enter-from-class="opacity-0 blur-[0.125rem]"
-          enter-active-class="transition duration-300 ease-out motion-reduce:transition-none"
-          leave-active-class="transition duration-150 ease-in motion-reduce:transition-none"
-          leave-to-class="opacity-0 blur-[0.125rem]"
-          @before-leave="measureHeight"
-          @enter="morphHeight"
-        >
-          <div :key="renderContent">
-            <div :class="{ [TEXT_SHIMMER_CLASS]: isTranslating }">
-              <FormattedContent :content="renderContent" />
-            </div>
-            <TranslationToggle
-              v-if="!isCaptainMessage"
-              class="mt-0.5"
-              :showing-original="showingOriginal"
-              @toggle="handleSeeOriginal"
-            />
-          </div>
-        </Transition>
+        <div :class="{ [TEXT_SHIMMER_CLASS]: isTranslating }">
+          <FormattedContent :content="renderContent" />
+        </div>
+        <TranslationToggle
+          v-if="!isCaptainMessage"
+          class="mt-0.5"
+          :showing-original="showingOriginal"
+          @toggle="handleSeeOriginal"
+        />
       </div>
       <span
         v-if="contactInfoRequestState === 'pending'"

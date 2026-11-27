@@ -39,6 +39,39 @@ describe('#mutations', () => {
     expect(other.messages[0].ryze_reactions).toBeUndefined();
   });
 
+  it('removes a confirmed echo from the thread and preview despite late message updates', () => {
+    const original = { id: 101, content: 'Original', conversation_id: 71 };
+    const echo = { id: 102, content: 'Provider mirror', conversation_id: 71 };
+    const chat = {
+      id: 71,
+      messages: [original, echo],
+      last_non_activity_message: echo,
+      last_activity_at: 20,
+      timestamp: 20,
+    };
+    const state = { allConversations: [chat] };
+
+    mutations[types.REMOVE_RYZE_REACTION_ECHO](state, {
+      id: echo.id,
+      conversation_id: chat.id,
+      echo_created_at: 20,
+      last_non_activity_message: original,
+      last_activity_at: 10,
+    });
+    mutations[types.ADD_MESSAGE](state, echo);
+    mutations[types.SET_PREVIOUS_CONVERSATIONS](state, {
+      id: chat.id,
+      data: [echo],
+    });
+
+    expect(chat).toMatchObject({
+      messages: [original],
+      last_non_activity_message: original,
+      last_activity_at: 10,
+      timestamp: 10,
+    });
+  });
+
   describe('#UPDATE_MESSAGE_CALL_STATUS', () => {
     it('does nothing if conversation is not found', () => {
       const state = { allConversations: [] };

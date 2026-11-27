@@ -184,6 +184,8 @@ responses:
           allOf:
             - $ref: '#/components/schemas/generic_id'
             - $ref: '#/components/schemas/message'
+  '204':
+    description: A verified Ryze reaction from the configured pilot bridge was accepted without creating a message.
   '404':
     description: Conversation not found
     content:
