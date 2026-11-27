@@ -1,23 +1,17 @@
-# Homologação e publicação da imagem PSR
+# Build e deploy da imagem PSR
 
-PRs com base `develop` seguem sem build de imagem. A homologação e a publicação no GHCR ocorrem após o merge, no push em `develop`.
+PRs para `develop`, pushes em `develop` e PRs para `prod` seguem **sem build de imagem**.
 
-Ao abrir, reabrir ou atualizar um PR com outra base, incluindo `prod`, **Deploy Check → Check Deployment** constrói a imagem para o SHA da branch de origem em um runner descartável. Em um PR deste repositório para `prod`, a etiqueta `verify-psr-image` permite repetir o check em **Actions → Verify PSR image by digest**. Se a etiqueta já estiver presente, remova-a e aplique-a novamente.
+## Publicação automática no GHCR
 
-**Test Docker Build** roda para PRs com base `master` e por disparo manual, com a matriz `linux/amd64` e `linux/arm64`.
+- Ao fazer merge em `prod` (ou disparar manualmente **Actions → Release PSR image**), o workflow [.github/workflows/release_psr_image.yml](../.github/workflows/release_psr_image.yml) constrói a imagem `linux/amd64` usando cache do GitHub Actions (`type=gha`) e publica no GHCR:
+  - `ghcr.io/xaandmenezes/chatwoot-roteiros:<SHA completo>`
+  - `ghcr.io/xaandmenezes/chatwoot-roteiros:prod` (quando o evento for push em `prod`)
+- Quando `Gemfile.lock` e `package.json`/`pnpm-lock.yaml` não mudam, as camadas de gems e dependências JS vêm do cache e o workflow gera apenas os assets e a imagem final.
 
-A homologação do Dokploy usa o Dockerfile de produção para `linux/amd64` e baixa o resultado pelo digest a partir do registry local do runner. O Compose do Dokploy prepara um banco novo, sobe o Rails e o Sidekiq com a imagem baixada e usa PostgreSQL e Redis isolados. O check valida o HTTP 200 com `woot` em `/health`, o heartbeat do Sidekiq no Redis e o ID da imagem dos dois contêineres. Consulte o resumo da execução para ver o SHA e o digest. O registry local desaparece ao final do job.
+## Deploy e rollback no Dokploy
 
-## Publicação no GHCR
-
-No repositório `xaandmenezes/chatwoot-roteiros`, cada push em `develop` executa **Publish verified PSR image**. O workflow repete a homologação para o SHA do push. Se ela passar, usa o `GITHUB_TOKEN` do job para copiar o manifesto ou índice OCI completo para `ghcr.io/xaandmenezes/chatwoot-roteiros:<SHA completo>`. Em seguida, confirma o digest da tag, confere o hash do manifesto publicado e baixa a imagem do GHCR por digest. A referência `ghcr.io/xaandmenezes/chatwoot-roteiros@sha256:…` aparece no resumo da execução.
-
-A publicação usa somente a tag do SHA e recusa sobrescrevê-la com um digest diferente. Uma nova compilação do mesmo SHA pode gerar outro digest, pois o Dockerfile consome pacotes e imagens-base atualizáveis. Consulte a execução que publicou a tag para obter o digest já homologado.
-
-Os checks de PR têm token somente de leitura e usam apenas o registry descartável. Os workflows de publicação do Chatwoot CE e EE no Docker Hub rodam somente em `chatwoot/chatwoot`.
-
-## Uso na release
-
-Abra o PR de `develop` para `prod` com as issues incluídas e o responsável. No resumo de **Publish verified PSR image**, confirme que o SHA publicado corresponde ao head atual do PR e registre a referência completa por digest. Obtenha autorização de deploy e verifique a disponibilidade da imagem anterior para rollback antes do merge.
-
-O deploy é uma etapa separada. O host de produção precisa de acesso de leitura para baixar a imagem homologada pelo digest antes de ativá-la no Dokploy, que executa o Compose com `--pull never`. Após o deploy, confira a versão ativa, a saúde do painel e o processamento do Sidekiq. Registre o digest e os resultados na issue da release.
+- O [docker-compose.dokploy.yml](../docker-compose.dokploy.yml) usa `ghcr.io/xaandmenezes/chatwoot-roteiros:${CHATWOOT_IMAGE_TAG:-prod}` com `pull_policy: always` e não possui bloco `build`, evitando compilação na VPS ou no Mac.
+- Por padrão, o deploy puxa a tag `:prod`.
+- Para fixar uma versão ou fazer rollback, defina `CHATWOOT_IMAGE_TAG=<SHA completo anterior>` nas variáveis de ambiente do Dokploy e reimplante.
+- Após o deploy, confira a versão ativa, `/health` do Rails e o processamento do Sidekiq.
