@@ -23,6 +23,7 @@
 
 class Attachment < ApplicationRecord
   include Rails.application.routes.url_helpers
+  include Attachment::RestrictedDelivery
 
   ACCEPTABLE_FILE_TYPES = %w[
     text/csv text/plain text/rtf text/xml
@@ -57,6 +58,8 @@ class Attachment < ApplicationRecord
 
   # NOTE: the URl returned does a 301 redirect to the actual file
   def file_url
+    return restricted_file_url if restricted_file?
+
     file.attached? ? url_for(file) : ''
   end
 
@@ -68,6 +71,7 @@ class Attachment < ApplicationRecord
 
   def thumb_url
     return '' unless file.attached? && image?
+    return restricted_file_url(thumbnail: true) if restricted_file?
 
     begin
       url_for(file.representation(resize_to_fill: [250, nil]))
@@ -125,7 +129,7 @@ class Attachment < ApplicationRecord
   def inline_audio_url
     return '' unless file.attached?
 
-    url_for(file)
+    file_url
   end
 
   def file_metadata

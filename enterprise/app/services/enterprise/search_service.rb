@@ -2,8 +2,10 @@ module Enterprise::SearchService
   ADVANCED_SEARCH_GROUP_DENIAL_LIMIT = 1000
 
   def advanced_search
+    # The search index may still contain the former assignee after a transfer.
     where_conditions = build_where_conditions
     apply_filters(where_conditions)
+    return search_current_assignments if searches_restricted_inbox?(where_conditions)
 
     denied_group_ids = advanced_search_denied_group_ids(where_conditions)
     return filter_messages_with_like if denied_group_ids.size > ADVANCED_SEARCH_GROUP_DENIAL_LIMIT
@@ -22,6 +24,16 @@ module Enterprise::SearchService
   end
 
   private
+
+  def searches_restricted_inbox?(conditions)
+    restricted_search_inbox? && (conditions[:inbox_id].nil? || Array(conditions[:inbox_id]).include?(Conversations::AssignmentAccess.inbox_id))
+  end
+
+  def search_current_assignments
+    query = apply_message_filters(message_base_query)
+    predicate = Messages::SearchText.new(current_account, search_query).predicate
+    query.where(predicate).reorder(created_at: :desc, id: :desc).page(params[:page]).per(15)
+  end
 
   def conversation_base_query
     exclude_hidden_whatsapp_groups(super, :id)

@@ -27,6 +27,7 @@ class Conversations::UnreadCounts::FilteredCounter
     versions = version_cache.built_in_filter
     snapshot_or_build(
       scope: :built_in_filter,
+      versions: versions,
       state: store.built_in_filter_counts_state(account_id: account.id, user_id: user.id, versions: versions, now: now),
       lock_key: store.built_in_filter_build_lock_key(account.id, user.id),
       claim_refresh: -> { store.claim_built_in_filter_refresh!(account_id: account.id, user_id: user.id) }
@@ -60,6 +61,7 @@ class Conversations::UnreadCounts::FilteredCounter
     versions = version_cache.filter(filter_id)
     snapshot = snapshot_or_build(
       scope: :filter,
+      versions: versions,
       state: store.filter_count_state(account_id: account.id, filter_id: filter_id, owner_user_id: user.id, versions: versions, now: now),
       lock_key: store.filter_build_lock_key(account.id, filter_id),
       claim_refresh: -> { filter_build_available? && store.claim_filter_refresh!(account_id: account.id, filter_id: filter_id) }
@@ -71,7 +73,11 @@ class Conversations::UnreadCounts::FilteredCounter
     snapshot&.fetch(:count, nil)
   end
 
-  def snapshot_or_build(scope:, state:, lock_key:, claim_refresh:, &)
+  def snapshot_or_build(scope:, state:, lock_key:, claim_refresh:, versions: nil, &)
+    if versions && version_cache.restricted_inbox? && state.stale? && versions.any? { |key, value| state.payload[key].to_i != value }
+      state = Conversations::UnreadCounts::FilteredCountStore::SnapshotResult.new(status: :missing)
+    end
+
     snapshot_resolver.resolve(scope: scope, state: state, lock_key: lock_key, claim_refresh: claim_refresh, &)
   end
 

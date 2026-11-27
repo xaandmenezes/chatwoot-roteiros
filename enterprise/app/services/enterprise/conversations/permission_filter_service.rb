@@ -1,8 +1,13 @@
 module Enterprise::Conversations::PermissionFilterService
   def perform
-    return filter_by_permissions(permissions) if user_has_custom_role?
+    return super unless user_has_custom_role?
 
-    super
+    legacy_scope = filter_by_permissions(permissions)
+    inbox_id = Conversations::AssignmentAccess.inbox_id
+    return legacy_scope unless inbox_id
+
+    visible_pilot = Conversations::AssignmentAccess.visible_pilot(account, user)
+    conversations.where(id: legacy_scope.where.not(inbox_id: inbox_id).reselect(:id)).or(conversations.where(id: visible_pilot.select(:id)))
   end
 
   private

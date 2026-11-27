@@ -1,6 +1,6 @@
 class Macros::ExecutionService < ActionService
   def initialize(macro, conversation, user)
-    super(conversation)
+    super(conversation, actor: user)
     @macro = macro
     @account = macro.account
     @user = user
@@ -8,19 +8,27 @@ class Macros::ExecutionService < ActionService
   end
 
   def perform
-    @macro.actions.each do |action|
-      action = action.with_indifferent_access
-      begin
-        send(action[:action_name], action[:action_params])
-      rescue StandardError => e
-        ChatwootExceptionTracker.new(e, account: @account).capture_exception
-      end
-    end
+    @macro.actions.each { |action| perform_action(action.with_indifferent_access) }
   ensure
     Current.reset
   end
 
   private
+
+  def perform_action(action)
+    return execute_action(action) unless Conversations::AssignmentAccess.enabled?(@conversation.inbox_id)
+
+    # An earlier macro action can transfer the conversation away from its author.
+    @conversation.with_lock do
+      execute_action(action) if Conversations::AssignmentAccess.allowed?(@conversation, @user)
+    end
+  rescue StandardError => e
+    ChatwootExceptionTracker.new(e, account: @account).capture_exception
+  end
+
+  def execute_action(action)
+    send(action[:action_name], action[:action_params])
+  end
 
   def assign_agent(agent_ids)
     agent_ids = agent_ids.map { |id| id == 'self' ? @user.id : id }

@@ -3,7 +3,7 @@ class Conversations::EventDataPresenter < SimpleDelegator
     {
       additional_attributes: additional_attributes,
       **push_channel_state,
-      contact_inbox: contact_inbox,
+      contact_inbox: push_contact_inbox,
       id: display_id,
       messages: push_messages,
       labels: label_list,
@@ -38,6 +38,12 @@ class Conversations::EventDataPresenter < SimpleDelegator
   end
 
   private
+
+  def push_contact_inbox
+    return contact_inbox unless inbox_id == Conversations::AssignmentAccess.inbox_id
+
+    contact_inbox&.as_json(except: :pubsub_token)
+  end
 
   def push_messages
     [messages.where(account_id: account_id).chat.last&.push_event_data].compact

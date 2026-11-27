@@ -193,7 +193,8 @@ RSpec.describe 'Ryze historical sync API', type: :request do
 
       allow(Ryze::HistoricalSync).to receive(:new).with(
         conversation: conversation,
-        before: nil
+        before: nil,
+        actor: agent
       ).and_return(sync_service)
       allow(sync_service).to receive(:perform).and_return(result)
 

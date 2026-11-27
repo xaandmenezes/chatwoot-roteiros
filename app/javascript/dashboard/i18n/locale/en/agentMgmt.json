@@ -61,6 +61,16 @@
         "NO": "No, Keep "
       }
     },
+    "INBOX_ACCESS": {
+      "TITLE": "Inbox access",
+      "NONE": "No access",
+      "AGENT": "Agent",
+      "SUPERVISOR": "Supervisor",
+      "SAVE": "Apply",
+      "LOAD_ERROR": "Could not load inbox access.",
+      "SAVE_SUCCESS": "Inbox access updated.",
+      "SAVE_ERROR": "Could not update inbox access."
+    },
     "EDIT": {
       "TITLE": "Edit agent",
       "FORM": {

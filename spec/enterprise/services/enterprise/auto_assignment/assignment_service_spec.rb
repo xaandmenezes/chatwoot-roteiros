@@ -27,6 +27,21 @@ RSpec.describe Enterprise::AutoAssignment::AssignmentService, type: :service do
     OnlineStatusTracker.set_status(account.id, agent2.id, 'online')
   end
 
+  describe 'pilot with legacy capacity' do
+    it 'draws only from agents below the configured inbox limit' do
+      inbox.account.reload.disable_features!('assignment_v2')
+      inbox.update!(enable_auto_assignment: true, auto_assignment_config: { 'max_assignment_limit' => 1 })
+      starting_at = 1.day.ago.iso8601
+
+      with_modified_env(PSR_RESTRICTED_INBOX_ID: inbox.id.to_s, PSR_RANDOM_ASSIGNMENT_START_AT: starting_at) do
+        create(:conversation, account: account, inbox: inbox, assignee: agent1)
+        waiting = create(:conversation, account: account, inbox: inbox)
+        expect(AutoAssignment::PilotAssignmentService.new(inbox: inbox).perform_bulk_assignment).to eq(1)
+        expect(waiting.reload.assignee).to eq(agent2)
+      end
+    end
+  end
+
   describe 'exclusion rules' do
     let(:capacity_policy) { create(:agent_capacity_policy, account: account) }
     let(:label1) { create(:label, account: account, title: 'high-priority') }

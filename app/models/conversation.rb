@@ -371,7 +371,7 @@ class Conversation < ApplicationRecord
   def ryze_group_classification_changed?
     identifiers = Array(previous_changes['additional_attributes']).map { |attributes| attributes&.[]('whatsapp_jid') }
     binding_changed = previous_changes.key?('contact_inbox_id') || previous_changes.key?('contact_id') || identifiers.uniq.many?
-    binding_changed && Ryze::GroupConversations.enabled_inbox?(inbox)
+    binding_changed && (Ryze::GroupConversations.enabled_inbox?(inbox) || Conversations::AssignmentAccess.enabled?(inbox))
   end
 
   def invalidate_filtered_unread_count_conversation

@@ -39,6 +39,7 @@ module Enterprise::Conversation
   # inbox's, or else its team's
   def auto_assign_after_call
     return unless open?
+    return enqueue_pilot_assignment_after_call if pilot_assignment_inbox?
     return assign_from_held_team unless should_run_auto_assignment?
 
     if inbox.auto_assignment_v2_enabled?
@@ -61,6 +62,10 @@ module Enterprise::Conversation
   end
 
   private
+
+  def enqueue_pilot_assignment_after_call
+    enqueue_assignment if AutoAssignment::PilotAssignmentService.active?(inbox)
+  end
 
   # Auto-assignment, the inbox's or a team's, holds off while an inbound call rings, so the
   # agent who answers gets the conversation

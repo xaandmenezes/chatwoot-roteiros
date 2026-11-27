@@ -1,18 +1,26 @@
 class ActionCableListener < BaseListener
   include Events::Types
+  include ActionCableListener::Delivery
   include ActionCableListener::ConversationBroadcasts
   include ActionCableListener::MessageBroadcasts
+
+  def inbox_member_access_changed(event)
+    inbox, user = event.data.values_at(:inbox, :user)
+    broadcast(inbox.account, [user.pubsub_token], INBOX_MEMBER_ACCESS_CHANGED, { inbox_id: inbox.id })
+  end
 
   def notification_created(event)
     notification, account, unread_count, count = extract_notification_and_account(event)
     tokens = [event.data[:notification].user.pubsub_token]
-    broadcast(account, tokens, NOTIFICATION_CREATED, { notification: notification.push_event_data, unread_count: unread_count, count: count })
+    broadcast(account, tokens, NOTIFICATION_CREATED, { notification: notification.push_event_data, unread_count: unread_count, count: count },
+              conversation: notification.conversation)
   end
 
   def notification_updated(event)
     notification, account, unread_count, count = extract_notification_and_account(event)
     tokens = [event.data[:notification].user.pubsub_token]
-    broadcast(account, tokens, NOTIFICATION_UPDATED, { notification: notification.push_event_data, unread_count: unread_count, count: count })
+    broadcast(account, tokens, NOTIFICATION_UPDATED, { notification: notification.push_event_data, unread_count: unread_count, count: count },
+              conversation: notification.conversation)
   end
 
   def notification_deleted(event)
@@ -51,13 +59,13 @@ class ActionCableListener < BaseListener
   def message_ryze_reactions_changed(event)
     conversation = event.data.fetch(:message).conversation
     tokens = Ryze::ReactionRecipients.new(conversation).tokens
-    broadcast(conversation.account, tokens, event.name, event.data.fetch(:payload))
+    broadcast(conversation.account, tokens, event.name, event.data.fetch(:payload), conversation: conversation)
   end
 
   def message_ryze_reaction_echo_removed(event)
     conversation = event.data.fetch(:conversation)
     tokens = Ryze::ReactionRecipients.new(conversation).tokens
-    broadcast(conversation.account, tokens, event.name, event.data.fetch(:payload))
+    broadcast(conversation.account, tokens, event.name, event.data.fetch(:payload), conversation: conversation)
   end
 
   def first_reply_created(event)
@@ -65,7 +73,7 @@ class ActionCableListener < BaseListener
     conversation = message.conversation
     tokens = user_tokens(account, conversation.inbox.members)
 
-    broadcast(account, tokens, FIRST_REPLY_CREATED, message.push_event_data)
+    broadcast(account, tokens, FIRST_REPLY_CREATED, message.push_event_data, conversation: conversation)
   end
 
   def conversation_created(event)
@@ -110,6 +118,7 @@ class ActionCableListener < BaseListener
     # rules) by performed_by. The V2 AssignmentService also dispatches an event with
     # user (the assigned agent, NOT the performer). Neither requires inferring
     # automation from a missing Current.user.
+    notify_previous_assignee(event)
     automatic_assignment = [Inbox, AssignmentPolicy, AutomationRule].include?(event.data[:performed_by].class) || event.data[:user].present?
     broadcast_to_inbox_members(event, ASSIGNEE_CHANGED, automatic_assignment: automatic_assignment)
   end
@@ -152,7 +161,7 @@ class ActionCableListener < BaseListener
     conversation, account = extract_conversation_and_account(event)
     user = event.data[:user]
 
-    broadcast(account, [user.pubsub_token], CONVERSATION_MENTIONED, conversation.push_event_data)
+    broadcast(account, [user.pubsub_token], CONVERSATION_MENTIONED, conversation.push_event_data, conversation: conversation)
   end
 
   private
@@ -172,6 +181,7 @@ class ActionCableListener < BaseListener
     }
 
     broadcast(conversation.account, typing_user_tokens(conversation, user) + client_tokens, event_name, data,
+              conversation: conversation, contact_tokens: client_tokens,
               widget: { tokens: widget_tokens, data: data.merge(conversation: conversation.widget_push_event_data) })
   end
 
@@ -210,27 +220,12 @@ class ActionCableListener < BaseListener
 
   # A verified session also reaches the contact's other verified sessions, in any inbox that still exists
   def session_contact_inboxes(contact_inbox)
-    return [contact_inbox] unless contact_inbox.hmac_verified?
+    pilot_id = Conversations::AssignmentAccess.inbox_id
+    return [contact_inbox] if !contact_inbox.hmac_verified? || contact_inbox.inbox_id == pilot_id
 
-    contact_inbox.contact.contact_inboxes.where(hmac_verified: true).where.associated(:inbox).includes(:inbox).to_a
-  end
-
-  # widget: { tokens:, data: } sends web widget sessions their payload in the same job
-  def broadcast(account, tokens, event_name, data, widget: {})
-    widget_tokens = widget[:tokens].to_a
-    return if tokens.blank? && widget_tokens.blank?
-
-    widget_options = {}
-    widget_options = { widget_members: widget_tokens.uniq, widget_data: broadcast_payload(account, widget[:data]) } if widget_tokens.present?
-    ::ActionCableBroadcastJob.perform_later(tokens.uniq, event_name, broadcast_payload(account, data), **widget_options)
-  end
-
-  def broadcast_payload(account, data)
-    payload = data.merge(account_id: account.id)
-    # So the frondend knows who performed the action.
-    # Useful in cases like conversation assignment for generating a notification with assigner name.
-    payload[:performer] = Current.user&.push_event_data if Current.user.present?
-    payload
+    sessions = contact_inbox.contact.contact_inboxes.where(hmac_verified: true).where.associated(:inbox)
+    sessions = sessions.where.not(inbox_id: pilot_id) if pilot_id
+    sessions.includes(:inbox).to_a
   end
 end
 

@@ -8,12 +8,20 @@ class ConversationPolicy < ApplicationPolicy
   end
 
   def show?
+    return Conversations::AssignmentAccess.bot_allowed?(record, user) if agent_bot? && assignment_access_enabled?
+
     administrator? || agent_bot? || agent_can_view_conversation?
   end
 
   private
 
+  def assignment_access_enabled?
+    Conversations::AssignmentAccess.enabled?(record.inbox_id)
+  end
+
   def agent_can_view_conversation?
+    return Conversations::AssignmentAccess.allowed?(record, user) if assignment_access_enabled?
+
     inbox_access? || (team_access? && !Ryze::GroupConversations.group?(record))
   end
 

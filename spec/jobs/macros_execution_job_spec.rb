@@ -92,6 +92,55 @@ RSpec.describe MacrosExecutionJob do
     end
   end
 
+  context 'with an assignment-restricted inbox' do
+    let(:other_agent) { create(:user, account: account, role: :agent) }
+    let(:conversation) { create(:conversation, account: account, inbox: inbox, assignee: user) }
+    let(:macro) { create(:macro, account: account, actions: actions, created_by: user) }
+
+    around do |example|
+      with_modified_env(PSR_RESTRICTED_INBOX_ID: inbox.id.to_s) { example.run }
+    end
+
+    before do
+      create(:inbox_member, user: user, inbox: inbox)
+      create(:inbox_member, user: other_agent, inbox: inbox)
+    end
+
+    context 'when the macro transfers the conversation and then sends a reply' do
+      let(:actions) do
+        [
+          { 'action_name' => 'assign_agent', 'action_params' => [other_agent.id] },
+          { 'action_name' => 'send_message', 'action_params' => ['After transfer'] }
+        ]
+      end
+
+      it 'stops executing former owner actions as soon as the transfer commits' do
+        described_class.perform_now(macro, conversation_ids: [conversation.display_id], user: user)
+
+        expect(conversation.reload.assignee).to eq(other_agent)
+        expect(conversation.messages.outgoing.where(content: 'After transfer')).not_to exist
+      end
+    end
+
+    context 'when the macro removes the current owner' do
+      let(:actions) { [{ 'action_name' => 'remove_assigned_agent', 'action_params' => [] }] }
+
+      it 'keeps an ordinary agent from moving their conversation to the unassigned queue' do
+        expect do
+          described_class.perform_now(macro, conversation_ids: [conversation.display_id], user: user)
+        end.not_to(change { conversation.reload.assignee_id })
+      end
+
+      it 'lets the authorized supervisor move the conversation to the unassigned queue' do
+        inbox.inbox_members.find_by!(user: user).update!(supervisor: true)
+
+        described_class.perform_now(macro, conversation_ids: [conversation.display_id], user: user)
+
+        expect(conversation.reload.assignee_id).to be_nil
+      end
+    end
+  end
+
   context 'when the user cannot view the conversation' do
     it 'skips all macro actions and logs the denied conversation' do
       allow(Rails.logger).to receive(:info).and_call_original

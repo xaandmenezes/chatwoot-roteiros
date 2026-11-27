@@ -18,18 +18,24 @@ module Enterprise::AutoAssignment::AssignmentService
     super && !(inbox.rings_for_calls? && conversation.calls.holding_assignment.exists?)
   end
 
-  # Extend agent finding to add capacity checks
   def find_available_agent(conversation = nil)
-    agents = filter_agents_by_team(inbox.available_agents, conversation)
-    return nil if agents.nil?
+    agents = eligible_agents(conversation)
+    return if agents.empty?
 
-    agents = filter_agents_by_rate_limit(agents)
-    agents = filter_agents_by_capacity(agents) if capacity_filtering_enabled?
-    return nil if agents.empty?
-
-    # Use balanced selector only if advanced_assignment feature is enabled
     selector = policy&.balanced? && account.feature_enabled?('advanced_assignment') ? balanced_selector : round_robin_selector
     selector.select_agent(agents)
+  end
+
+  def eligible_agents(conversation = nil)
+    agents = super
+    return agents unless uses_legacy_capacity_limit?
+
+    allowed_ids = inbox.member_ids_with_assignment_capacity.to_set
+    agents.select { |member| allowed_ids.include?(member.user_id) }
+  end
+
+  def filter_agents_by_rate_limit(agents)
+    filter_agents_by_capacity(super)
   end
 
   def filter_agents_by_capacity(agents)
@@ -60,36 +66,20 @@ module Enterprise::AutoAssignment::AssignmentService
     inbox.account
   end
 
-  # Override to apply exclusion rules
-  def unassigned_conversations(limit)
-    scope = inbox.conversations.unassigned.open
+  def apply_queue_exclusions(scope)
+    eligible = apply_exclusion_rules(super(scope))
 
-    # First apply the assignment policy's age exclusion (defaults to 7 days)
-    scope = apply_age_exclusions(scope, age_exclusion_hours(policy))
-
-    # Then apply the capacity policy's exclusion rules (labels and age)
-    scope = apply_exclusion_rules(scope)
-
-    # A conversation whose inbound call is ringing waits for the agent who answers
-    scope = scope.where.not(id: inbox.calls.holding_assignment.select(:conversation_id)) if inbox.rings_for_calls?
-
-    # Apply conversation priority using enum methods if policy exists
-    scope = if policy&.longest_waiting?
-              scope.reorder(last_activity_at: :asc, created_at: :asc)
-            else
-              scope.reorder(created_at: :asc)
-            end
-
-    scope.limit(limit)
+    # A conversation whose inbound call is ringing waits for the agent who answers.
+    inbox.rings_for_calls? ? eligible.where.not(id: inbox.calls.holding_assignment.select(:conversation_id)) : eligible
   end
 
   def apply_exclusion_rules(scope)
     capacity_policy = inbox.inbox_capacity_limits.first&.agent_capacity_policy
     return scope unless capacity_policy
 
-    exclusion_rules = capacity_policy.exclusion_rules || {}
-    scope = apply_label_exclusions(scope, exclusion_rules['excluded_labels'])
-    apply_age_exclusions(scope, exclusion_rules['exclude_older_than_hours'])
+    rules = capacity_policy.exclusion_rules || {}
+    scope = apply_label_exclusions(scope, rules['excluded_labels'])
+    expiring_queue? ? apply_age_exclusions(scope, rules['exclude_older_than_hours']) : scope
   end
 
   def apply_label_exclusions(scope, excluded_labels)

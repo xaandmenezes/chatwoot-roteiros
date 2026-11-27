@@ -32,13 +32,11 @@ RSpec.describe AutoAssignment::AssignmentJob, type: :job do
         end
 
         it 'uses custom bulk limit from environment' do
-          allow(ENV).to receive(:fetch).with('AUTO_ASSIGNMENT_BULK_LIMIT', 100).and_return('50')
-
           service = instance_double(AutoAssignment::AssignmentService)
           allow(AutoAssignment::AssignmentService).to receive(:new).with(inbox: inbox).and_return(service)
           expect(service).to receive(:perform_bulk_assignment).with(limit: 50).and_return(2)
 
-          described_class.new.perform(inbox_id: inbox.id)
+          with_modified_env(AUTO_ASSIGNMENT_BULK_LIMIT: '50') { described_class.new.perform(inbox_id: inbox.id) }
         end
       end
 
