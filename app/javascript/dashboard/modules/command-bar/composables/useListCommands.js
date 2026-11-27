@@ -15,6 +15,7 @@ import {
   CMD_SWITCH_STATUS,
   CMD_SWITCH_TAB,
 } from 'dashboard/helper/commandbar/events';
+import { isOnWhatsAppGroupsView } from 'dashboard/store/modules/conversations/helpers/actionHelpers';
 import { isAConversationRoute } from 'dashboard/helper/routeHelpers';
 
 const SCOPES = ['list'];
@@ -122,9 +123,10 @@ export function useListCommands() {
     if (!isAConversationRoute(route.name, true) || folderContactId.value) {
       return [];
     }
+    const tabs = isOnWhatsAppGroupsView({ route }) ? [] : tabCommands.value;
     const commands = hasFilters.value
       ? sortCommands.value
-      : [...tabCommands.value, ...statusCommands.value, ...sortCommands.value];
+      : [...tabs, ...statusCommands.value, ...sortCommands.value];
     return commands.map(command => ({ ...command, scopes: SCOPES }));
   });
 
