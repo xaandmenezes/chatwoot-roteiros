@@ -818,6 +818,19 @@ const actions = {
     }
   },
 
+  syncRyzeHistory: async ({ commit }, { conversationId, before }) => {
+    const { data } = await ConversationApi.syncRyzeHistory(conversationId, {
+      before,
+    });
+    if (data.payload?.length) {
+      commit(types.SET_PREVIOUS_CONVERSATIONS, {
+        id: conversationId,
+        data: data.payload,
+      });
+    }
+    return data.meta;
+  },
+
   ...messageReadActions,
   ...messageTranslateActions,
 };

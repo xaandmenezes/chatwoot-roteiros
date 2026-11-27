@@ -86,6 +86,12 @@ class Message < ApplicationRecord
   attr_accessor :echo_id
   # Transient flag used to skip waiting_since clearing for specific bot/system messages.
   attr_accessor :preserve_waiting_since
+  # Transient flag used to skip callbacks/hooks on historical sync imports.
+  attr_accessor :historical_import
+
+  def historical_import?
+    historical_import == true
+  end
 
   enum :message_type, { incoming: 0, outgoing: 1, activity: 2, template: 3 }
   enum :content_type, {
@@ -442,7 +448,7 @@ class Message < ApplicationRecord
   def prevent_message_flooding
     # Added this to cover the validation specs in messages
     # We can revisit and see if we can remove this later
-    return if conversation.blank?
+    return if historical_import? || conversation.blank?
 
     # there are cases where automations can result in message loops, we need to prevent such cases.
     if conversation.messages.where('created_at >= ?', 1.minute.ago).count >= Limits.conversation_message_per_minute_limit
@@ -476,6 +482,11 @@ class Message < ApplicationRecord
   end
 
   def execute_after_create_commit_callbacks
+    if historical_import?
+      preserve_latest_conversation_activity
+      return
+    end
+
     # rails issue with order of active record callbacks being executed https://github.com/rails/rails/issues/20911
     reopen_conversation
     mark_pending_conversation_as_open_for_human_response
@@ -484,6 +495,15 @@ class Message < ApplicationRecord
     send_reply
     execute_message_template_hooks
     update_contact_activity
+  end
+
+  def preserve_latest_conversation_activity
+    return if conversation.blank?
+    return unless conversation.last_activity_at.nil? || created_at > conversation.last_activity_at
+
+    # rubocop:disable Rails/SkipsModelValidations
+    conversation.update_columns(last_activity_at: created_at, updated_at: Time.current)
+    # rubocop:enable Rails/SkipsModelValidations
   end
 
   def update_contact_activity
