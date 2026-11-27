@@ -93,6 +93,50 @@ describe MessageFinder do
       end
     end
 
+    context 'with a before attribute when an older message has a higher id' do
+      let!(:cursor_message) do
+        create(:message, account: account, inbox: inbox, conversation: conversation, created_at: 1.day.ago)
+      end
+      let!(:historical_message) do
+        create(:message, account: account, inbox: inbox, conversation: conversation, created_at: 3.days.ago)
+      end
+      let(:params) { { before: cursor_message.id } }
+
+      it 'returns messages older than the cursor message even if their id is higher' do
+        expect(historical_message.id).to be > cursor_message.id
+        result = message_finder.perform
+        expect(result).to include(historical_message)
+        expect(result).not_to include(cursor_message)
+      end
+    end
+
+    context 'with a before attribute when messages share the exact same created_at' do
+      let(:fixed_time) { 2.days.ago.change(usec: 0) }
+      let!(:first_same_time) do
+        create(:message, account: account, inbox: inbox, conversation: conversation, created_at: fixed_time)
+      end
+      let!(:second_same_time) do
+        create(:message, account: account, inbox: inbox, conversation: conversation, created_at: fixed_time)
+      end
+      let(:params) { { before: second_same_time.id } }
+
+      it 'breaks ties deterministically using id' do
+        result = message_finder.perform
+        expect(result).to include(first_same_time)
+        expect(result).not_to include(second_same_time)
+      end
+    end
+
+    context 'with a before attribute that does not exist in conversation messages' do
+      let(:params) { { before: 999_999 } }
+
+      it 'falls back to id < before_id query' do
+        result = message_finder.perform
+        expect(result).not_to be_empty
+        expect(result.map(&:id)).to all(be < 999_999)
+      end
+    end
+
     context 'with after and before attributes above the message id range' do
       let!(:max_id_message) do
         create(:message, id: described_class::MESSAGE_ID_MAX, account: account, inbox: inbox, conversation: conversation)

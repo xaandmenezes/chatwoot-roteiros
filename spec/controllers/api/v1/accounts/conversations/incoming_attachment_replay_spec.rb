@@ -48,6 +48,26 @@ RSpec.describe 'Incoming attachment replay in API inboxes', type: :request do
     expect(deliver([document('one'), document('two')]).fetch('id')).to eq(first.fetch('id'))
   end
 
+  it 'fills a historical placeholder committed while the live multipart upload is in flight' do
+    imported = nil
+    allow(service).to receive(:upload).and_wrap_original do |upload, key, io, **options|
+      upload.call(key, io, **options)
+      imported ||= create(
+        :message,
+        account: account, conversation: conversation, inbox: inbox, source_id: 'provider-media-123',
+        additional_attributes: { ryze_historical_sync: true, ryze_history_pending_media: { type: 'document', placeholder: true } }
+      )
+    end
+    dispatcher = Rails.configuration.dispatcher
+    allow(dispatcher).to receive(:dispatch).and_call_original
+    result = deliver([document('live file')])
+    expect(result).to include('id' => imported.id, 'historical_import' => true, 'historical_media_pending' => false, 'content' => 'Caption')
+    expect(conversation.messages.incoming.sole).to eq(imported)
+    expect(imported.reload.attachments.sole.file.download).to eq('live file')
+    expect(dispatcher).to have_received(:dispatch).with('message.updated', anything, hash_including(message: imported)).once
+    expect(ActiveStorage::PurgeJob).not_to have_been_enqueued
+  end
+
   it 'leaves private, outgoing and unidentified deliveries independent' do
     ids = [
       deliver([document('same')], private: true), deliver([document('same')], message_type: 'outgoing'),

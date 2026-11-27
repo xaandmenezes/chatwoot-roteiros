@@ -15,7 +15,7 @@ import {
   useSessionStorage,
 } from '@vueuse/core';
 // composable
-import { useTrack } from 'dashboard/composables';
+import { useTrack, useAlert } from 'dashboard/composables';
 import { useCampaignHistory } from 'dashboard/composables/useCampaignHistory';
 import { useKeyboardEvents } from 'dashboard/composables/useKeyboardEvents';
 import { CONTACT_CONVERSATION_NAVIGATION } from 'dashboard/composables/useContactConversationNavigation';
@@ -71,6 +71,13 @@ const FOLD_TRANSITION = {
   enterFromClass: FOLD_HIDDEN_CLASS,
   leaveToClass: FOLD_HIDDEN_CLASS,
 };
+
+const defaultRyzeHistoryState = () => ({
+  hasMore: true,
+  nextBefore: null,
+  isLoading: false,
+  exhausted: false,
+});
 
 export default {
   components: {
@@ -194,6 +201,7 @@ export default {
       conversationPanel: null,
       hasUserScrolled: false,
       isProgrammaticScroll: false,
+      ryzeHistoryState: {},
     };
   },
 
@@ -204,6 +212,31 @@ export default {
       listLoadingStatus: 'getAllMessagesLoaded',
       isMetaMessageSendingDisabled: 'globalConfig/isMetaMessageSendingDisabled',
     }),
+    currentRyzeHistoryState() {
+      const id = this.currentChat?.id;
+      if (!id) {
+        return defaultRyzeHistoryState();
+      }
+      return this.ryzeHistoryState[id] || defaultRyzeHistoryState();
+    },
+    ryzeHistoryLoading() {
+      return this.currentRyzeHistoryState.isLoading;
+    },
+    showRyzeHistoryButton() {
+      return (
+        Boolean(this.currentChat?.ryze_history_enabled) &&
+        this.currentChat.allMessagesLoaded === true &&
+        !this.isLoadingPrevious &&
+        this.currentRyzeHistoryState.hasMore
+      );
+    },
+    showRyzeHistoryExhausted() {
+      return (
+        Boolean(this.currentChat?.ryze_history_enabled) &&
+        this.currentRyzeHistoryState.exhausted &&
+        !this.currentRyzeHistoryState.hasMore
+      );
+    },
     inboxId() {
       return this.currentChat.inbox_id;
     },
@@ -534,6 +567,63 @@ export default {
     resetReplyEditorHeight() {
       this.resizableEditorWrapperRef?.resetEditorHeight?.();
     },
+    async loadRyzeHistory() {
+      const conversationId = this.currentChat?.id;
+      if (!conversationId || !this.showRyzeHistoryButton) return;
+
+      const currentState =
+        this.ryzeHistoryState[conversationId] || defaultRyzeHistoryState();
+      if (currentState.isLoading) return;
+
+      this.ryzeHistoryState = {
+        ...this.ryzeHistoryState,
+        [conversationId]: {
+          ...currentState,
+          isLoading: true,
+        },
+      };
+
+      this.setScrollParams();
+      try {
+        const meta = await this.$store.dispatch('syncRyzeHistory', {
+          conversationId,
+          before: currentState.nextBefore,
+        });
+
+        const hasMore = Boolean(meta?.has_more);
+        const nextBefore = meta?.next_before ?? null;
+        const exhausted = !hasMore && (meta?.imported_count ?? 0) === 0;
+
+        this.ryzeHistoryState = {
+          ...this.ryzeHistoryState,
+          [conversationId]: {
+            hasMore,
+            nextBefore,
+            exhausted,
+            isLoading: false,
+          },
+        };
+
+        this.$nextTick(() => {
+          if (this.conversationPanel) {
+            const heightDifference =
+              this.conversationPanel.scrollHeight - this.heightBeforeLoad;
+            this.conversationPanel.scrollTop =
+              this.scrollTopBeforeLoad + heightDifference;
+            this.setScrollParams();
+          }
+        });
+      } catch (error) {
+        this.ryzeHistoryState = {
+          ...this.ryzeHistoryState,
+          [conversationId]: {
+            ...currentState,
+            isLoading: false,
+          },
+        };
+        useAlert(this.$t('CONVERSATION.RYZE_HISTORY.LOAD_ERROR'));
+      }
+    },
   },
 };
 </script>
@@ -614,6 +704,22 @@ export default {
             ghost
             @click="loadCampaignHistory"
           />
+        </li>
+        <li v-if="showRyzeHistoryButton" class="flex justify-center py-3">
+          <NextButton
+            :label="$t('CONVERSATION.RYZE_HISTORY.LOAD_OLDER')"
+            :is-loading="ryzeHistoryLoading"
+            :disabled="ryzeHistoryLoading"
+            sm
+            ghost
+            @click="loadRyzeHistory"
+          />
+        </li>
+        <li
+          v-else-if="showRyzeHistoryExhausted"
+          class="text-xs text-n-slate-10 py-2 text-center"
+        >
+          {{ $t('CONVERSATION.RYZE_HISTORY.NO_MORE') }}
         </li>
       </template>
       <template #unreadBadge>

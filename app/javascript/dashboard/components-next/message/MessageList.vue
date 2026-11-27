@@ -2,6 +2,7 @@
 import { computed, reactive } from 'vue';
 import Message from './Message.vue';
 import CampaignMessage from './CampaignMessage.vue';
+import HistoricalMediaRetry from './HistoricalMediaRetry.vue';
 import { MESSAGE_TYPES } from './constants.js';
 import { useCamelCase } from 'dashboard/composables/useTransformKeys';
 import { useMapGetter } from 'dashboard/composables/store.js';
@@ -205,6 +206,15 @@ const getInReplyToMessage = parentMessage => {
         :current-user-id="currentUserId"
         data-clarity-mask="True"
         @retry="emit('retry', entry.message.id)"
+      />
+      <HistoricalMediaRetry
+        v-if="
+          currentChat?.ryze_history_enabled &&
+          entry.message?.historicalMediaPending &&
+          !entry.message.contentAttributes?.deleted
+        "
+        :conversation-id="entry.message.conversationId"
+        :message-id="entry.message.id"
       />
     </template>
     <slot name="after" />

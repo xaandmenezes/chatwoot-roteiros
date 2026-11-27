@@ -43,8 +43,22 @@ class MessageFinder
   def messages_before(before_id)
     return messages_latest if oversized_message_id?(before_id)
 
-    before_id = normalized_message_id(before_id)
-    messages.reorder('created_at desc').where('id < ?', before_id).limit(20).reverse
+    scope = before_filter_scope(normalized_message_id(before_id))
+    scope.reorder(created_at: :desc, id: :desc).limit(20).reverse
+  end
+
+  def before_filter_scope(before_id)
+    cursor = @conversation.messages.select(:id, :created_at).find_by(id: before_id)
+    return messages.where(Message.arel_table[:id].lt(before_id)) if cursor.blank?
+
+    messages.where(cursor_condition(cursor))
+  end
+
+  def cursor_condition(cursor)
+    arel = Message.arel_table
+    arel[:created_at].lt(cursor.created_at).or(
+      arel[:created_at].eq(cursor.created_at).and(arel[:id].lt(cursor.id))
+    )
   end
 
   def messages_between(after_id, before_id)
@@ -54,7 +68,7 @@ class MessageFinder
   end
 
   def messages_latest
-    messages.reorder('created_at desc').limit(20).reverse
+    messages.reorder(created_at: :desc, id: :desc).limit(20).reverse
   end
 
   def normalized_message_id(value)

@@ -198,12 +198,18 @@ class Conversation < ApplicationRecord
   end
 
   def unread_messages
-    agent_last_seen_at.present? ? messages.created_since(agent_last_seen_at) : messages
+    unread_since(agent_last_seen_at)
   end
 
   def assignee_unread_messages
-    assignee_last_seen_at.present? ? messages.created_since(assignee_last_seen_at) : messages
+    unread_since(assignee_last_seen_at)
   end
+
+  def unread_since(last_seen)
+    candidates = messages.without_history_imports
+    last_seen ? candidates.created_since(last_seen) : candidates
+  end
+  private :unread_since
 
   def unread_incoming_messages
     unread_messages.where(account_id: account_id).incoming.last(10)
@@ -238,24 +244,24 @@ class Conversation < ApplicationRecord
   end
 
   def self.unread_messages_count_arel
+    Arel::Nodes::Grouping.new(unread_incoming_query.project(Message.arel_table[:id].count).ast)
+  end
+
+  def self.with_unread_incoming
+    where(unread_incoming_query.project(1).exists)
+  end
+
+  def self.unread_incoming_query
     messages = Message.arel_table
-    conversations = arel_table
-    unread_messages = messages
-                      .project(messages[:id].count)
-                      .where(unread_messages_condition(messages, conversations))
-
-    Arel::Nodes::Grouping.new(unread_messages.ast)
+    # Keep created_at as an index range even when the conversation has never been seen.
+    last_seen = Arel::Nodes::NamedFunction.new('COALESCE', [arel_table[:agent_last_seen_at], Arel::Nodes.build_quoted('-infinity')])
+    messages.where(messages[:conversation_id].eq(arel_table[:id]))
+            .where(messages[:account_id].eq(arel_table[:account_id]))
+            .where(messages[:message_type].eq(Message.message_types[:incoming]))
+            .where(messages[:created_at].gt(last_seen))
+            .where(Message.not_historical_condition)
   end
-
-  def self.unread_messages_condition(messages, conversations)
-    messages[:conversation_id].eq(conversations[:id])
-                              .and(messages[:account_id].eq(conversations[:account_id]))
-                              .and(messages[:message_type].eq(Message.message_types[:incoming]))
-                              .and(
-                                conversations[:agent_last_seen_at].eq(nil)
-                                  .or(messages[:created_at].gt(conversations[:agent_last_seen_at]))
-                              )
-  end
+  private_class_method :unread_incoming_query
 
   def recent_messages
     messages.chat.last(5)

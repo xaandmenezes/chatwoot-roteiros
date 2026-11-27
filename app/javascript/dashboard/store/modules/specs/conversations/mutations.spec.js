@@ -840,6 +840,37 @@ describe('#mutations', () => {
       mutations[types.SET_PREVIOUS_CONVERSATIONS](state, payload);
       expect(state.allConversations[0].messages).toEqual([{ id: 'msg2' }]);
     });
+
+    it('sorts messages deterministically in ascending chronological order and by id', () => {
+      const state = {
+        allConversations: [
+          {
+            id: 1,
+            messages: [
+              { id: 3, created_at: 100 },
+              { id: 10, created_at: 300 },
+            ],
+          },
+        ],
+      };
+      const payload = {
+        id: 1,
+        data: [
+          { id: 1, created_at: 50 },
+          { id: 5, created_at: 200 },
+          { id: 2, created_at: 100 },
+        ],
+      };
+
+      mutations[types.SET_PREVIOUS_CONVERSATIONS](state, payload);
+      expect(state.allConversations[0].messages).toEqual([
+        { id: 1, created_at: 50 },
+        { id: 2, created_at: 100 },
+        { id: 3, created_at: 100 },
+        { id: 5, created_at: 200 },
+        { id: 10, created_at: 300 },
+      ]);
+    });
   });
 
   describe('#SET_MISSING_MESSAGES', () => {

@@ -26,6 +26,14 @@ RSpec.describe Conversations::UnreadCounts::Builder do
       expect(redis_set_members(store.team_inbox_key(account.id, team.id, inbox.id))).to contain_exactly(unread_conversation.id.to_s)
     end
 
+    it 'does not populate sidebar unread counts from imported history' do
+      history = create(:conversation, account: account, inbox: inbox, status: :open)
+      create(:message, account: account, inbox: inbox, conversation: history, message_type: :incoming,
+                       additional_attributes: { ryze_historical_sync: true })
+      described_class.new(account).build_base!
+      expect(redis_set_members(store.inbox_key(account.id, inbox.id))).to be_empty
+    end
+
     it 'clears assignment-aware cache data before rebuilding base data' do
       assigned_conversation = create_unread_conversation(
         account: account,

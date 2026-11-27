@@ -320,6 +320,30 @@ describe('#actions', () => {
       expect(conversationB.dataFetched).toBe(true);
     });
 
+    it('requires a backward page after opening an imported search result above the latest chronological ID', async () => {
+      const page = Array.from({ length: 20 }, (_, i) => ({ id: 80 + i }));
+      axios.get
+        .mockResolvedValueOnce({ data: { meta: {}, payload: [] } })
+        .mockResolvedValueOnce({ data: { meta: {}, payload: page } });
+
+      await store.dispatch('setActiveChat', {
+        data: conversationA,
+        after: 500,
+      });
+      expect(axios.get.mock.calls.map(call => call[1].params)).toEqual([
+        { after: 500, before: 100 },
+        { before: 100 },
+      ]);
+      expect(conversationA.allMessagesLoaded).toBe(false);
+
+      axios.get.mockResolvedValueOnce({ data: { meta: {}, payload: [] } });
+      await store.dispatch('fetchPreviousMessages', {
+        conversationId: 42,
+        before: 80,
+      });
+      expect(conversationA.allMessagesLoaded).toBe(true);
+    });
+
     it('leaves failed history unfetched and retries when the conversation is reopened', async () => {
       axios.get.mockRejectedValueOnce(new Error('Network error'));
 
@@ -1691,6 +1715,53 @@ describe('#addMentions', () => {
         expect.stringContaining('/conversations/7'),
         { auto_translate_disabled: true }
       );
+    });
+  });
+
+  describe('#syncRyzeHistory', () => {
+    it('calls ConversationApi.syncRyzeHistory and commits SET_PREVIOUS_CONVERSATIONS when payload is present', async () => {
+      const commitMock = vi.fn();
+      const meta = {
+        has_more: true,
+        next_before: 1700000000,
+        imported_count: 5,
+      };
+      const payload = [{ id: 10, created_at: 1699999900 }];
+      axios.post.mockResolvedValue({
+        data: { meta, payload },
+      });
+
+      const result = await actions.syncRyzeHistory(
+        { commit: commitMock },
+        { conversationId: 1, before: 1700000500 }
+      );
+
+      expect(axios.post).toHaveBeenCalledWith(
+        expect.stringContaining('/conversations/1/ryze_history'),
+        { before: 1700000500 },
+        { timeout: 25000 }
+      );
+      expect(commitMock).toHaveBeenCalledWith(
+        types.SET_PREVIOUS_CONVERSATIONS,
+        { id: 1, data: payload }
+      );
+      expect(result).toEqual(meta);
+    });
+
+    it('does not commit SET_PREVIOUS_CONVERSATIONS when payload is empty', async () => {
+      const commitMock = vi.fn();
+      const meta = { has_more: false, next_before: null, imported_count: 0 };
+      axios.post.mockResolvedValue({
+        data: { meta, payload: [] },
+      });
+
+      const result = await actions.syncRyzeHistory(
+        { commit: commitMock },
+        { conversationId: 1 }
+      );
+
+      expect(commitMock).not.toHaveBeenCalled();
+      expect(result).toEqual(meta);
     });
   });
 });
