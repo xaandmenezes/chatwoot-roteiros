@@ -13,12 +13,11 @@ A família dos modelos delegados é selecionável no Linear ou por sessão; os m
 ### PR, deploy e testes em produção
 
 - Cada issue tem responsável e branch/worktree própria baseada em `develop` atualizado. Trabalho incompleto permanece na branch ou desativado.
-- A branch da issue entra em `develop` por PR vinculado, com revisão de outra pessoa e checks obrigatórios aprovados. A release entra em `prod` por PR de `develop`, listando todas as issues e nomeando o responsável. Push direto é proibido nas duas branches.
-- PRs para `develop` seguem sem build de imagem. A homologação e a publicação no GHCR rodam no push em `develop` após o merge. Consulte [Homologação e publicação da imagem PSR](docs/psr-image-ci.md).
-- Antes do merge em `prod`, obtenha autorização de deploy e verifique a imagem construída fora da VPS e do Mac de 8 GB. Preserve-a em registry autorizado e publique exatamente a imagem testada, por digest. Registre digest e resultado.
+- A branch da issue entra em `develop` por PR vinculado, com revisão de outra pessoa e validação local (testes e lint aplicáveis ao diff). A release entra em `prod` por PR de `develop`, listando todas as issues e nomeando o responsável. Push direto é proibido nas duas branches.
+- PRs e pushes em `develop` seguem sem build de imagem. O build da imagem `linux/amd64` roda com cache no GitHub Actions apenas no push em `prod` (ou por disparo manual em **Release PSR image**) e publica no GHCR. Consulte [Build e deploy da imagem PSR](docs/psr-image-ci.md).
+- Antes do merge em `prod`, obtenha autorização de deploy. Não faça build de imagem na VPS ou em Mac de 8 GB; o Dokploy consome a imagem publicada no GHCR (`:prod` por padrão, ou `CHATWOOT_IMAGE_TAG=<SHA>` para rollback).
 - Em emergência, crie hotfix a partir de `prod`, com PR para `prod`, revisão, verificações e autorização; depois abra PR de `prod` para `develop`.
-- O enforcement das proteções no GitHub depende de administrador; não presuma que estão ativas. O registry atual do runner é efêmero.
-- Faça o build da imagem fora da VPS e do Mac de 8 GB. Após o deploy, confira a versão ativa, a saúde do painel e o processamento do Sidekiq.
+- Após o deploy, confira a versão ativa, a saúde do painel e o processamento do Sidekiq.
 - Restrinja os testes de envio, edição, reação ou exclusão à conversa e às ações autorizadas para aquela rodada. Registre na issue o que foi confirmado e o que ainda depende de teste real.
 
 ## Build, Test, and Lint
