@@ -117,6 +117,100 @@ RSpec.describe 'Ryze message reactions', type: :request do
     expect(response).to have_http_status(:bad_request)
   end
 
+  it 'accepts the target as a bare message id or with a differently cased provider key' do
+    payload = event(id: 'INCOMING_BARE', emoji: '👍', at: '2026-11-26T18:00:00Z')
+    payload[:data][:message][:reaction][:targetMessageId] = message.source_id
+    post_event(payload)
+    expect(response).to have_http_status(:ok)
+    expect(history.fetch('ryze_reactions')).to include('incoming' => include('emoji' => '👍'))
+
+    payload = event(id: 'INCOMING_CASED', emoji: '❤️', at: '2026-11-26T18:00:01Z')
+    payload[:data][:message][:reaction][:targetMessageId] = { 'Id' => message.source_id, 'RemoteJid' => jid }
+    post_event(payload)
+    expect(response).to have_http_status(:ok)
+    expect(history.fetch('ryze_reactions')).to include('incoming' => include('emoji' => '❤️'))
+  end
+
+  it 'accepts a target key that omits the chat' do
+    payload = event(id: 'INCOMING_NO_CHAT', emoji: '😂', at: '2026-11-26T18:00:00Z')
+    payload[:data][:message][:reaction][:targetMessageId] = { ID: message.source_id }
+    post_event(payload)
+
+    expect(response).to have_http_status(:ok)
+    expect(history.fetch('ryze_reactions')).to include('incoming' => include('emoji' => '😂'))
+  end
+
+  it 'distinguishes an absent target from a provided one that cannot be used' do
+    allow(Rails.logger).to receive(:info)
+
+    payload = event(id: 'ABSENT_TARGET', emoji: '👍', at: '2026-11-26T18:00:00Z')
+    payload[:data][:message][:reaction].delete(:targetMessageId)
+    post_event(payload)
+    expect(response).to have_http_status(:bad_request)
+    expect(Rails.logger).to have_received(:info).with(
+      'Ryze pilot reaction rejected field=target_missing target_shape=absent'
+    )
+
+    payload = event(id: 'EMPTY_TARGET', emoji: '👍', at: '2026-11-26T18:00:00Z')
+    payload[:data][:message][:reaction][:targetMessageId] = {}
+    post_event(payload)
+    expect(response).to have_http_status(:bad_request)
+    expect(Rails.logger).to have_received(:info).with(
+      'Ryze pilot reaction rejected field=target_invalid target_shape=object:empty'
+    )
+  end
+
+  it 'rejects a provided target that cannot be used instead of treating it as absent' do
+    logs = []
+    allow(Rails.logger).to receive(:info) { |message| logs << message }
+
+    cases = [
+      [{ unexpected: 'value' }, :target_invalid, 'object:unknown=1'],
+      [{ chatJid: jid }, :target_id_missing, 'object:chat'],
+      [{ ID: '' }, :target_id_invalid, 'object:id'],
+      [{ ID: 123 }, :target_id_invalid, 'object:id'],
+      [{ ID: message.source_id, id: 'OTHER_TARGET' }, :target_id_invalid, 'object:id'],
+      [{ ID: message.source_id, remoteJID: 'not-a-jid' }, :target_chat_invalid, 'object:id,chat'],
+      [{ ID: message.source_id, remoteJID: jid, jid: '15550003333@s.whatsapp.net' }, :target_chat_invalid, 'object:id,chat'],
+      [%w[not an id], :target_invalid, 'invalid'],
+      ['not a provider id', :target_id_invalid, 'bare_id']
+    ]
+
+    cases.each_with_index do |(target, field, shape), index|
+      payload = event(id: "UNUSABLE_TARGET_#{index}", emoji: '👍', at: '2026-11-26T18:00:00Z')
+      payload[:data][:message][:reaction][:targetMessageId] = target
+      post_event(payload)
+
+      expect(response).to have_http_status(:bad_request)
+      expect(logs.grep(/reaction rejected/).last).to eq(
+        "Ryze pilot reaction rejected field=#{field} target_shape=#{shape}"
+      )
+    end
+  end
+
+  it 'accepts a usable target that also carries unknown fields' do
+    payload = event(id: 'INCOMING_UNKNOWN_FIELD', emoji: '🤔', at: '2026-11-26T18:00:00Z')
+    payload[:data][:message][:reaction][:targetMessageId] = { ID: message.source_id, remoteJID: jid, groupingKey: 'key' }
+    post_event(payload)
+
+    expect(response).to have_http_status(:ok)
+    expect(history.fetch('ryze_reactions')).to include('incoming' => include('emoji' => '🤔'))
+  end
+
+  it 'logs only fixed target categories and the unknown key count' do
+    allow(Rails.logger).to receive(:info)
+    payload = event(id: 'SHAPELESS_TARGET', emoji: '👍', at: '2026-11-26T18:00:00Z')
+    payload[:data][:message][:reaction][:targetMessageId] = {
+      ID: message.source_id, id: 'OTHER_TARGET', remoteJID: '15550009999@s.whatsapp.net', custom_field: 'sensitive'
+    }
+    post_event(payload)
+
+    expect(response).to have_http_status(:bad_request)
+    expect(Rails.logger).to have_received(:info).with(
+      'Ryze pilot reaction rejected field=target_id_invalid target_shape=object:id,chat,unknown=1'
+    )
+  end
+
   it 'ignores an event for a different chat and rejects a mismatched target key and sender' do
     data = event(id: 'REACTION_ONE', emoji: '👍', at: '2026-11-26T18:00:00Z')
     out_of_scope = data.deep_dup
