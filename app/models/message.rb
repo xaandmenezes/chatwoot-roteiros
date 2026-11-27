@@ -217,9 +217,9 @@ class Message < ApplicationRecord
     additional_attributes&.[](INCOMING_ATTACHMENT_FINGERPRINT_KEY)
   end
 
-  def attachments_event_data
+  def attachments_event_data(webhook: false)
     files = incoming_attachment_fingerprint ? attachments.sort_by(&:id) : attachments
-    files.map(&:push_event_data)
+    webhook ? files.map(&:webhook_event_data) : files.map(&:push_event_data)
   end
 
   def push_event_data
@@ -264,11 +264,14 @@ class Message < ApplicationRecord
     data
   end
 
+  # ActiveRecord::Store wraps the JSON column in serialized JSON.
+  def self.content_attributes_json
+    serialized = Arel::Nodes::InfixOperation.new('#>>', arel_table[:content_attributes], Arel::Nodes.build_quoted('{}'))
+    Arel::Nodes::NamedFunction.new('CAST', [Arel::Nodes::Grouping.new(serialized).as('jsonb')])
+  end
+
   def referenced_in_conversation?
-    column = self.class.arel_table[:content_attributes]
-    # ActiveRecord::Store wraps this JSON column in serialized JSON.
-    serialized = Arel::Nodes::InfixOperation.new('#>>', column, Arel::Nodes.build_quoted('{}'))
-    attributes = Arel::Nodes::NamedFunction.new('CAST', [Arel::Nodes::Grouping.new(serialized).as('jsonb')])
+    attributes = self.class.content_attributes_json
     references = %w[in_reply_to forwarded_message_id].map do |attribute|
       Arel::Nodes::InfixOperation.new('->>', attributes, Arel::Nodes.build_quoted(attribute)).eq(id.to_s)
     end
@@ -317,10 +320,12 @@ class Message < ApplicationRecord
   end
 
   def webhook_push_event_data
-    push_event_data.merge(
+    data = push_event_data.merge(
       content: Messages::WebhookContentNormalizer.normalize(content),
       processed_message_content: Messages::WebhookContentNormalizer.normalize(processed_message_content)
     )
+    data[:attachments] = attachments_event_data(webhook: true) if attachments.present?
+    data
   end
 
   def webhook_data
@@ -339,7 +344,7 @@ class Message < ApplicationRecord
       sender: sender.try(:webhook_data),
       source_id: source_id
     }
-    data[:attachments] = attachments_event_data if attachments.present?
+    data[:attachments] = attachments_event_data(webhook: true) if attachments.present?
     data
   end
 

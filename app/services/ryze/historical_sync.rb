@@ -18,15 +18,19 @@ class Ryze::HistoricalSync
     !Ryze::OutgoingEditEligibility.direct_inbox_enabled? || Ryze::HistoryBinding.verified?(conversation)
   end
 
-  def initialize(conversation:, before: nil, client: nil)
+  def initialize(conversation:, before: nil, client: nil, actor: nil)
     @conversation = conversation
     @before = before
     @provided_client = client
+    @actor = actor
   end
 
   def perform
-    @session = Session.new(@conversation, client: @provided_client)
+    @session = Session.new(@conversation, client: @provided_client, actor: @actor)
     cursor_time = parse_cursor(@before)
+    @window = ConversationWindow.new(@conversation)
+    return Result.new(imported_messages: [], has_more: false) if @window.starts_at && cursor_time && cursor_time < @window.starts_at
+
     @session.media.repair_pending
     import_history(cursor_time)
   end
@@ -49,9 +53,7 @@ class Ryze::HistoricalSync
   end
 
   def process_page(cursor_time, seen_ids)
-    raw_messages = fetch_history_page(cursor_time)
-    raise UpstreamError, 'Ryze history page exceeds requested size' if raw_messages.size > PAGE_SIZE
-
+    raw_messages = fetch_eligible_history_page(cursor_time)
     result = pagination(raw_messages, cursor_time)
     unseen_items(raw_messages, seen_ids).each do |item|
       # Replay this page rather than advancing past rows not yet persisted.
@@ -85,11 +87,18 @@ class Ryze::HistoricalSync
     raise InvalidCursor, 'Invalid history cursor'
   end
 
+  def fetch_eligible_history_page(cursor_time)
+    messages = fetch_history_page(cursor_time)
+    raise UpstreamError, 'Ryze history page exceeds requested size' if messages.size > PAGE_SIZE
+    return messages unless @window.bounded?
+
+    messages.select { |item| @window.include?(parse_timestamp(item['timestamp'])) }
+  end
+
   def fetch_history_page(cursor_time)
     raise UpstreamError, 'Ryze history deadline reached' if Time.current >= @session.deadline
 
-    payload = { number: @session.chat_jid, count: PAGE_SIZE }
-    payload[:to] = cursor_time.utc.iso8601 if cursor_time.present?
+    payload = { number: @session.chat_jid, count: PAGE_SIZE }.merge(@window.query(cursor_time))
 
     response = @session.client.post('chat/history', payload)
     raise RateLimitError, "Ryze rate limit reached: #{response.code}" if response.code.to_i == 429

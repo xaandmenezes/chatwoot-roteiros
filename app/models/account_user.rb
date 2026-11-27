@@ -43,6 +43,7 @@ class AccountUser < ApplicationRecord
   after_save :update_presence_in_redis, if: :saved_change_to_availability?
   after_commit :invalidate_filtered_unread_count_visibility, on: [:create, :destroy]
   after_update_commit :invalidate_filtered_unread_count_visibility_update, if: :filtered_unread_count_visibility_changed?
+  after_update_commit :wake_pilot_assignment, if: :became_available_for_conversations?
 
   validates :user_id, uniqueness: { scope: :account_id }
   validate :accepts_conversations_or_calls
@@ -83,6 +84,15 @@ class AccountUser < ApplicationRecord
 
   def update_presence_in_redis
     OnlineStatusTracker.set_status(account.id, user.id, availability)
+  end
+
+  def became_available_for_conversations?
+    online? && accepts_conversations? &&
+      (saved_change_to_availability? || saved_change_to_accepts_conversations? || saved_change_to_auto_offline?)
+  end
+
+  def wake_pilot_assignment
+    AutoAssignment::PilotAssignmentService.wake_for_user(account_id: account_id, user_id: user_id)
   end
 
   def filtered_unread_count_visibility_changed?

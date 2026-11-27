@@ -23,10 +23,27 @@ class Public::Api::V1::InboxesController < PublicController
   end
 
   def ensure_hmac_verified
-    return if @contact_inbox.blank? || !@inbox_channel.hmac_mandatory
+    return if @contact_inbox.blank? || !requires_contact_hmac?
     return if valid_contact_identifier_hash?
 
     render_unauthorized('HMAC failed: Invalid Identifier Hash Provided')
+  end
+
+  def requires_contact_hmac?
+    @inbox_channel.hmac_mandatory || Conversations::AssignmentAccess.enabled?(@inbox_channel.inbox)
+  end
+
+  def public_conversations
+    return @contact_inbox.conversations unless @contact_inbox.hmac_verified?
+
+    conversations = @contact_inbox.contact.conversations
+    return conversations unless (restricted_inbox_id = Conversations::AssignmentAccess.inbox_id)
+
+    if @contact_inbox.inbox_id == restricted_inbox_id
+      conversations.where(inbox_id: restricted_inbox_id)
+    else
+      conversations.where.not(inbox_id: restricted_inbox_id)
+    end
   end
 
   def valid_contact_identifier_hash?
@@ -40,10 +57,6 @@ class Public::Api::V1::InboxesController < PublicController
   def set_conversation
     return if params[:conversation_id].blank?
 
-    @conversation = if @contact_inbox.hmac_verified?
-                      @contact_inbox.contact.conversations.find_by!(display_id: params[:conversation_id])
-                    else
-                      @contact_inbox.conversations.find_by!(display_id: params[:conversation_id])
-                    end
+    @conversation = public_conversations.find_by!(display_id: params[:conversation_id])
   end
 end

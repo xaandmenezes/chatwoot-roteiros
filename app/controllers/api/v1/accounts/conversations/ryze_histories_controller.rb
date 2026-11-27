@@ -11,7 +11,8 @@ class Api::V1::Accounts::Conversations::RyzeHistoriesController < Api::V1::Accou
   end
 
   def create
-    @result = Ryze::HistoricalSync.new(conversation: @conversation, before: params[:before]).perform
+    @result = Ryze::HistoricalSync.new(conversation: @conversation, before: params[:before], actor: Current.user).perform
+    recheck_restricted_access!
     @messages = @result.imported_messages
     if Ryze::MessageReactions.pilot?(@conversation)
       source_ids = @messages.filter_map { |message| message.source_id if Ryze::MessageReactions.target?(message) }
@@ -23,15 +24,20 @@ class Api::V1::Accounts::Conversations::RyzeHistoriesController < Api::V1::Accou
   end
 
   def repair
-    session = Ryze::HistoricalSync::Session.new(@conversation)
+    session = Ryze::HistoricalSync::Session.new(@conversation, actor: Current.user)
     message = @conversation.messages.history_imports.find(params[:message_id])
     session.media.repair_message(message)
+    recheck_restricted_access!
     return head :bad_gateway if message.historical_media_pending?
 
     render json: message.agent_view_data(message.push_event_data, conversation: @conversation, viewer: Current.user)
   end
 
   private
+
+  def recheck_restricted_access!
+    authorize @conversation.reload, :show? if Conversations::AssignmentAccess.enabled?(@conversation.inbox_id)
+  end
 
   def require_agent
     head :not_found unless Current.user.is_a?(User)

@@ -3,8 +3,8 @@ class Ryze::GroupConversations
   SCOPES = %w[groups inbox].freeze
 
   class << self
-    def enabled_inbox?(inbox)
-      !!(inbox && inbox.id == configured_inbox_id && inbox.api?)
+    def enabled_inbox?(inbox, inbox_id: configured_inbox_id)
+      !!(inbox && inbox.id == inbox_id && inbox.api?)
     end
 
     def inbox(account)
@@ -12,8 +12,10 @@ class Ryze::GroupConversations
       Inbox.find_by(account: account, id: inbox_id, channel_type: 'Channel::Api') if inbox_id
     end
 
-    def inbox_for_contact_change(contact)
-      target = inbox(contact.account_id)
+    def inbox_for_contact_change(contact, inbox_id: configured_inbox_id)
+      return unless inbox_id
+
+      target = contact.account.inboxes.find_by(id: inbox_id, channel_type: 'Channel::Api')
       return unless target
 
       bindings = ContactInbox.arel_table
@@ -25,17 +27,16 @@ class Ryze::GroupConversations
     end
 
     def inbox_for_source_change(binding)
-      return unless binding.inbox_id == configured_inbox_id
+      return unless [configured_inbox_id, Conversations::AssignmentAccess.inbox_id].include?(binding.inbox_id)
       return unless binding.saved_change_to_source_id.any? { |jid| GROUP_JID.match?(jid) }
 
       target = binding.inbox
-      return unless enabled_inbox?(target)
+      return unless target&.api?
 
       target if binding.conversations.exists?(account_id: target.account_id, inbox_id: target.id, contact_id: binding.contact_id)
     end
 
-    def scope(account)
-      inbox_id = configured_inbox_id
+    def scope(account, inbox_id: configured_inbox_id)
       return Conversation.none unless inbox_id
 
       inbox_ids = account.inboxes.where(id: inbox_id, channel_type: 'Channel::Api').select(:id)
@@ -53,10 +54,9 @@ class Ryze::GroupConversations
       end
     end
 
-    def group?(conversation)
-      inbox_id = configured_inbox_id
+    def group?(conversation, inbox_id: configured_inbox_id)
       return false unless inbox_id && conversation.inbox_id == inbox_id
-      return false unless enabled_inbox?(conversation.inbox) && conversation.inbox.account_id == conversation.account_id
+      return false unless enabled_inbox?(conversation.inbox, inbox_id: inbox_id) && conversation.inbox.account_id == conversation.account_id
       return false unless same_contact_binding?(conversation)
 
       matching_group_identifiers?(conversation)

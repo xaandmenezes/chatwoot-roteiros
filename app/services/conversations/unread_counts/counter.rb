@@ -11,13 +11,14 @@ class Conversations::UnreadCounts::Counter
   def initialize(account:, user:)
     @account = account
     @user = user
+    @pilot_counter = Conversations::UnreadCounts::RestrictedInboxCounter.new(account: account, user: user)
   end
 
   def perform
-    return with_filtered_counts(empty_counts, build: false) if permission_mode == :none
+    return with_filtered_counts(@pilot_counter.perform(empty_counts), build: @pilot_counter.inbox_id.present?) if permission_mode == :none
 
     ensure_base_cache!
-    ensure_assignment_cache! if assignment_mode?
+    ensure_assignment_cache! if %i[unassigned_and_mine mine].include?(permission_mode)
 
     inbox_counts = unread_inbox_counts
 
@@ -26,7 +27,7 @@ class Conversations::UnreadCounts::Counter
       inboxes: inbox_counts,
       labels: unread_label_counts,
       teams: unread_team_counts
-    }.then { |counts| with_filtered_counts(counts) }
+    }.then { |counts| with_filtered_counts(@pilot_counter.perform(counts)) }
   end
 
   private
@@ -77,13 +78,13 @@ class Conversations::UnreadCounts::Counter
   end
 
   def unread_inbox_counts
-    counts_for_grouped_keys(visible_inbox_ids.index_with { |inbox_id| inbox_keys_for_mode(inbox_id) })
+    counts_for_grouped_keys(legacy_inbox_ids.index_with { |inbox_id| inbox_keys_for_mode(inbox_id) })
   end
 
   def unread_label_counts
     keys_by_id = Hash.new { |hash, key| hash[key] = [] }
     sidebar_label_ids.each do |label_id|
-      visible_inbox_ids.each do |inbox_id|
+      legacy_inbox_ids.each do |inbox_id|
         keys_by_id[label_id].concat(label_inbox_keys_for_mode(label_id, inbox_id))
       end
     end
@@ -94,7 +95,7 @@ class Conversations::UnreadCounts::Counter
   def unread_team_counts
     keys_by_id = Hash.new { |hash, key| hash[key] = [] }
     visible_team_ids.each do |team_id|
-      visible_inbox_ids.each do |inbox_id|
+      legacy_inbox_ids.each do |inbox_id|
         keys_by_id[team_id].concat(team_inbox_keys_for_mode(team_id, inbox_id))
       end
     end
@@ -150,10 +151,6 @@ class Conversations::UnreadCounts::Counter
     end
   end
 
-  def assignment_mode?
-    %i[unassigned_and_mine mine].include?(permission_mode)
-  end
-
   def permission_mode
     @permission_mode ||=
       if !custom_role_agent? || permissions.include?(MANAGE_ALL_PERMISSION)
@@ -189,6 +186,10 @@ class Conversations::UnreadCounts::Counter
 
   def sidebar_label_ids
     @sidebar_label_ids ||= account.labels.where(show_on_sidebar: true).pluck(:id)
+  end
+
+  def legacy_inbox_ids
+    @legacy_inbox_ids ||= visible_inbox_ids - [@pilot_counter.inbox_id]
   end
 
   def visible_team_ids

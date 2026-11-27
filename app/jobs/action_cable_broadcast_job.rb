@@ -11,15 +11,26 @@ class ActionCableBroadcastJob < ApplicationJob
   ].freeze
 
   # widget_members are web widget sessions. They get widget_data, or the widget payload of a refreshed conversation.
-  def perform(members, event_name, data, widget_members: [], widget_data: nil)
+  def perform(members, event_name, data, **audiences)
+    widget_members = audiences.fetch(:widget_members, [])
+    members = authorized_tokens(members, data[:account_id], audiences) if audiences[:restricted_conversation_id]
     return if members.blank? && widget_members.blank?
 
     conversation = latest_conversation(event_name, data)
     broadcast_to_members(members, event_name, conversation ? refreshed_data(conversation, event_name, data) : data)
-    broadcast_to_members(widget_members, event_name, conversation ? refreshed_widget_data(conversation, data) : widget_data)
+    broadcast_to_members(widget_members, event_name, conversation ? refreshed_widget_data(conversation, data) : audiences[:widget_data])
   end
 
   private
+
+  def authorized_tokens(members, account_id, audiences)
+    conversation = Conversation.find_by(id: audiences.fetch(:restricted_conversation_id), account_id: account_id)
+    return [] unless conversation
+
+    # A transfer may commit between enqueue and delivery.
+    recipients = Conversations::AssignmentRecipients.users(conversation).where(pubsub_token: members).pluck(:pubsub_token)
+    members & (recipients + audiences.fetch(:contact_tokens, []))
+  end
 
   # Ensures that only the latest available data is sent to prevent UI issues
   # caused by out-of-order events during high-traffic periods. This prevents

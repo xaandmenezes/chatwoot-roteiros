@@ -3,7 +3,7 @@ module AutoAssignmentHandler
   include Events::Types
 
   included do
-    before_save :run_legacy_auto_assignment, unless: :new_record?
+    before_save :run_legacy_auto_assignment, unless: [:new_record?, :pilot_assignment_inbox?]
     after_save :run_auto_assignment
   end
 
@@ -22,22 +22,52 @@ module AutoAssignmentHandler
   end
 
   def run_auto_assignment
+    return run_pilot_assignment if pilot_assignment_inbox?
+
     # Assignment V2: Also trigger assignment when conversation is resolved or snoozed,
     # bypassing the open-only condition so the AssignmentJob can redistribute capacity.
     return unless conversation_status_changed_to_open? || conversation_status_changed_to_resolved_or_snoozed?
     return unless should_run_auto_assignment?
 
     if inbox.auto_assignment_v2_enabled?
-      # Enqueue after commit so the job's scan can see this conversation.
-      inbox_id = inbox.id
-      ActiveRecord.after_all_transactions_commit do
-        AutoAssignment::AssignmentJob.enqueue_for_inbox(inbox_id)
-      end
+      enqueue_assignment
     elsif saved_change_to_id?
       # Legacy (V1) assignment for new conversations stays post-save: their status is only
       # finalized by before_create callbacks, which run after before_save.
       AutoAssignment::AgentAssignmentService.new(conversation: self, allowed_agent_ids: legacy_allowed_agent_ids).perform
     end
+  end
+
+  def pilot_assignment_inbox?
+    inbox_id.present? && inbox_id == Conversations::AssignmentAccess.inbox_id
+  end
+
+  def run_pilot_assignment
+    return unless AutoAssignment::PilotAssignmentService.active?(inbox)
+
+    enqueue_assignment if pilot_assignment_candidate? || pilot_assignment_capacity_freed?
+  end
+
+  def pilot_assignment_candidate?
+    return false unless pilot_assignment_relevant_change?
+    return false unless open? && assignee_id.nil? && ai_assignee_type.nil?
+    return false if created_at < AutoAssignment::PilotAssignmentService.start_at
+    return false unless should_run_auto_assignment?
+
+    !Conversations::AssignmentAccess.group?(self)
+  end
+
+  def pilot_assignment_relevant_change?
+    conversation_status_changed_to_open? || saved_change_to_team_id? || saved_change_to_ai_assignee_type? || saved_change_to_assignee_agent_bot_id?
+  end
+
+  def pilot_assignment_capacity_freed?
+    saved_change_to_status? && (resolved? || snoozed?)
+  end
+
+  def enqueue_assignment
+    assignment_inbox_id = inbox_id
+    ActiveRecord.after_all_transactions_commit { AutoAssignment::AssignmentJob.enqueue_for_inbox(assignment_inbox_id) }
   end
 
   def legacy_allowed_agent_ids

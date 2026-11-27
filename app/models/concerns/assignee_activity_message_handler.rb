@@ -9,7 +9,24 @@ module AssigneeActivityMessageHandler
     return unless user_name
 
     content = generate_assignee_change_activity_content(user_name)
-    ::Conversations::ActivityMessageJob.perform_later(self, activity_message_params(content)) if content
+    return unless content
+
+    ::Conversations::ActivityMessageJob.perform_later(self, activity_message_params(content, content_attributes: assignment_activity_attributes))
+  end
+
+  def assignment_activity_attributes
+    return unless Current.user.is_a?(User) && Conversations::AssignmentAccess.enabled?(inbox)
+
+    previous_agent, new_agent = saved_change_to_assignee_id
+    {
+      activity: {
+        type: 'conversation_assignee_changed',
+        actor_id: Current.user.id,
+        from_assignee_id: previous_agent,
+        to_assignee_id: new_agent,
+        occurred_at: updated_at.iso8601(6)
+      }
+    }
   end
 
   def generate_assignee_change_activity_content(user_name)

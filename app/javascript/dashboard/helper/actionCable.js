@@ -1,3 +1,4 @@
+import { frontendURL } from './URLHelper';
 import AuthAPI from '../api/auth';
 import BaseActionCableConnector from '../../shared/helpers/BaseActionCableConnector';
 import DashboardAudioNotificationHelper from './AudioAlerts/DashboardAudioNotificationHelper';
@@ -68,6 +69,8 @@ class ActionCableConnector extends BaseActionCableConnector {
         this.onWhatsAppGroupClassificationChanged,
       'conversation.unread_count_changed':
         this.onConversationUnreadCountChanged,
+      'conversation.access_revoked': this.onConversationAccessRevoked,
+      'inbox_member.access_changed': this.onReload,
       'account.cache_invalidated': this.onCacheInvalidate,
       'account.enrichment_completed': this.onEnrichmentCompleted,
       'account.billing_updated': this.onBillingUpdated,
@@ -84,6 +87,14 @@ class ActionCableConnector extends BaseActionCableConnector {
   }
 
   onReconnect = () => {
+    if (
+      this.app.$store.getters['inboxes/getInboxes']?.some(
+        inbox => inbox.assignment_restricted
+      )
+    ) {
+      this.onReload();
+      return;
+    }
     this.fetchConversationUnreadCounts();
     emitter.emit(BUS_EVENTS.WEBSOCKET_RECONNECT);
   };
@@ -241,12 +252,32 @@ class ActionCableConnector extends BaseActionCableConnector {
     this.fetchConversationStats();
   };
 
+  onConversationAccessRevoked = ({
+    account_id: accountId,
+    conversation_id: id,
+  }) => {
+    const route = this.app.$store.state.route;
+    if (Number(route?.params?.conversation_id) === id) {
+      window.location.replace(frontendURL(`accounts/${accountId}/dashboard`));
+      return;
+    }
+    // Clear any cached notifications, search results and open contact history.
+    this.onReload();
+  };
+
   onWhatsAppGroupAccessChanged = ({ conversation_id: conversationId }) => {
     this.app.$store.dispatch('revalidateWhatsAppGroupAccess', conversationId);
     this.onConversationUnreadCountChanged();
   };
 
   onWhatsAppGroupClassificationChanged = ({ inbox_id: inboxId }) => {
+    const inboxes = this.app.$store.getters['inboxes/getInboxes'] || [];
+    if (
+      inboxes.some(inbox => inbox.id === inboxId && inbox.assignment_restricted)
+    ) {
+      this.onReload();
+      return;
+    }
     this.app.$store.dispatch('refreshWhatsAppClassification', inboxId);
     this.onConversationUnreadCountChanged();
   };

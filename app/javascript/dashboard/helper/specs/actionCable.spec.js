@@ -57,6 +57,30 @@ describe('ActionCableConnector - Copilot Tests', () => {
     expect(emitter.emit).toHaveBeenCalledWith(BUS_EVENTS.WEBSOCKET_RECONNECT);
   });
 
+  it('closes the open conversation on transfer and clears cached data on other screens', () => {
+    const location = { replace: vi.fn(), reload: vi.fn() };
+    vi.stubGlobal('location', location);
+    try {
+      store.$store.state = { route: { params: { conversation_id: '42' } } };
+      const revoke = { account_id: 1, conversation_id: 42 };
+      actionCable.onReceived({
+        event: 'conversation.access_revoked',
+        data: revoke,
+      });
+      expect(location.replace).toHaveBeenCalledWith(
+        '/app/accounts/1/dashboard'
+      );
+      store.$store.state.route.params = {};
+      actionCable.onReceived({
+        event: 'conversation.access_revoked',
+        data: revoke,
+      });
+      expect(location.reload).toHaveBeenCalledOnce();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   describe('copilot event handlers', () => {
     it('should register the copilot.message.created event handler', () => {
       expect(Object.keys(actionCable.events)).toContain(

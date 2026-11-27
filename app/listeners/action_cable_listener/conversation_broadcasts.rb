@@ -7,9 +7,24 @@ module ActionCableListener::ConversationBroadcasts
 
   private
 
+  def notify_previous_assignee(event)
+    conversation = event.data.fetch(:conversation)
+    previous_id = event.data[:changed_attributes]&.dig('assignee_id', 0)
+    return unless previous_id && Conversations::AssignmentAccess.enabled?(conversation.inbox)
+
+    previous = conversation.account.users.find_by(id: previous_id)
+    return unless previous && !Conversations::AssignmentAccess.allowed?(conversation, previous)
+
+    broadcast(conversation.account, [previous.pubsub_token], 'conversation.access_revoked',
+              { conversation_id: conversation.display_id })
+  end
+
   def broadcast_contact_group_classification_changed(contact)
     inbox = Ryze::GroupConversations.inbox_for_contact_change(contact)
-    broadcast_whatsapp_group_classification_changed(inbox) if inbox
+    pilot_id = Conversations::AssignmentAccess.inbox_id
+    targets = [inbox]
+    targets << Ryze::GroupConversations.inbox_for_contact_change(contact, inbox_id: pilot_id) if pilot_id && pilot_id != inbox&.id
+    targets.compact.each { |target| broadcast_whatsapp_group_classification_changed(target) }
   end
 
   def broadcast_whatsapp_group_classification_changed(inbox)
@@ -20,7 +35,8 @@ module ActionCableListener::ConversationBroadcasts
   def broadcast_to_inbox_members(event, event_name, **metadata)
     conversation, account = extract_conversation_and_account(event)
 
-    broadcast(account, user_tokens(account, conversation.inbox.members), event_name, conversation.push_event_data.merge(metadata))
+    broadcast(account, user_tokens(account, conversation.inbox.members), event_name, conversation.push_event_data.merge(metadata),
+              conversation: conversation)
   end
 
   def add_contact_labels(data, account, conversation)
@@ -44,6 +60,7 @@ module ActionCableListener::ConversationBroadcasts
       data = data.except(:whatsapp_group) if data.key?(:whatsapp_group)
     end
 
-    broadcast(account, tokens, event_name, data, widget: { tokens: widget_tokens, data: conversation.widget_push_event_data })
+    broadcast(account, tokens, event_name, data, widget: { tokens: widget_tokens, data: conversation.widget_push_event_data },
+                                                 conversation: conversation, contact_tokens: client_tokens)
   end
 end

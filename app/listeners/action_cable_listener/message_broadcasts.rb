@@ -4,22 +4,24 @@ module ActionCableListener::MessageBroadcasts
   def broadcast_message_event(message, event_name, **extra)
     conversation = message.conversation
     widget_tokens, client_tokens = split_contact_tokens(message_contact_inboxes(conversation, message))
+    customer_tokens = client_tokens
     data = message.push_event_data
     agent_tokens = message_agent_tokens(message, conversation)
     if Ryze::GroupConversations.group?(conversation)
-      broadcast(conversation.account, agent_tokens, event_name, whatsapp_group_message_data(message, data, extra))
+      broadcast(conversation.account, agent_tokens, event_name, whatsapp_group_message_data(message, data, extra), conversation: conversation)
     elsif message.deleted_by_customer?
       # Only agents receive the retained body. previous_changes can also contain that body.
-      broadcast(conversation.account, agent_tokens, event_name, message.agent_view_data(data))
+      broadcast(conversation.account, agent_tokens, event_name, message.agent_view_data(data), conversation: conversation)
     elsif Ryze::OutgoingEditEligibility.pilot_conversation?(conversation)
       data.merge!(extra)
-      broadcast(conversation.account, agent_tokens, event_name, message.agent_view_data(data, conversation: conversation))
+      broadcast(conversation.account, agent_tokens, event_name, message.agent_view_data(data, conversation: conversation), conversation: conversation)
     else
       client_tokens = agent_tokens + client_tokens
       data.merge!(extra)
     end
 
     broadcast(conversation.account, client_tokens, event_name, data,
+              conversation: conversation, contact_tokens: customer_tokens,
               widget: { tokens: widget_tokens, data: message.widget_push_event_data(data) })
   end
 

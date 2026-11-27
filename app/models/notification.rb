@@ -56,6 +56,22 @@ class Notification < ApplicationRecord
 
   PRIMARY_ACTORS = ['Conversation'].freeze
 
+  def self.visible_to(user, account)
+    records = where(user_id: user.id, account_id: account.id)
+    return records unless Conversations::AssignmentAccess.inbox_id
+
+    visible = Conversations::AssignmentAccess.scope(account.conversations, user, account)
+    records.where.not(primary_actor_type: 'Conversation')
+           .or(records.where(primary_actor_type: 'Conversation', primary_actor_id: visible.select(:id)))
+  end
+
+  def deliverable?
+    return true unless Conversations::AssignmentAccess.inbox_id && primary_actor_type == 'Conversation'
+
+    conversation.present? && (!Conversations::AssignmentAccess.enabled?(conversation.inbox) ||
+      Conversations::AssignmentAccess.allowed?(conversation, user))
+  end
+
   def push_event_data
     # Secondary actor could be nil for cases like system assigning conversation
     payload = {

@@ -1,6 +1,6 @@
 class AgentNotifications::ConversationNotificationsMailer < ApplicationMailer
   def conversation_creation(conversation, agent, _user)
-    return unless smtp_config_set_or_development?
+    return unless send_to_agent?(conversation, agent)
 
     @agent = agent
     @conversation = conversation
@@ -11,7 +11,7 @@ class AgentNotifications::ConversationNotificationsMailer < ApplicationMailer
   end
 
   def conversation_assignment(conversation, agent, _user)
-    return unless smtp_config_set_or_development?
+    return unless send_to_agent?(conversation, agent)
 
     @agent = agent
     @conversation = conversation
@@ -21,7 +21,7 @@ class AgentNotifications::ConversationNotificationsMailer < ApplicationMailer
   end
 
   def conversation_mention(conversation, agent, message)
-    return unless smtp_config_set_or_development?
+    return unless send_to_agent?(conversation, agent)
 
     @agent = agent
     @conversation = conversation
@@ -32,7 +32,7 @@ class AgentNotifications::ConversationNotificationsMailer < ApplicationMailer
   end
 
   def assigned_conversation_new_message(conversation, agent, message)
-    return unless smtp_config_set_or_development?
+    return unless send_to_agent?(conversation, agent)
     # Don't spam with email notifications if agent is online
     return if ::OnlineStatusTracker.get_presence(message.account_id, 'User', agent.id)
 
@@ -44,7 +44,7 @@ class AgentNotifications::ConversationNotificationsMailer < ApplicationMailer
   end
 
   def participating_conversation_new_message(conversation, agent, message)
-    return unless smtp_config_set_or_development?
+    return unless send_to_agent?(conversation, agent)
     # Don't spam with email notifications if agent is online
     return if ::OnlineStatusTracker.get_presence(message.account_id, 'User', agent.id)
 
@@ -56,6 +56,11 @@ class AgentNotifications::ConversationNotificationsMailer < ApplicationMailer
   end
 
   private
+
+  def send_to_agent?(conversation, agent)
+    smtp_config_set_or_development? && (conversation.inbox_id != Conversations::AssignmentAccess.inbox_id ||
+      Conversations::AssignmentAccess.allowed?(conversation, agent))
+  end
 
   def liquid_locals
     super.merge({ notification_settings_url: "#{app_account_url(@conversation.account_id)}/profile/settings" })

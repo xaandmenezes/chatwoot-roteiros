@@ -8,6 +8,7 @@ import { useAlert } from 'dashboard/composables';
 import Button from 'dashboard/components-next/button/Button.vue';
 import Auth from '../../../../api/auth';
 import wootConstants from 'dashboard/constants/globals';
+import AgentInboxAccess from './AgentInboxAccess.vue';
 
 const props = defineProps({
   id: {
@@ -233,5 +234,6 @@ const resetPassword = async () => {
         </div>
       </div>
     </form>
+    <AgentInboxAccess :key="id" :agent-id="id" />
   </div>
 </template>

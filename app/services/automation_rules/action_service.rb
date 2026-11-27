@@ -22,6 +22,22 @@ class AutomationRules::ActionService < ActionService
 
   private
 
+  def assign_agent(_agent_ids)
+    return if pilot_manages_individual_assignment?
+
+    super
+  end
+
+  def remove_assigned_agent(_params)
+    return if pilot_manages_individual_assignment?
+
+    super
+  end
+
+  def pilot_manages_individual_assignment?
+    Conversations::AssignmentAccess.enabled?(@conversation.inbox_id) && !Conversations::AssignmentAccess.group?(@conversation)
+  end
+
   def send_attachment(blob_ids)
     return if conversation_a_tweet?
 

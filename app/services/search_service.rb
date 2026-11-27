@@ -48,7 +48,8 @@ class SearchService
   end
 
   def conversation_base_query
-    current_account.conversations.where(inbox_id: accessable_inbox_ids)
+    conversations = current_account.conversations.where(inbox_id: accessable_inbox_ids)
+    Conversations::AssignmentAccess.scope(conversations, current_user, current_account)
   end
 
   def filter_messages
@@ -113,7 +114,15 @@ class SearchService
   def message_base_query
     query = current_account.messages.where('created_at >= ?', search_window_start)
     query = query.where(inbox_id: accessable_inbox_ids) unless should_skip_inbox_filtering?
-    query
+    return query unless restricted_search_inbox?
+
+    allowed_conversations = Conversations::AssignmentAccess.scope(current_account.conversations, current_user, current_account)
+    query.where(conversation_id: allowed_conversations.select(:id))
+  end
+
+  def restricted_search_inbox?
+    inbox_id = Conversations::AssignmentAccess.inbox_id
+    inbox_id && !account_user.administrator? && accessable_inbox_ids.include?(inbox_id)
   end
 
   def apply_message_filters(query)

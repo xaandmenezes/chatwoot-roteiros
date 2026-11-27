@@ -1,9 +1,10 @@
 class ActionService
   include EmailHelper
 
-  def initialize(conversation)
+  def initialize(conversation, actor: nil)
     @conversation = conversation.reload
     @account = @conversation.account
+    @actor = actor
   end
 
   def mute_conversation(_params)
@@ -41,7 +42,7 @@ class ActionService
   end
 
   def assign_agent(agent_ids = [])
-    return @conversation.with_lock { @conversation.update!(assignee_id: nil) } if agent_ids[0] == 'nil'
+    return remove_assigned_agent(agent_ids) if agent_ids[0] == 'nil'
 
     agent_ids = [last_responding_agent_id] if agent_ids[0] == 'last_responding_agent'
     return unless agent_belongs_to_inbox?(agent_ids)
@@ -49,7 +50,7 @@ class ActionService
     @agent = @account.users.find_by(id: agent_ids)
     return unless @agent.present? && @agent.confirmed?
 
-    Conversations::AssignmentService.new(conversation: @conversation, assignee_id: @agent.id).perform
+    Conversations::AssignmentService.new(conversation: @conversation, assignee_id: @agent.id, actor: @actor).perform
   end
 
   def remove_label(labels)
@@ -72,6 +73,10 @@ class ActionService
   end
 
   def remove_assigned_agent(_params)
+    if @actor && Conversations::AssignmentAccess.enabled?(@conversation.inbox_id)
+      return Conversations::AssignmentService.new(conversation: @conversation, assignee_id: nil, actor: @actor).perform
+    end
+
     @conversation.with_lock { @conversation.update!(assignee_id: nil) }
   end
 
