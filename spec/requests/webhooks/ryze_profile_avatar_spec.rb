@@ -6,6 +6,7 @@ RSpec.describe 'Ryze pilot profile avatar', type: :request do
   let(:channel) { create(:channel_api) }
   let(:inbox) { channel.reload.inbox }
   let(:jid) { '5511999999999@s.whatsapp.net' }
+  let(:profile_number) { '5511999999999' }
   let!(:conversation) do
     create(:conversation, account: inbox.account, inbox: inbox, additional_attributes: { whatsapp_jid: jid })
   end
@@ -34,7 +35,7 @@ RSpec.describe 'Ryze pilot profile avatar', type: :request do
   end
 
   def stub_profile
-    stub_request(:get, profile_endpoint).with(query: { number: jid }, headers: { 'token' => 'avatar-test-token' })
+    stub_request(:get, profile_endpoint).with(query: { number: profile_number }, headers: { 'token' => 'avatar-test-token' })
   end
 
   def stub_avatar(&before_download)
@@ -121,6 +122,7 @@ RSpec.describe 'Ryze pilot profile avatar', type: :request do
 
   context 'with a pilot backed by a LID' do
     let(:jid) { '52399087550579@lid' }
+    let(:profile_number) { jid }
 
     it 'uses the full LID as the profile query target' do
       profile = stub_profile.to_return(body: { success: true, profile: { profilePicture: nil } }.to_json)
