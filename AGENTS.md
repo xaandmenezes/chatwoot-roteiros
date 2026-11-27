@@ -6,19 +6,12 @@
 
 Projeto: https://linear.app/porto-seguro-roteiros/project/implementacao-chatwoot-roteiros-fe7deb79accd
 
-### Orquestração e escolha de modelo
+### Orquestração e CI
 
-A família dos modelos delegados é selecionável no Linear ou por sessão; os modelos indicados são referências. Use Fast para todos os delegados e prefira Astra High com Fast desligado no chat principal. Leia [Orquestração de IA da PSR](docs/orquestracao-ia-psr.md) para o prompt de inicialização, as skills e a escolha dos papéis e modelos.
-
-### PR, deploy e testes em produção
-
-- Cada issue tem responsável e branch/worktree própria baseada em `develop` atualizado. Trabalho incompleto permanece na branch ou desativado.
-- A branch da issue entra em `develop` por PR vinculado, com revisão de outra pessoa e validação local (testes e lint aplicáveis ao diff). A release entra em `prod` por PR de `develop`, listando todas as issues e nomeando o responsável. Push direto é proibido nas duas branches.
-- PRs e pushes em `develop` seguem sem build de imagem. O build da imagem `linux/amd64` roda com cache no GitHub Actions apenas no push em `prod` (ou por disparo manual em **Release PSR image**) e publica no GHCR. Consulte [Build e deploy da imagem PSR](docs/psr-image-ci.md).
-- Antes do merge em `prod`, obtenha autorização de deploy. Não faça build de imagem na VPS ou em Mac de 8 GB; o Dokploy consome a imagem publicada no GHCR (`:prod` por padrão, ou `CHATWOOT_IMAGE_TAG=<SHA>` para rollback).
-- Em emergência, crie hotfix a partir de `prod`, com PR para `prod`, revisão, verificações e autorização; depois abra PR de `prod` para `develop`.
-- Após o deploy, confira a versão ativa, a saúde do painel e o processamento do Sidekiq.
-- Restrinja os testes de envio, edição, reação ou exclusão à conversa e às ações autorizadas para aquela rodada. Registre na issue o que foi confirmado e o que ainda depende de teste real.
+- Orquestrador principal: Gemini 4 Hydrogen. Delegados usam a família ativa (padrão Codex: papéis operacionais com `serviceTier: "priority"` / Fast e Oracle com `default`). O uso de `agy-fast` via shell é obrigatório; modelos e prompt estão em [Orquestração de IA da PSR](docs/orquestracao-ia-psr.md).
+- Cada issue tem responsável e branch/worktree própria a partir de `origin/develop` atualizado. Trabalho incompleto permanece na branch ou desativado. Entrada em `develop` e `prod` somente por PR (com revisão e validação; release `develop` → `prod` listando todas as issues e nomeando o responsável); push direto é proibido. Consulte [Build e deploy da imagem PSR](docs/psr-image-ci.md).
+- Obtenha autorização de deploy antes do merge em `prod` e confira versão ativa, `/health` e Sidekiq após o deploy. Hotfix parte de `prod`, com PR de volta para `develop`.
+- Restrinja testes reais de envio, edição, reação ou exclusão a uma conversa controlada, com autorização válida apenas para aquela rodada e ações autorizadas; a conversa `#71` é pessoal de Vinicius A. Freire e exige autorização específica dele por rodada. Registre na issue o destino, as ações autorizadas, o responsável, o que foi confirmado e o que ainda depende de teste real.
 
 ## Build, Test, and Lint
 

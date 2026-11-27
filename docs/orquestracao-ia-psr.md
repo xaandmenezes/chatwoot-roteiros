@@ -1,56 +1,45 @@
 # Orquestração de IA da PSR
 
-Projeto: https://linear.app/porto-seguro-roteiros/project/implementacao-chatwoot-roteiros-fe7deb79accd
+Projeto no [Linear](https://linear.app/porto-seguro-roteiros/project/implementacao-chatwoot-roteiros-fe7deb79accd), UUID `0215754d-519a-40c2-be04-cfca97743aa7`.
 
-### Família dos modelos
+## Orquestração e modelos
 
-O OMO Slim inspira a divisão dos papéis. Cada pessoa pode trabalhar no executor da equipe sem instalar o OMO Slim. O usuário escolhe o modelo do chat principal no T3. A preferência atual é Astra High, Fast desligado. A família abaixo governa apenas os papéis delegados.
+O chat principal do T3 usa **Gemini 4 Hydrogen** (`google/gemini-4-hydrogen`): planeja, coordena, revisa evidências e sintetiza; delega buscas amplas, auditorias, implementações e validações.
 
-Leia o valor vigente da linha **Família padrão dos papéis** no projeto do Linear.
+A família padrão dos delegados é **Codex** (`providerInstanceId: "codex"`), com `serviceTier: "priority"` (Fast) explícito nos papéis operacionais (Explorer, Fixer, Validator, Designer, Observer, Hunter e Paladin); o **Oracle** usa `reasoningEffort: "high"` com `serviceTier` padrão (ou `priority` se solicitado na sessão). Para mudar de família na sessão, diga “Use a família X nos papéis nesta sessão”; para voltar, diga “Use a família do projeto”.
 
-Para mudar nesta sessão, diga **“Use a família Claude nos papéis nesta sessão”** (ou Gemini, Codex ou outra disponível). Para mudar o padrão do projeto, edite apenas a linha **Família padrão dos papéis** na descrição do Linear. A instrução explícita da sessão prevalece sobre o padrão. Uma troca de família conserva as responsabilidades, skills, esforço equivalente e Fast nas delegações. Para voltar ao padrão, diga **“Use a família do projeto”**.
+Chame `orchestrator_capabilities` uma vez antes da primeira delegação. Em cada delegação, passe explicitamente `providerInstanceId`, `model`, `reasoningEffort` e `serviceTier`, conforme o catálogo disponível. Se uma opção não estiver disponível, informe a limitação.
 
-Ao delegar, consulte o catálogo real do executor e escolha, na família ativa, um modelo com a capacidade, as ferramentas e a prioridade necessárias. Passe modelo, esforço e Fast explicitamente. Os modelos na tabela são referências para Codex. Se faltar modelo, ferramenta ou Fast, declare a limitação e as opções disponíveis antes de usar outra família ou prioridade. Uma instrução no chat orienta as próximas delegações; o seletor do T3 controla o modelo da conversa principal.
-
-### Papéis e instalação de skills
-
-Acione somente os papéis e as skills úteis à tarefa. A identifica skills do acervo da equipe. B identifica práticas da equipe. C identifica a skill pública de Vue, com instalação reproduzível abaixo.
-
-| Papel e responsabilidade | Referência Codex | Skills e instalação |
+| Papel e responsabilidade | Modelo e configuração | Skills |
 | --- | --- | --- |
-| Orchestrator — coordenar, definir aceite e entregar | Astra High no chat | A: `linear-issues`, `git-worktrees`, `rails-8-modern`, `tdd-and-testing`; C: `vue-best-practices`; B: `verification-planning`, `step-back` |
-| Explorer — localizar código, rotas e configuração | Luna 6 · baixo | Busca comum com Git e `rg`; A: `systematic-debugging` para rastrear comportamento |
-| Fixer — implementar, preparar PR e executar deploy conhecido | Terra 6.1 · médio | A: `git-worktrees`, `tdd-and-testing`, `rails-8-modern` para mudanças Rails; C: `vue-best-practices` para componentes do painel |
-| Designer — avaliar aparência e interação | Luna 6 · médio | A: `better-interface`; C: `vue-best-practices` para decisões de componentes |
-| Observer — observar e registrar a experiência visual | Luna 6 · médio | A: `webapp-testing` em ambiente local; `yab-browser` quando o usuário indicar o Yab |
-| Validator — verificar comportamento, imagem e serviços | Terra 6.1 · alto | A: `tdd-and-testing`, `webapp-testing`; C: `vue-best-practices` quando validar o painel; B: `verification-planning` |
-| Hunter — diagnosticar falhas silenciosas e reentregas | Sol 6.2 · médio | A: `systematic-debugging`; B: `step-back` quando o defeito voltar |
-| Paladin — revisar segurança e permissões | Sol 6.1 · alto | A: `code-review-and-security`, `security-audit` |
-| Oracle — resolver dúvida de arquitetura, recuperação ou diagnóstico complexo | Astra · alto | A: `systematic-debugging`, `code-review-and-security`; B: `step-back`. Registre a decisão que motivou a chamada. |
-| Proctor — opção futura para avaliar lacunas de cobertura | A definir se ativado | A: `tdd-and-testing`; B: `verification-planning` |
+| Orchestrator — coordenar, definir aceite, revisar evidências e entregar | `google/gemini-4-hydrogen` no chat | `agy-fast`, `linear-issues`, `git-worktrees`, `rails-8-modern`, `tdd-and-testing`, `vue-best-practices`, `verification-planning`, `step-back` |
+| Explorer — leitura, busca e inventário | `gpt-6-luna`, low, priority | `agy-fast`, `systematic-debugging` |
+| Fixer — implementação, docs, configs e scripts | `gpt-6.1-terra`, medium, priority | `agy-fast`, `git-worktrees`, `tdd-and-testing`, `rails-8-modern`, `vue-best-practices` |
+| Validator — consistência, testes, lint e checks | `gpt-6.1-terra`, high, priority ou `gpt-6.2-sol`, medium, priority | `agy-fast`, `tdd-and-testing`, `webapp-testing`, `vue-best-practices`, `verification-planning` |
+| Designer — aparência e interação | `gpt-6-luna`, medium, priority | `better-interface`, `vue-best-practices` |
+| Observer — experiência visual e browser | `gpt-6-luna`, medium, priority | `webapp-testing`, `yab-browser` quando indicado |
+| Hunter — falhas silenciosas e reentregas | `gpt-6.2-sol`, medium, priority | `agy-fast`, `systematic-debugging`, `step-back` |
+| Paladin — segurança e permissões | `gpt-6.2-sol`, high, priority | `agy-fast`, `code-review-and-security`, `security-audit` |
+| Oracle — conflito arquitetural real ou diagnóstico complexo; registre o motivo | `gpt-6.2-astra`, high, default | `agy-fast`, `systematic-debugging`, `code-review-and-security`, `step-back` |
 
-**A · Acervo da equipe.** No Mac da PSR, a origem é `~/.config/skillshare/skills/`. Em outro computador, copie da distribuição da equipe as pastas completas das skills necessárias para o diretório de descoberta do executor. No Codex, use `~/.agents/skills/`. O exemplo instala ou verifica a base do orquestrador e preserva instalações existentes. Ajuste a origem se o acervo estiver em outro local.
+Na tabela, low, medium e high são valores de `reasoningEffort`; priority e default são valores de `serviceTier`.
 
-```sh
-(
-  set -eu
-  origem="${PSR_SKILLS_DIR:-$HOME/.config/skillshare/skills}"
-  destino="$HOME/.agents/skills"
-  mkdir -p "$destino"
-  for nome in linear-issues git-worktrees rails-8-modern tdd-and-testing; do
-    if ! test -r "$destino/$nome/SKILL.md"; then
-      test -r "$origem/$nome/SKILL.md" || { echo "Ausente no acervo: $nome" >&2; exit 1; }
-      test ! -e "$destino/$nome" && test ! -L "$destino/$nome" || exit 1
-      ln -s "$origem/$nome" "$destino/$nome"
-    fi
-    test -r "$destino/$nome/SKILL.md"
-  done
-)
-```
+## Busca e verificação com agy-fast
 
-**B · Práticas da equipe.** `verification-planning` significa combinar antecipadamente como verificar o resultado; `step-back` significa reavaliar a hipótese quando uma correção falha. Ambas podem ser aplicadas diretamente, sem instalar software.
+O orquestrador e os delegados usam `agy-fast` via shell:
 
-**C · Vue 3.** Use `vue-best-practices` para Composition API, `<script setup>`, reatividade e contratos de props e eventos. Preserve a linguagem e a store adotadas no módulo. A origem é [vuejs-ai/skills, versão 19.1.0](https://github.com/vuejs-ai/skills/tree/198f0cd8f7f9c0a3d9b566ccc16de6677519ee78/skills/vue-best-practices). Para instalar só essa skill no Codex:
+- `agy-fast search --text "..."`, `--regex` ou `--glob` para buscas em lote.
+- `agy-fast outline <arquivo>` antes de ler arquivos com mais de 300 linhas.
+- `agy-fast slice "arquivo:inicio-fim"` para leituras direcionadas.
+- `agy-fast check --compact "cmd1" "cmd2"` para checks pass/fail em paralelo.
+
+No shell do Codex, `--compact` trunca saídas multilinha à última linha: use-o apenas para checks pass/fail, como testes e lint, nunca para listagens completas de `git branch`, `git worktree list`, `git diff` ou `ls`. Evite `~` em subshells de `agy-fast check`; use `$HOME` ou caminho absoluto.
+
+## Skills
+
+O acervo da equipe fica em `$HOME/.config/skillshare/skills/`, ligado ao diretório de descoberta `$HOME/.agents/skills/`. Confira `agy-fast`, `linear-issues`, `git-worktrees`, `rails-8-modern` e `tdd-and-testing`, além das skills pertinentes ao papel. Leia o `SKILL.md` antes de aplicar cada skill. `verification-planning` e `step-back` são práticas que não precisam de instalação.
+
+Para Vue 3, use `vue-best-practices` de [vuejs-ai/skills](https://github.com/vuejs-ai/skills/tree/198f0cd8f7f9c0a3d9b566ccc16de6677519ee78/skills/vue-best-practices). Instale a revisão fixada com:
 
 ```sh
 python3 "$HOME/.codex/skills/.system/skill-installer/scripts/install-skill-from-github.py" \
@@ -58,33 +47,12 @@ python3 "$HOME/.codex/skills/.system/skill-installer/scripts/install-skill-from-
   --ref 198f0cd8f7f9c0a3d9b566ccc16de6677519ee78 --method git --dest "$HOME/.agents/skills"
 ```
 
-Em outro executor, copie o diretório `skills/vue-best-practices` dessa mesma revisão, incluindo `references/`, para o local de skills que ele reconhece.
+## Branches, CI e equipe
 
-Após instalar uma skill, confira o `SKILL.md` e a descoberta pelo executor em uma nova sessão. Leia a skill antes de aplicá-la. Em outros provedores, use o diretório de descoberta documentado pelo executor. O acesso ao navegador, às credenciais e ao Linear é verificado separadamente.
+Cada issue tem responsável e branch/worktree própria a partir de `origin/develop` atualizado. Trabalho incompleto permanece na branch ou desativado. Abra PR para `develop`, vinculado à issue, com revisão de outra pessoa e validação local. A release segue por PR `develop` → `prod`, listando todas as issues e nomeando o responsável; obtenha autorização de deploy antes do merge. Push direto nas duas branches é proibido. Hotfix parte de `prod`, passa por PR para `prod` com revisão, verificações e autorização, e depois volta por PR para `develop`. Após deploy, confira versão ativa, `/health` e Sidekiq. O fluxo de build e deploy está em [Build e deploy da imagem PSR](psr-image-ci.md).
 
-### Fluxo de branches e release
+Confira responsável, estado e PRs existentes no Linear antes de assumir uma issue; se já houver alguém trabalhando, combine a divisão e registre o escopo de cada pessoa. Na passagem de trabalho, registre branch ou PR, resultado, pendências e próxima ação. Para testes reais de envio, edição, reação ou exclusão em WhatsApp, use uma conversa controlada com autorização válida apenas para a rodada e ações autorizadas; a conversa `#71` é pessoal de Vinicius A. Freire e exige autorização específica dele por rodada. Registre na issue o destino, as ações autorizadas, o responsável, o que foi confirmado e o que ainda depende de teste real.
 
-Cada issue tem responsável e branch/worktree própria baseada em `develop` atualizado. Trabalho incompleto permanece na branch ou desativado. Abra PR da branch para `develop` vinculado à issue; outra pessoa revisa e confere a validação local (testes e lint aplicáveis). A release segue de `develop` para `prod` por PR que lista todas as issues e nomeia o responsável. Push direto é proibido em ambas.
+## Prompt de inicialização — copie para uma nova conversa
 
-PRs e pushes em `develop` seguem sem build de imagem. O build da imagem `linux/amd64` roda no GitHub Actions com cache (`type=gha`) no push em `prod` (ou sob demanda em **Release PSR image**) e publica no GHCR. Consulte [Build e deploy da imagem PSR](psr-image-ci.md).
-
-Antes do merge em `prod`, obtenha autorização de deploy. Não faça build na VPS nem em Mac de 8 GB; o Dokploy baixa a imagem pronta do GHCR (`:prod` por padrão, ou `CHATWOOT_IMAGE_TAG=<SHA>` para rollback). Após o deploy, confira a versão ativa, o painel e o Sidekiq.
-
-Em emergência, crie hotfix a partir de `prod` e abra PR para `prod`, com revisão, verificações e autorização. Depois abra PR de `prod` para `develop`.
-
-### Trabalho em equipe
-
-- **Início.** Confira no Linear o responsável, o estado e os PRs da issue. Ao assumir uma issue disponível, atribua-a à pessoa responsável e mova-a para “Em andamento”. Se já houver alguém trabalhando, combine a divisão e registre o escopo de cada pessoa.
-- **Passagem de trabalho.** Deixe na issue a branch ou o PR, o que foi feito, o que está pendente e a próxima ação. Quem assumir consegue continuar em outro chat ou computador.
-- **Testes de WhatsApp.** A conversa #71 é pessoal de Vinicius A. Freire. Somente Vinicius pode autorizar seu uso em uma rodada específica. Para testes da equipe, use uma conversa controlada com autorização, destino, ações permitidas e responsável registrados na issue. Uma autorização antiga vale apenas para a rodada em que foi dada.
-
-### Prompt de inicialização — copie para uma nova conversa
-
-> **Inicie a tarefa [PSR-… ou objetivo] como orquestrador do projeto Implementação Chatwoot Roteiros.**
->
-> 1. **Identifique o checkout.** Confira a raiz, o remoto, a branch, o worktree e o estado do Git. Verifique `git ls-files --error-unmatch -- AGENTS.md`. Leia o AGENTS.md completo, o guia de orquestração e as instruções do diretório da tarefa. Se faltar o arquivo ou o rastreamento, compare com develop e regularize por PR vinculado à issue, preservando as alterações locais.
-> 2. **Abra o projeto no Linear.** O T3 Code já tem acesso pelo MCP. Leia o projeto pelo UUID `0215754d-519a-40c2-be04-cfca97743aa7`; confira o nome, a equipe PSR e suas Regras para IA. Leia a issue, o aceite, os comentários recentes, o responsável e o PR existente. Se o executor estiver sem MCP, use a API GraphQL em `https://api.linear.app/graphql` com credencial já autorizada e verifique o campo `errors`. Se ambas as vias falharem, indique a limitação e prossiga com trabalho local independente.
-> 3. **Prepare suas skills.** Confira agora se `linear-issues`, `git-worktrees`, `rails-8-modern`, `tdd-and-testing` e `vue-best-practices` estão acessíveis. Para cada ausente, use os procedimentos A ou C deste guia no ambiente da pessoa e confira o SKILL.md e os arquivos auxiliares. Se a origem do acervo estiver indisponível, identifique exatamente a skill faltante. Antes de delegar, confira também as skills do papel na tabela. Abra as instruções pertinentes à tarefa. As práticas B são aplicáveis diretamente.
-> 4. **Conduza a tarefa de ponta a ponta.** Em Rails, confira rotas, serviços, jobs, persistência e permissões que sustentam o comportamento. Em Vue, confira componentes, reatividade, eventos, estado e atualização da conversa aberta. Em uma mudança que atravesse as duas camadas, explicite o contrato e escolha testes que exercitem o resultado visível. Use as versões e padrões do checkout.
-> 5. **Coordene com a equipe.** Respeite quem já assumiu a issue. Escolha a família indicada para a sessão ou, por padrão, a do Linear. O chat principal prefere Astra High sem Fast; nas delegações indique papel, modelo disponível, esforço, Fast e entrega esperada. Use branch/worktree da issue baseada em develop atualizado, PR para develop com revisão de outra pessoa e validação local; release por PR develop → prod com issues, responsável e autorização de deploy (a imagem é publicada no GHCR automaticamente no push em `prod`). Siga o fluxo de hotfix e as verificações de deploy acima. Para qualquer teste real, confirme o destino e as ações autorizadas para esta rodada. A #71 é pessoal de Vinicius e depende de autorização específica dele.
-> 6. **Comece o trabalho.** Informe de forma breve a issue, a branch, o acesso ao Linear, as skills disponíveis ou faltantes e a primeira ação. Ao passar a tarefa adiante, atualize a issue com o PR, o resultado e o próximo passo.
+> Inicie [issue ou objetivo] como orquestrador Gemini 4 Hydrogen no T3. Use delegados Codex (papéis operacionais com Fast/`priority`; Oracle com `default`) e `agy-fast` via shell. Confira o checkout, `AGENTS.md`, `docs/orquestracao-ia-psr.md` e `docs/psr-image-ci.md`, e siga as regras do guia sobre trabalho incompleto, governança de PR/release e testes reais. Consulte o projeto Linear pelo UUID `0215754d-519a-40c2-be04-cfca97743aa7`, a issue, responsável, estado e PRs existentes. Confira as skills pertinentes em `~/.agents/skills/` e o catálogo antes de delegar. Use branch/worktree da issue baseada em `origin/develop`, PR com validação e revisão; obtenha autorização de deploy antes do merge em `prod`. Para testes reais, use conversa controlada e ações autorizadas apenas para a rodada (a `#71` exige autorização específica de Vinicius A. Freire) e registre na issue destino, ações autorizadas, responsável, confirmações e pendências. Registre resultados e passagem no Linear.
