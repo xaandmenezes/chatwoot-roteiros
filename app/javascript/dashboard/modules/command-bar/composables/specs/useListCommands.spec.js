@@ -55,6 +55,20 @@ describe('useListCommands', () => {
     expect(ids).toContain('sort-priority_desc');
   });
 
+  it.each(['whatsapp_groups', 'conversation_through_whatsapp_groups'])(
+    'offers status and sort without assignment tabs on %s',
+    name => {
+      useRoute.mockReturnValue({ name });
+      const ids = useListCommands().listCommands.value.map(
+        command => command.id
+      );
+
+      expect(ids).toEqual(expect.arrayContaining(['filter_status', 'sort_by']));
+      expect(ids).not.toContain('switch_tab');
+      expect(ids.filter(id => id.startsWith('tab-'))).toEqual([]);
+    }
+  );
+
   it('hides the tabs the user cannot open', () => {
     userPermissions = ['custom_role', 'conversation_participating_manage'];
     getters.getChatListFilters = { assigneeType: 'all' };

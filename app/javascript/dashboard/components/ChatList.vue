@@ -78,7 +78,16 @@ const { buildConversationPath, buildConversationListPath } =
 
 const resolveAttributesModalRef = ref(null);
 
-const activeAssigneeTab = ref(wootConstants.ASSIGNEE_TYPE.ME);
+const isWhatsAppGroupsView = computed(
+  () =>
+    props.conversationType === wootConstants.CONVERSATION_TYPE.WHATSAPP_GROUPS
+);
+const selectedAssigneeTab = ref(wootConstants.ASSIGNEE_TYPE.ME);
+const activeAssigneeTab = computed(() =>
+  isWhatsAppGroupsView.value
+    ? wootConstants.ASSIGNEE_TYPE.ALL
+    : selectedAssigneeTab.value
+);
 const activeStatus = ref(wootConstants.STATUS_TYPE.OPEN);
 const activeSortBy = ref(wootConstants.SORT_BY_TYPE.LAST_ACTIVITY_AT_DESC);
 const showAdvancedFilters = ref(false);
@@ -231,10 +240,8 @@ const conversationCustomAttributes = useFunctionGetter(
 );
 
 const activeAssigneeTabCount = computed(() => {
-  const count = assigneeTabItems.value.find(
-    item => item.key === activeAssigneeTab.value
-  ).count;
-  return count;
+  const { count } = ASSIGNEE_TYPE_TAB_PERMISSIONS[activeAssigneeTab.value];
+  return conversationStats.value[count] || 0;
 });
 
 const conversationListPagination = computed(() => {
@@ -256,11 +263,6 @@ const conversationListPagination = computed(() => {
 
   return currentPage.value + 1;
 });
-
-const isWhatsAppGroupsView = computed(
-  () =>
-    props.conversationType === wootConstants.CONVERSATION_TYPE.WHATSAPP_GROUPS
-);
 
 const whatsappScope = computed(() => {
   const { WHATSAPP_SCOPE } = wootConstants;
@@ -670,10 +672,10 @@ function loadMoreConversations() {
 }
 
 function updateAssigneeTab(selectedTab) {
-  if (activeAssigneeTab.value !== selectedTab) {
+  if (!isWhatsAppGroupsView.value && activeAssigneeTab.value !== selectedTab) {
     resetBulkActions();
     emitter.emit('clearSearchInput');
-    activeAssigneeTab.value = selectedTab;
+    selectedAssigneeTab.value = selectedTab;
     if (!currentPage.value) {
       fetchConversations();
     } else {
@@ -986,7 +988,7 @@ watch(appliedFilters, () => resetBulkActions());
     />
 
     <ChatTypeTabs
-      v-if="!hasAppliedFiltersOrActiveFolders"
+      v-if="!isWhatsAppGroupsView && !hasAppliedFiltersOrActiveFolders"
       :items="assigneeTabItems"
       :active-tab="activeAssigneeTab"
       is-compact
