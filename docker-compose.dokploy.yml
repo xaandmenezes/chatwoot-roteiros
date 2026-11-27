@@ -53,6 +53,8 @@ services:
       RYZE_OUTBOUND_PRESENCE_ENABLED: ${RYZE_OUTBOUND_PRESENCE_ENABLED:-false}
       RYZE_PROFILE_AVATAR_SYNC: ${RYZE_PROFILE_AVATAR_SYNC:-false}
       RYZE_DIRECT_INBOX_ENABLED: ${RYZE_DIRECT_INBOX_ENABLED:-false}
+      RYZE_HISTORY_SYNC_ENABLED: ${RYZE_HISTORY_SYNC_ENABLED:-true}
+      RYZE_HISTORY_BINDING_SECRET: ${RYZE_HISTORY_BINDING_SECRET:-}
     entrypoint: docker/entrypoints/rails.sh
     command: [bundle, exec, rails, s, -p, "3000", -b, 0.0.0.0]
     restart: unless-stopped

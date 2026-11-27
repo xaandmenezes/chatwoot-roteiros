@@ -204,6 +204,22 @@ describe ActionCableListener do
   end
 
   describe '#message_updated' do
+    it 'broadcasts a historical update to the dashboard without publishing to the bridge socket' do
+      api_inbox = create(:channel_api, account: account).inbox
+      create(:inbox_member, inbox: api_inbox, user: agent)
+      chat = create(:conversation, account: account, inbox: api_inbox)
+      row = create(:message, account: account, inbox: api_inbox, conversation: chat, additional_attributes: { ryze_historical_sync: true })
+      event = Events::Base.new(:'message.updated', Time.current, message: row, previous_changes: {})
+      recipients = []
+      allow(ActionCableBroadcastJob).to receive(:perform_later) do |tokens, name, data, **|
+        recipients.concat(tokens) if name == 'message.updated' && data[:id] == row.id
+      end
+
+      with_modified_env(RYZE_NATIVE_BRIDGE_USER_ID: agent.id.to_s) { listener.message_updated(event) }
+      expect(recipients).to include(admin.pubsub_token)
+      expect(recipients).not_to include(agent.pubsub_token)
+    end
+
     it 'sends edit capability to staff sessions only' do
       api_inbox = create(:inbox, account: account, channel: create(:channel_api, account: account))
       create(:inbox_member, inbox: api_inbox, user: agent)

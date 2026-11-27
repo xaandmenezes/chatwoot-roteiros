@@ -149,6 +149,7 @@ export const mutations = {
         return true;
       });
       chat.messages.unshift(...newMessages);
+      chat.messages.sort((a, b) => a.created_at - b.created_at || a.id - b.id);
     }
   },
   [types.SET_ALL_ATTACHMENTS](_state, { id, data }) {

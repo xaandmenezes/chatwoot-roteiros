@@ -1,6 +1,8 @@
 /* global axios */
 import ApiClient from '../ApiClient';
 
+const RYZE_HISTORY_TIMEOUT = 25000;
+
 class ConversationApi extends ApiClient {
   constructor() {
     super('conversations', { accountScoped: true });
@@ -156,6 +158,22 @@ class ConversationApi extends ApiClient {
 
   delete(conversationId) {
     return axios.delete(`${this.url}/${conversationId}`);
+  }
+
+  syncRyzeHistory(conversationId, { before } = {}) {
+    return axios.post(
+      `${this.url}/${conversationId}/ryze_history`,
+      { before },
+      { timeout: RYZE_HISTORY_TIMEOUT }
+    );
+  }
+
+  repairHistoricalMedia(conversationId, messageId) {
+    return axios.post(
+      `${this.url}/${conversationId}/ryze_history/media/${messageId}`,
+      {},
+      { timeout: RYZE_HISTORY_TIMEOUT }
+    );
   }
 }
 

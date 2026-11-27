@@ -49,6 +49,9 @@ class ConversationBuilder
 
     attributes = params.slice(:additional_attributes).permit(additional_attributes: {})[:additional_attributes]
     channel_attributes = CHANNEL_MANAGED_ADDITIONAL_ATTRIBUTES.fetch(@contact_inbox.inbox.channel_type, [])
-    attributes.to_h.except(*SERVER_MANAGED_ADDITIONAL_ATTRIBUTES, *channel_attributes)
+    filtered = attributes.to_h.except(*SERVER_MANAGED_ADDITIONAL_ATTRIBUTES, *channel_attributes)
+    return filtered unless Ryze::HistoryBinding.direct_inbox?(@contact_inbox.inbox)
+
+    filtered.reject { |key, _| key == 'whatsapp_jid' || key.start_with?('ryze_') }
   end
 end

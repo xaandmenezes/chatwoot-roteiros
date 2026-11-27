@@ -19,8 +19,13 @@ withFullI18n('pt_BR');
 const NOW = Math.floor(Date.now() / 1000);
 const CONVERSATION_ID = 71;
 
-const mountConversation = (message, stubs = {}) => {
-  const currentChat = { id: CONVERSATION_ID, inbox_id: 2, messages: [message] };
+const mountConversation = (message, stubs = {}, chat = {}) => {
+  const currentChat = {
+    id: CONVERSATION_ID,
+    inbox_id: 2,
+    messages: [message],
+    ...chat,
+  };
   const store = createStore({
     getters: {
       getSelectedChat: () => currentChat,
@@ -32,7 +37,10 @@ const mountConversation = (message, stubs = {}) => {
       getAutoTranslate: () => ({}),
       getMessageTranslationState: () => () => ({}),
     },
-    actions: { sendMessageWithData: actions.sendMessageWithData },
+    actions: {
+      sendMessageWithData: actions.sendMessageWithData,
+      updateMessage: vi.fn(),
+    },
     mutations: {
       ADD_MESSAGE: () => {},
       ADD_CONVERSATION_ATTACHMENTS: () => {},
@@ -77,6 +85,40 @@ describe('conversation messages', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it('offers retry on a pending historical bubble independently of pagination, including after a failed attempt', async () => {
+    const row = {
+      id: 100,
+      conversation_id: CONVERSATION_ID,
+      created_at: NOW,
+      status: 'sent',
+      message_type: 0,
+      content: 'Historical media unavailable',
+      historical_import: true,
+      historical_media_pending: true,
+    };
+    const wrapper = mountConversation(row, {}, { ryze_history_enabled: true });
+    const dispatch = vi.spyOn(wrapper.vm.$store, 'dispatch');
+    const repaired = { ...row, historical_media_pending: false };
+    axios.post
+      .mockRejectedValueOnce(new Error('Wrong size'))
+      .mockResolvedValueOnce({ data: repaired });
+    const retry = wrapper.getComponent({ name: 'HistoricalMediaRetry' });
+    await retry.get('button').trigger('click');
+    await flushPromises();
+    await retry.get('button').trigger('click');
+    await flushPromises();
+    expect(axios.post).toHaveBeenLastCalledWith(
+      `/api/v1/conversations/${CONVERSATION_ID}/ryze_history/media/100`,
+      {},
+      { timeout: expect.any(Number) }
+    );
+    expect(dispatch).toHaveBeenCalledWith('updateMessage', repaired);
+    await wrapper.setProps({ messages: [repaired] });
+    expect(
+      wrapper.findComponent({ name: 'HistoricalMediaRetry' }).exists()
+    ).toBe(false);
   });
 
   it('renders both confirmed edits on the same sent bubble without waiting for an animation frame', async () => {

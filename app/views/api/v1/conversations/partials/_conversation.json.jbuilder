@@ -55,6 +55,7 @@ json.agent_last_seen_at conversation.agent_last_seen_at.to_i
 json.assignee_last_seen_at conversation.assignee_last_seen_at.to_i
 json.can_reply conversation.can_reply?
 json.ryze_presence_enabled Ryze::Presence.enabled?(conversation) if Current.user.is_a?(User)
+json.ryze_history_enabled Ryze::HistoricalSync.enabled?(conversation) if Current.user.is_a?(User)
 json.anonymous_caller conversation.contact_inbox.anonymous_caller?
 json.contact_last_seen_at conversation.contact_last_seen_at.to_i
 json.custom_attributes conversation.custom_attributes

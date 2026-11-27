@@ -131,7 +131,7 @@ class WebhookListener < BaseListener
 
   def deliver_message_webhooks(payload, message)
     inbox = message.inbox
-    suppress_bridge = Ryze::MessageDeletion.suppress_bridge_event?(message)
+    suppress_bridge = message.suppress_ryze_bridge_event?
     deliver_account_webhooks(payload, inbox.account, except_url: (inbox.channel.webhook_url if suppress_bridge))
     return if suppress_bridge || Ryze::OutboundDelivery.direct?(message) || Ryze::OutboundDelivery.native_mirror?(message)
 

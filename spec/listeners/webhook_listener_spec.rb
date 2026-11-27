@@ -145,6 +145,19 @@ describe WebhookListener do
     end
   end
 
+  describe '#message_updated for historical media' do
+    let(:event_name) { :'message.updated' }
+    let(:inbox) { create(:channel_api, account: account).inbox }
+
+    it 'skips both bridge subscriptions but still notifies independent account subscribers' do
+      message.update!(additional_attributes: { ryze_historical_sync: true })
+      create(:webhook, inbox: inbox, account: account, url: inbox.channel.webhook_url, subscriptions: ['message_updated'])
+      audit = create(:webhook, account: account, subscriptions: ['message_updated'])
+      expect(WebhookJob).to receive(:perform_later).once.with(audit.url, hash_including(event: 'message_updated'), :account_webhook, anything)
+      listener.message_updated(message_created_event)
+    end
+  end
+
   describe '#conversation_created' do
     let(:event_name) { :'conversation.created' }
 

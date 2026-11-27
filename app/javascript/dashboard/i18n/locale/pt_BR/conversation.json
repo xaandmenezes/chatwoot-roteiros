@@ -385,6 +385,11 @@
     "RYZE_SEND_UNCONFIRMED": "Não foi possível confirmar a entrega no WhatsApp. Confira a conversa antes de enviar esta mensagem de novo.",
     "RYZE_SEND_FAILED": "O WhatsApp recusou esta mensagem. Você pode tentar enviar novamente.",
     "RYZE_DELIVERY_STATUS_UNKNOWN": "Entrega sem confirmação",
+    "RYZE_HISTORY": {
+      "LOAD_OLDER": "Carregar mensagens anteriores",
+      "NO_MORE": "Não há mensagens anteriores disponíveis",
+      "LOAD_ERROR": "Não foi possível carregar mensagens anteriores. Tente novamente."
+    },
     "SEND_FAILED": "Não foi possível enviar a mensagem! Tente novamente",
     "TRY_AGAIN": "tentar novamente",
     "ASSIGNMENT": {

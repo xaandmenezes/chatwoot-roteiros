@@ -45,20 +45,7 @@ class Conversations::UnreadCounts::Builder
   end
 
   def unread_conversations
-    account.conversations
-           .open
-           .joins(:messages)
-           .merge(Message.incoming.reorder(nil))
-           .where(messages: { account_id: account.id })
-           .where(unread_since_last_seen_condition)
-           .distinct
-  end
-
-  def unread_since_last_seen_condition
-    conversations = Conversation.arel_table
-    messages = Message.arel_table
-
-    conversations[:agent_last_seen_at].eq(nil).or(messages[:created_at].gt(conversations[:agent_last_seen_at]))
+    account.conversations.open.with_unread_incoming
   end
 
   def label_ids_for(cached_label_list)

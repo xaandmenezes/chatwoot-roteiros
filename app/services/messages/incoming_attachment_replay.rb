@@ -16,26 +16,55 @@ class Messages::IncomingAttachmentReplay
     raise ArgumentError, 'attachments must contain uploaded files or signed blob IDs' unless @fingerprint
 
     existing = matching_message
-    return replay(existing) if existing
+    return replay(existing) if existing && !needs_live_files?(existing)
 
     @message.validate!
     stage_uploads
-    result = @message.conversation.with_lock do
-      matching_message || persist_message
-    end
+    result = @message.conversation.with_lock { reuse_or_create }
     replay(result)
   ensure
-    @staged_blobs.each(&:purge_later) unless @message.persisted?
+    purge_unused_uploads unless @message.persisted?
   end
 
   private
 
+  def purge_unused_uploads
+    @staged_blobs.each { |blob| blob.purge_later unless blob.attachments.exists? }
+  end
+
+  def reuse_or_create
+    candidate = matching_message
+    return persist_message unless candidate
+
+    fill_history_placeholder(candidate) if needs_live_files?(candidate)
+    candidate
+  end
+
+  def needs_live_files?(message)
+    message.historical_import? && !message.deleted && message.attachments.empty?
+  end
+
   def matching_message
     attribute = self.class.fingerprint_attribute
-    @candidates.where(attribute.eq(@fingerprint).or(attribute.eq(nil)))
-               .reorder(nil).includes(attachments: { file_attachment: :blob }).find_each(batch_size: 25).find do |candidate|
+    eligible = @candidates.where(attribute.eq(@fingerprint).or(attribute.eq(nil))).or(@candidates.history_imports)
+    eligible.reorder(nil).includes(attachments: { file_attachment: :blob }).find_each(batch_size: 25).find do |candidate|
+      next true if candidate.historical_import?
+
       stored_fingerprint = candidate.incoming_attachment_fingerprint
       stored_fingerprint ? stored_fingerprint == @fingerprint : fingerprint(candidate.attachments.sort_by(&:id)) == @fingerprint
+    end
+  end
+
+  def fill_history_placeholder(message)
+    message.with_lock do
+      next if message.deleted || message.attachments.exists?
+
+      @message.attachments.each do |source|
+        message.attachments.build(account: message.account, file_type: source.file_type, meta: source.meta, file: source.file.blob)
+      end
+      pending = message.additional_attributes.delete(Ryze::HistoricalSync::MediaAttacher::PENDING_KEY)
+      message.content = @message.content if pending&.fetch('placeholder') && !message.additional_attributes['ryze_edited_at']
+      message.update!(additional_attributes: replay_attributes(message))
     end
   end
 
@@ -73,7 +102,7 @@ class Messages::IncomingAttachmentReplay
   end
 
   def replay(message)
-    return message if message.incoming_attachment_fingerprint
+    return message if message.historical_import? || message.incoming_attachment_fingerprint
 
     message.with_lock do
       next if message.deleted || message.incoming_attachment_fingerprint

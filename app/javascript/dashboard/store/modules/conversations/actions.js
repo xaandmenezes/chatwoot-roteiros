@@ -231,13 +231,11 @@ const actions = {
           data: payload,
         });
         dispatch('autoTranslateMessages', data.conversationId);
-        // A short backward page means the start is reached; `after` requests only prove it when empty.
-        const hasReachedFirstMessage = data.after
-          ? !payload.length
-          : payload.length < MESSAGES_PER_PAGE;
-        if (hasReachedFirstMessage) {
+        // An ID range from search says nothing about older chronological pages.
+        if (!data.after && payload.length < MESSAGES_PER_PAGE) {
           commit(types.SET_ALL_MESSAGES_LOADED, data.conversationId);
         }
+        return payload.length;
       })
       .finally(() => pendingHistoryRequests.delete(requestKey));
 
@@ -338,12 +336,18 @@ const actions = {
       // Reset only when refetching — a re-activated short conversation has no scroll to earn it back.
       commit(types.CLEAR_ALL_MESSAGES_LOADED, data.id);
       try {
-        await dispatch('fetchPreviousMessages', {
-          after,
+        const backwardPage = {
           // A conversation created without an initial message has nothing to anchor on.
           before: data.messages[0]?.id,
           conversationId: data.id,
+        };
+        const count = await dispatch('fetchPreviousMessages', {
+          ...backwardPage,
+          after,
         });
+        if (after && count === 0) {
+          await dispatch('fetchPreviousMessages', backwardPage);
+        }
         commit(types.SET_CHAT_DATA_FETCHED, data.id);
       } catch (error) {
         // Ignore error
@@ -816,6 +820,19 @@ const actions = {
     } catch (error) {
       // Handle error
     }
+  },
+
+  syncRyzeHistory: async ({ commit }, { conversationId, before }) => {
+    const { data } = await ConversationApi.syncRyzeHistory(conversationId, {
+      before,
+    });
+    if (data.payload?.length) {
+      commit(types.SET_PREVIOUS_CONVERSATIONS, {
+        id: conversationId,
+        data: data.payload,
+      });
+    }
+    return data.meta;
   },
 
   ...messageReadActions,
