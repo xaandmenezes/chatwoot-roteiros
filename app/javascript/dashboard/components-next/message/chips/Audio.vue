@@ -239,5 +239,41 @@ const downloadAudio = async () => {
         }}
       </button>
     </div>
+    <div
+      v-else-if="
+        showTranscribedText && attachment.transcriptionStatus === 'pending'
+      "
+      class="text-n-slate-11 px-3 pb-2 text-xs w-full"
+      role="status"
+    >
+      {{ $t('CONVERSATION.AUDIO_TRANSCRIPTION.PENDING') }}
+    </div>
+    <div
+      v-else-if="
+        showTranscribedText && attachment.transcriptionStatus === 'failed'
+      "
+      class="text-n-slate-11 px-3 pb-2 text-xs w-full"
+      role="status"
+    >
+      {{ $t('CONVERSATION.AUDIO_TRANSCRIPTION.FAILED') }}
+    </div>
+    <div
+      v-else-if="
+        showTranscribedText && attachment.transcriptionStatus === 'lookup_error'
+      "
+      class="text-n-slate-11 px-3 pb-2 text-xs w-full"
+      role="status"
+    >
+      {{ $t('CONVERSATION.AUDIO_TRANSCRIPTION.STATUS_UNAVAILABLE') }}
+    </div>
+    <div
+      v-else-if="
+        showTranscribedText && attachment.transcriptionStatus === 'timed_out'
+      "
+      class="text-n-slate-11 px-3 pb-2 text-xs w-full"
+      role="status"
+    >
+      {{ $t('CONVERSATION.AUDIO_TRANSCRIPTION.STILL_PROCESSING') }}
+    </div>
   </div>
 </template>

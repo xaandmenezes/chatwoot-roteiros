@@ -133,6 +133,12 @@
       "HIDE_LABELS": "Hide labels",
       "LABELS_COUNT": "{count} labels"
     },
+    "AUDIO_TRANSCRIPTION": {
+      "PENDING": "Transcription in progress",
+      "FAILED": "Transcription failed",
+      "STATUS_UNAVAILABLE": "Couldn't check transcription status",
+      "STILL_PROCESSING": "Transcription is still processing. Reopen this conversation to check again."
+    },
     "VOICE_CALL": {
       "INCOMING_CALL": "Incoming call",
       "OUTGOING_CALL": "Outgoing call",

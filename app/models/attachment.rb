@@ -40,8 +40,10 @@ class Attachment < ApplicationRecord
   GENERIC_FILE_CONTENT_TYPES = %w[application/octet-stream].freeze
   belongs_to :account
   belongs_to :message
+  has_one :ryze_audio_transcription, class_name: 'Ryze::AudioTranscription', inverse_of: :attachment, dependent: :delete
   has_one_attached :file
   before_save :set_extension
+  after_create :record_ryze_audio_transcription
   validate :acceptable_file
   validates :external_url, length: { maximum: Limits::URL_LENGTH_LIMIT }
   enum :file_type, { image: 0, audio: 1, video: 2, file: 3, location: 4, fallback: 5, share: 6, story_mention: 7,
@@ -80,6 +82,10 @@ class Attachment < ApplicationRecord
   end
 
   private
+
+  def record_ryze_audio_transcription
+    Ryze::AudioTranscription.record_attachment!(self)
+  end
 
   def metadata_for_file_type
     case file_type.to_sym

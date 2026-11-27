@@ -22,6 +22,7 @@ class Api::V1::Accounts::Conversations::MessagesController < Api::V1::Accounts::
   def index
     @messages = message_finder.perform
     @agent_history = Current.user.is_a?(User)
+    @ryze_audio_transcription_enabled = dashboard_user? && Ryze::AudioTranscription.enabled_for_conversation?(@conversation)
     preload_customer_revocations if @agent_history
     return unless @agent_history && Ryze::MessageReactions.pilot?(@conversation)
 

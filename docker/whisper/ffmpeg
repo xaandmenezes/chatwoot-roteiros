@@ -1,0 +1,22 @@
+#!/bin/sh
+# whisper-server probes the decoder on startup. For uploads it supplies its own
+# generated name as "-i /tmp/whisper-server-…wav" and writes a sibling WAV.
+if [ "$1" = "-version" ]; then
+  exec /usr/bin/ffmpeg "$@"
+fi
+
+[ "$1" = "-i" ] || exit 1
+input=$2
+case "$input" in
+  /tmp/whisper-server-*.wav) ;;
+  *) exit 1 ;;
+esac
+
+if /usr/bin/ffmpeg -nostdin -protocol_whitelist file \
+  -format_whitelist ogg,matroska,webm,mov,mp3,aac,wav,flac "$@"; then
+  exit 0
+fi
+
+# v1.9.6 cleans up successful conversions only.
+rm -f -- "$input" "${input}_temp.wav"
+exit 1

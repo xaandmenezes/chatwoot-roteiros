@@ -65,6 +65,8 @@ services:
       RYZE_PROFILE_AVATAR_SYNC: ${RYZE_PROFILE_AVATAR_SYNC:-false}
       RYZE_GROUPS_INBOX_ENABLED: ${RYZE_GROUPS_INBOX_ENABLED:-false}
       RYZE_DIRECT_INBOX_ENABLED: ${RYZE_DIRECT_INBOX_ENABLED:-false}
+      RYZE_AUDIO_TRANSCRIPTION_ENABLED: ${RYZE_AUDIO_TRANSCRIPTION_ENABLED:-false}
+      RYZE_AUDIO_TRANSCRIPTION_CONVERSATION_ID: ${RYZE_AUDIO_TRANSCRIPTION_CONVERSATION_ID:-}
       RYZE_HISTORY_SYNC_ENABLED: ${RYZE_HISTORY_SYNC_ENABLED:-true}
       RYZE_HISTORY_BINDING_SECRET: ${RYZE_HISTORY_BINDING_SECRET:-}
     entrypoint: docker/entrypoints/rails.sh
@@ -95,6 +97,43 @@ services:
     depends_on:
       prepare:
         condition: service_completed_successfully
+
+    networks:
+      - default
+      - ryze_audio
+
+  ryze-transcriber:
+    profiles: [transcription]
+    image: ghcr.io/ggml-org/whisper.cpp@sha256:4dfb768b5c2bbdffb327ef4cd9cb49e7e93e15762309c0fdc57c8bf387401deb
+    platform: linux/amd64
+    entrypoint: [whisper-server]
+    command: [--host, 0.0.0.0, --port, "8080", --model, /models/ggml-small-q5_1.bin, --threads, "2", --language, pt, --convert, --tmp-dir, /tmp]
+    networks: [ryze_audio]
+    volumes:
+      - type: bind
+        source: ${RYZE_AUDIO_TRANSCRIPTION_FFMPEG_WRAPPER:-./docker/whisper/ffmpeg}
+        target: /usr/local/bin/ffmpeg
+        read_only: true
+        bind:
+          create_host_path: false
+      - ${RYZE_AUDIO_TRANSCRIPTION_MODEL_DIR:-/var/lib/psr/whisper-models}:/models:ro
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=256m,mode=1777
+    user: "65534:65534"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: 2.0
+    mem_limit: 2g
+    restart: unless-stopped
+    logging:
+      driver: "none"
+    healthcheck:
+      test: [CMD, curl, -fsS, http://127.0.0.1:8080/health]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
 
   postgres:
     image: pgvector/pgvector:pg16
@@ -129,3 +168,7 @@ volumes:
   storage_data:
   postgres_data:
   redis_data:
+
+networks:
+  ryze_audio:
+    internal: true
