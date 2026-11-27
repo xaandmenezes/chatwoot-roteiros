@@ -59,8 +59,8 @@ const props = defineProps({
 });
 
 const { t } = useI18n();
-const { replaceInstallationName } = useBranding();
-const globalConfig = useMapGetter('globalConfig/get');
+const installationBranding = useMapGetter('globalConfig/installationBranding');
+const { replaceInstallationName } = useBranding(installationBranding);
 
 const isChatMode = ref(false);
 const [isWidgetVisible, toggleWidget] = useToggle(true);
@@ -173,7 +173,7 @@ const handleToggleWidget = () => {
       >
         <div
           v-if="isWidgetVisible"
-          class="widget-wrapper flex flex-1 flex-shrink-0 flex-col justify-between rounded-lg shadow-md bg-n-slate-2 dark:bg-n-solid-1 h-[31.25rem] w-80 mb-4"
+          class="widget-wrapper flex flex-1 flex-shrink-0 flex-col justify-between rounded-lg shadow-md bg-n-slate-2 dark:bg-n-solid-1 h-[31.25rem] w-80 mb-4 [--brand:initial] [--brand-text:initial]"
         >
           <WidgetHead :config="getWidgetConfig" />
           <div>
@@ -182,13 +182,17 @@ const handleToggleWidget = () => {
               :config="getWidgetConfig"
             />
             <WidgetFooter :config="getWidgetConfig" />
-            <div class="py-2.5 flex justify-center">
+            <div
+              v-if="installationBranding.brandName"
+              class="py-2.5 flex justify-center"
+            >
               <a
                 class="items-center gap-0.5 text-n-slate-11 cursor-pointer flex filter grayscale opacity-90 hover:grayscale-0 hover:opacity-100 text-xxs"
               >
                 <img
                   class="max-w-2.5 max-h-2.5"
-                  :src="globalConfig.logoThumbnail"
+                  :alt="installationBranding.brandName"
+                  :src="installationBranding.logoThumbnail"
                 />
                 <span>
                   {{

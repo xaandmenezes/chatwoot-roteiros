@@ -20,7 +20,8 @@ RSpec.describe Enterprise::DeviceVerificationMailer do
 
     it 'sends the code to the user with device details' do
       expect(mail.to).to eq(['agent@example.com'])
-      expect(mail.subject).to include('verification code')
+      expect(mail.subject).to eq('Your Porto Seguro Roteiros verification code')
+      expect(mail.body.decoded).to include('your Porto Seguro Roteiros account', 'alt="Porto Seguro Roteiros"')
       expect(mail.body.encoded).to include('123456')
       expect(mail.body.encoded).to include('203.0.113.7')
       expect(mail.body.encoded).to include('Chrome')

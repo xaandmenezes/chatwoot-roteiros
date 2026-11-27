@@ -304,5 +304,17 @@
     --call-widget-text: 237, 238, 240, 1;
     --call-widget-sub-text: 173, 177, 184, 1;
   }
+
+  .psr-brand {
+    --brand: 42 114 123;
+    --brand-text: var(--brand);
+    --brand-hover: 35 94 102;
+  }
+
+  .psr-brand.dark,
+  .psr-brand .dark {
+    --brand-text: 125 209 218;
+    --brand-hover: 160 225 232;
+  }
 }
 // NEXT COLORS END

@@ -15,14 +15,17 @@ RSpec.describe AdministratorNotifications::AccountNotificationMailer do
   describe '#account_deletion_user_initiated' do
     it 'sets the correct subject for user-initiated deletion' do
       mail = mailer.account_deletion_user_initiated(account, 'manual_deletion')
-      expect(mail.subject).to eq('Your Chatwoot account deletion has been scheduled')
+      expect(mail.subject).to eq('Your Porto Seguro Roteiros account deletion has been scheduled')
     end
   end
 
   describe '#account_deletion_for_inactivity' do
     it 'sets the correct subject for system-initiated deletion' do
       mail = mailer.account_deletion_for_inactivity(account, 'Account Inactive')
-      expect(mail.subject).to eq('Your Chatwoot account is scheduled for deletion due to inactivity')
+      expect(mail.subject).to eq('Your Porto Seguro Roteiros account is scheduled for deletion due to inactivity')
+      document = Nokogiri::HTML(mail.body.decoded)
+      expect(document.text).to include('Log in to your Porto Seguro Roteiros account')
+      expect(document.css('a[href="https://www.portoseguroroteiros.com.br"]').length).to eq(2)
     end
   end
 
