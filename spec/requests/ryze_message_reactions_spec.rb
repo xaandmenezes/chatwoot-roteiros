@@ -229,6 +229,46 @@ RSpec.describe 'Ryze message reactions', type: :request do
     expect(history['ryze_reactions']).to be_nil
   end
 
+  it 'accepts an @lid target chat when chat.lid is absent or empty' do
+    lid = '123456789012345@lid'
+
+    blank_lid = event(id: 'INCOMING_BLANK_LID', emoji: '👍', at: '2026-11-26T18:00:00Z')
+    blank_lid[:data][:chat][:lid] = ''
+    blank_lid[:data][:message][:reaction][:targetMessageId] = { ID: message.source_id, remoteJID: lid, fromMe: false }
+    post_event(blank_lid)
+    expect(response).to have_http_status(:ok)
+    expect(history.fetch('ryze_reactions')).to include('incoming' => include('emoji' => '👍'))
+
+    absent_lid = event(id: 'OUTGOING_ABSENT_LID', emoji: '❤️', at: '2026-11-26T18:00:01Z', direction: 'outgoing')
+    absent_lid[:data][:message][:reaction][:targetMessageId] = { ID: message.source_id, remoteJID: lid.sub('@', ':0@'), fromMe: true }
+    post_event(absent_lid)
+    expect(response).to have_http_status(:ok)
+    expect(history.fetch('ryze_reactions')).to include('outgoing' => include('emoji' => '❤️'))
+  end
+
+  it 'accepts a matching @lid target chat and rejects a mismatched @lid when chat.lid is present' do
+    lid = '123456789012345@lid'
+    allow(Rails.logger).to receive(:info)
+
+    mismatched_lid = event(id: 'MISMATCHED_LID', emoji: '😂', at: '2026-11-26T18:00:02Z')
+    mismatched_lid[:data][:chat][:lid] = lid
+    mismatched_lid[:data][:message][:reaction][:targetMessageId] = {
+      ID: message.source_id, remoteJID: '999999999999999@lid', fromMe: false
+    }
+    post_event(mismatched_lid)
+    expect(response).to have_http_status(:bad_request)
+    expect(Rails.logger).to have_received(:info).with(
+      'Ryze pilot reaction rejected field=target_chat_mismatch target_shape=object:id,chat,unknown=1'
+    )
+
+    matching_lid = mismatched_lid.deep_dup
+    matching_lid[:data][:id] = 'MATCHING_LID'
+    matching_lid[:data][:message][:reaction][:targetMessageId][:remoteJID] = lid
+    post_event(matching_lid)
+    expect(response).to have_http_status(:ok)
+    expect(history.fetch('ryze_reactions')).to include('incoming' => include('emoji' => '😂'))
+  end
+
   it 'rejects missing identifiers and preserves a generic bridge message' do
     generic = create(:message, account: account, inbox: inbox, conversation: conversation, content: '💬 Reagiu a uma mensagem')
     payload = event(id: 'REACTION_ONE', emoji: '👍', at: '2026-11-26T18:00:00Z')
