@@ -49,6 +49,9 @@ services:
       RYZE_EDIT_API_TOKEN: ${RYZE_EDIT_API_TOKEN:-}
       RYZE_EDIT_CONVERSATION_ID: ${RYZE_EDIT_CONVERSATION_ID:-}
       RYZE_NATIVE_BRIDGE_USER_ID: ${RYZE_NATIVE_BRIDGE_USER_ID:-}
+      RYZE_REACTIONS_ENABLED: ${RYZE_REACTIONS_ENABLED:-false}
+      RYZE_OUTBOUND_PRESENCE_ENABLED: ${RYZE_OUTBOUND_PRESENCE_ENABLED:-false}
+      RYZE_PROFILE_AVATAR_SYNC: ${RYZE_PROFILE_AVATAR_SYNC:-false}
     entrypoint: docker/entrypoints/rails.sh
     command: [bundle, exec, rails, s, -p, "3000", -b, 0.0.0.0]
     restart: unless-stopped

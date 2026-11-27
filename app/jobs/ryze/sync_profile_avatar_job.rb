@@ -65,7 +65,7 @@ class Ryze::SyncProfileAvatarJob < ApplicationJob
   end
 
   def profile_picture(client, chat_id)
-    response = client.get('profile/getAccount', number: chat_id)
+    response = client.get('profile/getAccount', number: chat_id.delete_suffix('@s.whatsapp.net'))
     unless response.is_a?(Net::HTTPOK)
       Rails.logger.info("Ryze profile avatar lookup unavailable (HTTP #{response.code})")
       return
