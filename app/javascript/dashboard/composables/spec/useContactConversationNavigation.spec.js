@@ -204,6 +204,7 @@ describe('useContactConversationNavigation', () => {
     const { viewContactHistory } = useContactConversationNavigation();
     await viewContactHistory({ conversationId: 13 });
 
+    expect(contactFilterCall()[1].includeAllWhatsAppConversations).toBe(true);
     expect(mockPush).not.toHaveBeenCalled();
     expect(contactFilterCall()[1].filters[0].values).toEqual([
       { id: 7, name: 'Jane Doe' },

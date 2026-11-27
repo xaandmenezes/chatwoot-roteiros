@@ -4,28 +4,12 @@ class Api::V1::Accounts::ConversationsController < Api::V1::Accounts::BaseContro
   include HmacConcern
   include ConversationCustomAttributesConcern
   include ConversationAssignmentTargetsConcern
+  include ConversationListingConcern
 
-  before_action :conversation, except: [:index, :meta, :search, :create, :filter]
+  before_action :conversation, except: [:create, *ConversationListingConcern::COLLECTION_ACTIONS]
   before_action :validate_assignment_targets, :inbox, :contact, :contact_inbox, only: [:create]
 
   ATTACHMENT_RESULTS_PER_PAGE = 100
-
-  def index
-    result = conversation_finder.perform
-    @conversations = result[:conversations]
-    @conversations_count = result[:count]
-  end
-
-  def meta
-    result = conversation_finder.perform_meta_only
-    @conversations_count = result[:count]
-  end
-
-  def search
-    result = conversation_finder.perform
-    @conversations = result[:conversations]
-    @conversations_count = result[:count]
-  end
 
   def attachments
     @attachments_count = @conversation.attachments.count
@@ -47,17 +31,6 @@ class Api::V1::Accounts::ConversationsController < Api::V1::Accounts::BaseContro
 
   def update
     @conversation.update!(permitted_update_params)
-  end
-
-  def filter
-    result = ::Conversations::FilterService.new(params.permit!, current_user, current_account).perform
-    @conversations = result[:conversations]
-    @conversations_count = result[:count]
-  rescue CustomExceptions::CustomFilter::InvalidAttribute,
-         CustomExceptions::CustomFilter::InvalidOperator,
-         CustomExceptions::CustomFilter::InvalidQueryOperator,
-         CustomExceptions::CustomFilter::InvalidValue => e
-    render_could_not_create_error(e.message)
   end
 
   def mute
@@ -226,10 +199,6 @@ class Api::V1::Accounts::ConversationsController < Api::V1::Accounts::BaseContro
       source_id: params[:source_id],
       hmac_verified: hmac_verified?
     ).perform
-  end
-
-  def conversation_finder
-    @conversation_finder ||= ConversationFinder.new(Current.user, params)
   end
 
   def assignee?

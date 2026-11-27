@@ -421,6 +421,21 @@ RSpec.describe 'Accounts API', type: :request do
     let(:account) { create(:account) }
     let(:admin) { create(:user, account: account, role: :administrator) }
 
+    it 'expires the cached inbox list when its group navigation changes' do
+      first = create(:channel_api, account: account).inbox
+      second = create(:channel_api, account: account).inbox
+      baseline = with_modified_env(RYZE_GROUPS_INBOX_ENABLED: 'false') { account.cache_keys.fetch(:inbox) }
+
+      [first, second].each do |pilot|
+        with_modified_env(RYZE_INBOX_ID: pilot.id.to_s, RYZE_GROUPS_INBOX_ENABLED: 'true') do
+          get "/api/v1/accounts/#{account.id}/cache_keys", headers: admin.create_new_auth_token, as: :json
+
+          expect(response.parsed_body.fetch('cache_keys').fetch('inbox')).to eq("#{baseline}/whatsapp-groups/#{pilot.id}")
+        end
+      end
+      with_modified_env(RYZE_GROUPS_INBOX_ENABLED: 'false') { expect(account.cache_keys.fetch(:inbox)).to eq(baseline) }
+    end
+
     it 'returns cache_keys as expected' do
       account.update(auto_resolve_duration: 30)
 

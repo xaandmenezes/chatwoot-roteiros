@@ -60,6 +60,14 @@ describe('useConversationRoutePath', () => {
       );
     });
 
+    it('opens a conversation from the WhatsApp groups list', () => {
+      mockRoute.name = 'whatsapp_groups';
+      const { buildConversationPath } = useConversationRoutePath();
+      expect(buildConversationPath(5)).toBe(
+        '/app/accounts/1/whatsapp-groups/conversations/5'
+      );
+    });
+
     it('keeps the mentions context', () => {
       mockRoute.name = 'conversation_through_mentions';
       const { buildConversationPath } = useConversationRoutePath();
@@ -89,6 +97,14 @@ describe('useConversationRoutePath', () => {
     it('builds the dashboard path by default', () => {
       const { buildConversationListPath } = useConversationRoutePath();
       expect(buildConversationListPath()).toBe('/app/accounts/1/dashboard');
+    });
+
+    it('returns to WhatsApp groups from its conversation route', () => {
+      mockRoute.name = 'conversation_through_whatsapp_groups';
+      const { buildConversationListPath } = useConversationRoutePath();
+      expect(buildConversationListPath()).toBe(
+        '/app/accounts/1/whatsapp-groups/conversations'
+      );
     });
 
     it('keeps the inbox context', () => {

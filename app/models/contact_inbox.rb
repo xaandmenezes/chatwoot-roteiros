@@ -33,6 +33,8 @@ class ContactInbox < ApplicationRecord
 
   has_many :conversations, dependent: :destroy_async
 
+  after_update_commit :notify_whatsapp_group_source_change, if: :saved_change_to_source_id?
+
   # contact_inboxes that are not associated with any conversation
   scope :stale_without_conversations, lambda { |time_period|
     left_joins(:conversations)
@@ -60,6 +62,13 @@ class ContactInbox < ApplicationRecord
   end
 
   private
+
+  def notify_whatsapp_group_source_change
+    target = Ryze::GroupConversations.inbox_for_source_change(self)
+    return unless target
+
+    Rails.configuration.dispatcher.dispatch(Events::Types::CONVERSATION_WHATSAPP_GROUP_CLASSIFICATION_CHANGED, Time.current, inbox: target)
+  end
 
   def validate_twilio_source_id
     # https://www.twilio.com/docs/glossary/what-e164#regex-matching-for-e164

@@ -29,10 +29,29 @@ describe('#actions', () => {
       await actions.get({ commit });
 
       expect(axios.get).toHaveBeenCalledWith(
-        '/api/v1/conversations/unread_counts'
+        '/api/v1/conversations/unread_counts',
+        { params: { whatsapp_scope: 'inbox' } }
       );
       expect(commit.mock.calls).toEqual([
         [types.SET_CONVERSATION_UNREAD_COUNTS, payload],
+      ]);
+    });
+
+    it('keeps group badges cleared when an earlier response arrives', async () => {
+      let finishRequest;
+      axios.get.mockImplementation(
+        () =>
+          new Promise(resolve => {
+            finishRequest = resolve;
+          })
+      );
+      const pending = actions.get({ commit });
+      actions.clear({ commit });
+      finishRequest({ data: { payload: { whatsapp_groups_count: 4 } } });
+      await pending;
+
+      expect(commit.mock.calls).toEqual([
+        [types.SET_CONVERSATION_UNREAD_COUNTS, {}],
       ]);
     });
 

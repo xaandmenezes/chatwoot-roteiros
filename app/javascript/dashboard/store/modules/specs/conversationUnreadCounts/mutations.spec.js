@@ -17,6 +17,7 @@ describe('#mutations', () => {
 
       mutations[types.SET_CONVERSATION_UNREAD_COUNTS](state, {
         all_count: '3',
+        whatsapp_groups_count: '5',
         inboxes: {
           1: '2',
           2: 0,
@@ -41,6 +42,7 @@ describe('#mutations', () => {
 
       expect(state).toEqual({
         allCount: 3,
+        whatsappGroupsCount: 5,
         inboxes: { 1: 2 },
         labels: { 4: 5 },
         teams: { 6: 7 },
@@ -67,6 +69,7 @@ describe('#mutations', () => {
 
       expect(state).toEqual({
         allCount: 0,
+        whatsappGroupsCount: 0,
         inboxes: {},
         labels: {},
         teams: {},

@@ -2,6 +2,7 @@
 import { frontendURL } from '../../../helper/URLHelper';
 import store from '../../../store';
 import ConversationView from './ConversationView.vue';
+import wootConstants from 'dashboard/constants/globals';
 
 const CONVERSATION_PERMISSIONS = [
   'administrator',
@@ -162,6 +163,31 @@ export default {
       props: route => ({
         conversationId: route.params.conversation_id,
         foldersId: route.params.id,
+      }),
+    },
+    {
+      path: frontendURL('accounts/:accountId/whatsapp-groups/conversations'),
+      name: 'whatsapp_groups',
+      meta: {
+        permissions: CONVERSATION_PERMISSIONS,
+      },
+      component: ConversationView,
+      props: () => ({
+        conversationType: wootConstants.CONVERSATION_TYPE.WHATSAPP_GROUPS,
+      }),
+    },
+    {
+      path: frontendURL(
+        'accounts/:accountId/whatsapp-groups/conversations/:conversation_id'
+      ),
+      name: 'conversation_through_whatsapp_groups',
+      meta: {
+        permissions: CONVERSATION_PERMISSIONS,
+      },
+      component: ConversationView,
+      props: route => ({
+        conversationId: route.params.conversation_id,
+        conversationType: wootConstants.CONVERSATION_TYPE.WHATSAPP_GROUPS,
       }),
     },
     {
