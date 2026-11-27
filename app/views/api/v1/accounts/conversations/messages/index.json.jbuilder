@@ -5,6 +5,7 @@ json.meta do
   json.assignee @conversation.assignee.push_event_data if @conversation.assignee.present?
   json.agent_last_seen_at @conversation.agent_last_seen_at
   json.assignee_last_seen_at @conversation.assignee_last_seen_at
+  json.ryze_audio_transcription_enabled true if @ryze_audio_transcription_enabled
 end
 
 pilot = @agent_history && Ryze::OutgoingEditEligibility.pilot_conversation?(@conversation)

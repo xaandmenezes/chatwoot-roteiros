@@ -38,6 +38,43 @@ RSpec.describe 'Incoming attachment replay in API inboxes', type: :request do
     expect(conversation.reload).to be_resolved
   end
 
+  it 'preserves one private transcription when Ryze re-delivers incoming audio' do
+    audio = -> { fixture_file_upload('spec/assets/sample.ogg', 'audio/ogg') }
+    transcriber = instance_double(Ryze::AudioTranscriber)
+    allow(Ryze::AudioTranscriber).to receive(:new).and_return(transcriber)
+
+    with_modified_env RYZE_AUDIO_TRANSCRIPTION_ENABLED: 'true', RYZE_INBOX_ID: inbox.id.to_s,
+                      RYZE_AUDIO_TRANSCRIPTION_CONVERSATION_ID: conversation.display_id.to_s do
+      first = deliver([audio.call])
+      record = Ryze::AudioTranscription.find_by!(attachment_id: first.fetch('attachments').first.fetch('id'))
+      expect(transcriber).to receive(:transcribe).with(record.attachment.file.blob).once.and_return('Praia do Espelho')
+      Ryze::AudioTranscriptionJob.perform_now(record.id)
+
+      replay = nil
+      expect { replay = deliver([audio.call]) }.not_to change(Ryze::AudioTranscription, :count)
+      expect(replay.fetch('id')).to eq(first.fetch('id'))
+      expect(replay.fetch('attachments').first['transcribed_text']).to be_blank
+      expect(record.reload).to have_attributes(status: 'completed', text: 'Praia do Espelho')
+      expect(Ryze::AudioTranscriptionJob).to have_been_enqueued.with(record.id).once
+    end
+  end
+
+  it 'queues outgoing microphone and MP3 uploads against their separate attachments' do
+    with_modified_env RYZE_AUDIO_TRANSCRIPTION_ENABLED: 'true', RYZE_INBOX_ID: inbox.id.to_s,
+                      RYZE_AUDIO_TRANSCRIPTION_CONVERSATION_ID: conversation.display_id.to_s do
+      recording = fixture_file_upload('spec/assets/sample.ogg', 'audio/ogg')
+      mp3 = fixture_file_upload('spec/assets/sample.mp3', 'audio/mpeg')
+      result = deliver([recording, mp3], message_type: 'outgoing', voice_message_attachment_indices: ['0'])
+
+      expect(response).to have_http_status(:ok)
+      attachments = result.fetch('attachments')
+      expect(attachments.pluck('file_type', 'is_voice_message')).to eq([['audio', true], ['audio', false]])
+      rows = Ryze::AudioTranscription.where(attachment_id: attachments.pluck('id')).order(:attachment_id)
+      expect(rows.pluck(:attachment_id, :status)).to eq(attachments.map { |attachment| [attachment.fetch('id'), 'pending'] })
+      rows.each { |transcription| expect(Ryze::AudioTranscriptionJob).to have_been_enqueued.with(transcription.id).once }
+    end
+  end
+
   it 'preserves distinct files with the same filename and retains multiplicity and order' do
     first = deliver([document('one'), document('two')])
     reversed = deliver([document('two'), document('one')])

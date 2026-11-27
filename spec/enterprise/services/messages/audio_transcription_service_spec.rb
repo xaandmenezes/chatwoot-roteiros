@@ -96,6 +96,14 @@ RSpec.describe Messages::AudioTranscriptionService, type: :service do
       end
     end
 
+    it 'keeps a saved local transcription private after the Ryze pilot is disabled' do
+      Ryze::AudioTranscription.create!(attachment: attachment, status: :completed, text: 'Private transcript')
+      allow(Llm::SpeechToTextService).to receive(:available_for?).and_return(true)
+      expect(Llm::SpeechToTextService).not_to receive(:new)
+
+      expect(service.perform).to eq(error: 'Audio transcription is handled locally')
+    end
+
     context 'when attachment already has transcribed text' do
       before do
         attachment.update!(meta: { transcribed_text: 'Existing transcription' })

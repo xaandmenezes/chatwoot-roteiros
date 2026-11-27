@@ -19,6 +19,12 @@ class ConversationApi extends ApiClient {
     });
   }
 
+  getAudioTranscriptions(conversationId, attachmentIds) {
+    return axios.get(`${this.url}/${conversationId}/audio_transcriptions`, {
+      params: { attachment_ids: attachmentIds },
+    });
+  }
+
   updateLabels(conversationID, labels) {
     return axios.post(`${this.url}/${conversationID}/labels`, { labels });
   }

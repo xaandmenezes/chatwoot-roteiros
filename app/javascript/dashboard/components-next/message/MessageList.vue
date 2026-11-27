@@ -7,6 +7,7 @@ import { MESSAGE_TYPES } from './constants.js';
 import { useCamelCase } from 'dashboard/composables/useTransformKeys';
 import { useMapGetter } from 'dashboard/composables/store.js';
 import MessageApi from 'dashboard/api/inbox/message.js';
+import { useAudioTranscriptions } from 'dashboard/composables/useAudioTranscriptions';
 
 /**
  * Props definition for the component
@@ -58,9 +59,42 @@ const allMessages = computed(() => {
 });
 
 const currentChat = useMapGetter('getSelectedChat');
+const getConversationMetadata = useMapGetter(
+  'conversationMetadata/getConversationMetadata'
+);
+const isAudioTranscriptionEnabled = computed(
+  () =>
+    getConversationMetadata.value?.(currentChat.value?.id)
+      ?.ryze_audio_transcription_enabled === true
+);
+const audioTranscriptions = useAudioTranscriptions({
+  conversationId: computed(() => currentChat.value?.id),
+  enabled: isAudioTranscriptionEnabled,
+  messages: computed(() => props.messages),
+});
+
+const currentMessagesWithTranscriptions = computed(() =>
+  isAudioTranscriptionEnabled.value
+    ? allMessages.value.map(message => ({
+        ...message,
+        attachments: (message.attachments || []).map(attachment => {
+          const transcription = audioTranscriptions.value[attachment.id];
+          if (!transcription) return attachment;
+          return {
+            ...attachment,
+            transcriptionStatus: transcription.status,
+            transcribedText:
+              transcription.status === 'completed'
+                ? transcription.text || attachment.transcribedText
+                : attachment.transcribedText,
+          };
+        }),
+      }))
+    : allMessages.value
+);
 
 const timeline = computed(() => {
-  const messages = allMessages.value.map(message => ({
+  const messages = currentMessagesWithTranscriptions.value.map(message => ({
     key: `message-${message.id}`,
     createdAt: message.createdAt,
     message,
