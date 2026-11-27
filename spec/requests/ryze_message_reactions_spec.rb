@@ -102,6 +102,38 @@ RSpec.describe 'Ryze message reactions', type: :request do
     expect(history.fetch('ryze_reactions')).to include('incoming' => nil)
   end
 
+  it 'treats nil or omitted emoji in incoming and outgoing webhooks as removal' do
+    post_event(event(id: 'INCOMING_ADD', emoji: '👍', at: '2026-11-26T18:00:00Z'))
+    nil_removal = event(id: 'INCOMING_REMOVE_NIL', emoji: nil, at: '2026-11-26T18:00:01Z')
+    post_event(nil_removal)
+    expect(response).to have_http_status(:ok)
+    expect(history.fetch('ryze_reactions')).to include('incoming' => nil)
+
+    omitted_removal = event(id: 'INCOMING_REMOVE_OMITTED', emoji: '', at: '2026-11-26T18:00:02Z')
+    omitted_removal[:data][:message][:reaction].delete(:emoji)
+    post_event(omitted_removal)
+    expect(response).to have_http_status(:ok)
+
+    outgoing_nil = event(id: 'OUTGOING_REMOVE_NIL', emoji: nil, at: '2026-11-26T18:00:03Z', direction: 'outgoing')
+    post_event(outgoing_nil)
+    expect(response).to have_http_status(:ok)
+    expect(history.fetch('ryze_reactions')).to include('outgoing' => nil)
+  end
+
+  it 'rejects invalid non-string or non-emoji webhook values' do
+    logs = []
+    allow(Rails.logger).to receive(:info) { |message| logs << message }
+
+    [123, 'abc'].each_with_index do |invalid_emoji, index|
+      invalid_event = event(id: "INVALID_EMOJI_#{index}", emoji: invalid_emoji, at: '2026-11-26T18:00:00Z')
+      post_event(invalid_event)
+      expect(response).to have_http_status(:bad_request)
+      expect(logs.grep(/reaction rejected/).last).to eq(
+        'Ryze pilot reaction rejected field=emoji target_shape=object:id,chat'
+      )
+    end
+  end
+
   it 'normalizes the two WhatsApp key spellings and a device JID before applying a removal' do
     post_event(event(id: 'OUTGOING_ADD', emoji: '👍', at: '2026-11-26T18:00:00Z', direction: 'outgoing'))
     payload = event(id: 'OUTGOING_REMOVE', emoji: '', at: '2026-11-26T18:00:01Z', direction: 'outgoing')

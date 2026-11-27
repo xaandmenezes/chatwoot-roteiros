@@ -15,7 +15,7 @@ class Ryze::ReactionEvent
     @direction = data[:direction]
     @timestamp = parse_timestamp(data[:timestamp])
     @target_id = @target_details[:id]
-    @emoji = reaction[:emoji]
+    @emoji = reaction[:emoji].nil? ? '' : reaction[:emoji]
     @source = data[:message][:source]
     extract_identities(object(data[:chat]), object(data[:sender]))
   end
