@@ -39,6 +39,120 @@ RSpec.describe 'Ryze historical sync API', type: :request do
   end
 
   describe 'POST /api/v1/accounts/:account_id/conversations/:conversation_id/ryze_history' do
+    context 'with direct inbox mode enabled' do
+      around { |example| with_modified_env(RYZE_DIRECT_INBOX_ENABLED: 'true', RYZE_HISTORY_BINDING_SECRET: 'test-only-binding-key') { example.run } }
+
+      let(:attributes) { { whatsapp_jid: jid, ryze_history_binding: 'client-provided', referral: 'allowed' } }
+
+      it 'reserves the provider binding on creation' do
+        post api_v1_account_conversations_path(account), headers: agent.create_new_auth_token, as: :json,
+                                                         params: { inbox_id: inbox.id, contact_id: contact.id, additional_attributes: attributes }
+        expect(response).to have_http_status(:ok)
+        created = account.conversations.find_by!(display_id: response.parsed_body.fetch('id'))
+        expect(created.additional_attributes).to eq('referral' => 'allowed')
+      end
+
+      it 'does not allow updating the provider binding through the conversation API' do
+        path = api_v1_account_conversation_path(account, conversation.display_id)
+        patch path, headers: agent.create_new_auth_token, as: :json, params: { additional_attributes: attributes.merge(whatsapp_jid: 'another') }
+        expect(response).to have_http_status(:ok)
+        expect(conversation.reload.additional_attributes).to eq('whatsapp_jid' => jid)
+      end
+
+      it 'only syncs the attested conversation, not a legacy or copied binding in the same inbox' do
+        post history_path, as: :json, headers: agent.create_new_auth_token
+        expect(response).to have_http_status(:not_found)
+        Rake::Task['ryze:bind_history'].execute(account_id: account.id, display_id: conversation.display_id.to_s, jid: jid)
+        other = create(:conversation, account: account, inbox: inbox, additional_attributes: conversation.reload.additional_attributes)
+        post api_v1_account_conversation_ryze_history_path(account, other.display_id), as: :json, headers: agent.create_new_auth_token
+        expect(response).to have_http_status(:not_found)
+
+        stub_request(:post, 'https://ryzeapi.cloud/api/chat/history/test-instance').to_return(body: { success: true, messages: [] }.to_json)
+        post history_path, as: :json, headers: agent.create_new_auth_token
+        expect(response).to have_http_status(:ok)
+      end
+
+      it 'fails closed without the binding secret, after rotation, or when the contact changes' do
+        Ryze::HistoryBinding.bind!(conversation, jid)
+        [nil, 'rotated-test-key'].each do |secret|
+          with_modified_env(RYZE_HISTORY_BINDING_SECRET: secret) do
+            post history_path, as: :json, headers: agent.create_new_auth_token
+            expect(response).to have_http_status(:not_found)
+          end
+        end
+        conversation.update!(contact: create(:contact, account: account))
+        post history_path, as: :json, headers: agent.create_new_auth_token
+        expect(response).to have_http_status(:not_found)
+      end
+
+      it 'preserves the binding when reopening the same conversation without changing its identity' do
+        conversation.resolved!
+        Ryze::HistoryBinding.bind!(conversation, jid)
+        conversation.open!
+        stub_request(:post, 'https://ryzeapi.cloud/api/chat/history/test-instance').to_return(body: { success: true, messages: [] }.to_json)
+        post history_path, as: :json, headers: agent.create_new_auth_token
+        expect(response).to have_http_status(:ok)
+      end
+
+      it 'rechecks the binding under lock if the contact changes while fetching history' do
+        Ryze::HistoryBinding.bind!(conversation, jid)
+        replacement = create(:contact, account: account)
+        stub_request(:post, 'https://ryzeapi.cloud/api/chat/history/test-instance').to_return do
+          Conversation.find(conversation.id).update!(contact: replacement)
+          { body: { success: true, messages: [{ id: 'not-imported', type: 'text', content: 'test' }] }.to_json }
+        end
+        post history_path, as: :json, headers: agent.create_new_auth_token
+        expect(response).to have_http_status(:not_found)
+        expect(conversation.messages.exists?(source_id: 'not-imported')).to be(false)
+      end
+    end
+
+    it 'repairs the fifth media from an exhausted page without fetching history or accepting a size mismatch' do
+      items = Array.new(5) { |i| { id: "media-#{i}", type: 'image', mediaSize: 3 } }
+      page = stub_request(:post, 'https://ryzeapi.cloud/api/chat/history/test-instance').to_return(body: { success: true, messages: items }.to_json)
+      media = stub_request(:get, %r{/chat/base64/}).to_return(body: { success: true, base64: Base64.strict_encode64('abc') }.to_json)
+      headers = agent.create_new_auth_token
+      post history_path, as: :json, headers: headers
+      expect(response.parsed_body.fetch('meta')).to include('has_more' => false, 'imported_count' => 5)
+      pending = conversation.messages.find_by!(source_id: 'media-4')
+      expect(response.parsed_body.fetch('payload').find { |m| m['id'] == pending.id }).to include('historical_media_pending' => true)
+      expect(media).to have_been_requested.times(4)
+
+      retry_path = "#{history_path}/media/#{pending.id}"
+      stub_request(:get, %r{/chat/base64/}).to_return(
+        { body: { success: true, base64: Base64.strict_encode64('short?') }.to_json },
+        { body: { success: true, base64: Base64.strict_encode64('abc') }.to_json }
+      )
+      post retry_path, as: :json, headers: headers
+      expect(response).to have_http_status(:bad_gateway)
+      post retry_path, as: :json, headers: headers
+      expect(response).to have_http_status(:ok)
+      expect(pending.reload.attachments.sole.file.download).to eq('abc')
+      expect(page).to have_been_requested.once
+    end
+
+    it 'does not allow repair outside the bound conversation or on a normal delivery' do
+      headers = agent.create_new_auth_token
+      live = create(:message, account: account, inbox: inbox, conversation: conversation)
+      other = create(:conversation, account: account, inbox: inbox)
+      historical = create(:message, account: account, inbox: inbox, conversation: other, additional_attributes: { ryze_historical_sync: true })
+      [live, historical].each do |message|
+        post "#{history_path}/media/#{message.id}", headers: headers
+        expect(response).to have_http_status(:not_found)
+      end
+      with_modified_env(RYZE_DIRECT_INBOX_ENABLED: 'true', RYZE_HISTORY_BINDING_SECRET: 'test-only') do
+        post "#{history_path}/media/#{live.id}", headers: headers
+        expect(response).to have_http_status(:not_found)
+      end
+    end
+
+    it 'returns 422 for malformed cursors without querying the provider' do
+      ['not-a-time', {}, -1, 2.5, ''].each do |cursor|
+        post history_path, params: { before: cursor }, as: :json, headers: agent.create_new_auth_token
+        expect(response).to have_http_status(:unprocessable_entity)
+      end
+    end
+
     it 'returns 404 when historical sync is disabled' do
       with_modified_env(RYZE_HISTORY_SYNC_ENABLED: 'false') do
         post history_path, as: :json, headers: agent.create_new_auth_token

@@ -5,6 +5,7 @@ RSpec.describe Ryze::HistoricalSync do
   let(:inbox) { create(:channel_api, account: account).inbox }
   let(:contact) { create(:contact, account: account) }
   let(:chat_jid) { '5511999999999@s.whatsapp.net' }
+  let(:original_activity_at) { 1.day.ago.change(usec: 0) }
   let(:conversation) do
     create(
       :conversation,
@@ -13,7 +14,7 @@ RSpec.describe Ryze::HistoricalSync do
       contact: contact,
       additional_attributes: { 'whatsapp_jid' => chat_jid },
       status: :resolved,
-      last_activity_at: 1.day.ago
+      last_activity_at: original_activity_at
     )
   end
   let(:client) { instance_double(Ryze::Client) }
@@ -132,7 +133,24 @@ RSpec.describe Ryze::HistoricalSync do
         end.not_to have_enqueued_job(SendReplyJob)
 
         expect(conversation.reload.status).to eq('resolved')
-        expect(conversation.last_activity_at.to_i).to eq(1.day.ago.to_i)
+        expect(conversation.last_activity_at).to eq(original_activity_at)
+      end
+
+      it 'never moves activity backwards when another writer has advanced it' do
+        recent = Time.current.change(usec: 0)
+        conversation.update!(last_activity_at: 5.days.ago)
+        Conversation.find(conversation.id).update!(last_activity_at: recent)
+        sync.perform
+        expect(conversation.reload.last_activity_at).to eq(recent)
+      end
+
+      it 'excludes imported messages from unread counts even before the first read' do
+        sync.perform
+        [nil, 1.year.ago].each do |seen|
+          conversation.update!(agent_last_seen_at: seen, assignee_last_seen_at: seen)
+          expect(conversation.unread_incoming_messages).to be_empty
+          expect(conversation.assignee_unread_messages.incoming).to be_empty
+        end
       end
     end
 
@@ -224,6 +242,119 @@ RSpec.describe Ryze::HistoricalSync do
     context 'with media attachments' do
       let(:img_id) { 'img-123' }
       let(:base64_data) { Base64.encode64('fake-image-binary-data') }
+      let(:media_item) { { id: img_id, type: 'image', timestamp: 2.days.ago.iso8601, mediaSize: 22, mimeType: 'image/jpeg' } }
+      let(:download) { success_response(success: true, base64: base64_data) }
+
+      def deliver_live(with_file:)
+        params = { message_type: 'incoming', source_id: img_id, content: 'Live caption' }
+        if with_file
+          blob = ActiveStorage::Blob.create_and_upload!(io: StringIO.new('live file'), filename: 'live.txt', content_type: 'text/plain')
+          params[:attachments] = [blob.signed_id]
+        end
+        Messages::MessageBuilder.new(nil, conversation, params).perform(replay_incoming_attachments: true)
+      end
+
+      [true, false].each do |with_file|
+        it "preserves the original live delivery (file=#{with_file}) when history arrives later" do
+          live = deliver_live(with_file: with_file)
+          allow(client).to receive(:post).and_return(success_response(success: true, messages: [media_item]))
+          expect(sync.perform.imported_messages).to be_empty
+          expect(conversation.messages.where(source_id: img_id).sole).to eq(live)
+          expect(live.reload).not_to be_historical_import
+          expect(live.attachments.size).to eq(with_file ? 1 : 0)
+        end
+
+        [true, false].each do |downloaded|
+          it "reuses an imported row (downloaded=#{downloaded}) on live delivery (file=#{with_file})" do
+            allow(client).to receive(:post).and_return(success_response(success: true, messages: [media_item]))
+            allow(client).to receive(:get).and_return(downloaded ? download : error_response(404))
+            imported = sync.perform.imported_messages.sole
+            expect(deliver_live(with_file: with_file)).to eq(imported)
+            expect(deliver_live(with_file: with_file)).to eq(imported)
+            expect(conversation.messages.where(source_id: img_id).sole).to eq(imported)
+            files = imported.reload.attachments
+            if downloaded || with_file
+              expect(files.sole.file.download).to eq(downloaded ? 'fake-image-binary-data' : 'live file')
+              expect(imported.additional_attributes).not_to have_key('ryze_history_pending_media')
+            else
+              expect(files).to be_empty
+              expect(imported.additional_attributes).to have_key('ryze_history_pending_media')
+            end
+          end
+        end
+      end
+
+      it 'limits downloads across a full import' do
+        items = Array.new(12) { |i| media_item.merge(id: "image-#{i}") }
+        allow(client).to receive(:post).and_return(success_response(success: true, messages: items))
+        allow(client).to receive(:get).and_return(download)
+        expect(sync.perform.imported_messages.size).to eq(12)
+        expect(client).to have_received(:get).exactly(4).times
+        expect(conversation.attachments.count).to eq(4)
+      end
+
+      it 'resumes the same page without a gap when the import deadline interrupts it' do
+        freeze_time do
+          items = [media_item, { id: 'later-in-page', type: 'text', timestamp: 1.day.ago.iso8601, content: 'Not skipped' }]
+          allow(client).to receive(:post).and_return(success_response(success: true, messages: items))
+          allow(client).to receive(:get) do
+            travel 21.seconds
+            download
+          end
+          first = sync.perform
+          expect(first.imported_messages.map(&:source_id)).to eq([img_id])
+          expect(first.has_more).to be(true)
+          expect(first.next_before).to be >= Time.iso8601(items.last[:timestamp]).to_i
+
+          allow(client).to receive(:get).and_return(download)
+          retry_run = described_class.new(conversation: conversation.reload, client: client, before: first.next_before).perform
+          expect(retry_run.imported_messages.map(&:source_id)).to eq(['later-in-page'])
+          expect(retry_run.has_more).to be(false)
+        end
+      end
+
+      it 'does not attach divergent or oversized decoded media, but imports the messages' do
+        stub_const('Ryze::HistoricalSync::MediaAttacher::MAX_MEDIA_BYTES', 16)
+        items = [media_item.merge(mediaSize: 8), media_item.merge(id: 'oversized', mediaSize: nil)]
+        allow(client).to receive(:post).and_return(success_response(success: true, messages: items))
+        allow(client).to receive(:get).and_return(success_response(success: true, base64: Base64.strict_encode64('abc')), download)
+        expect(sync.perform.imported_messages.size).to eq(2)
+        expect(conversation.attachments).to be_empty
+      end
+
+      it 'repairs an earlier placeholder even after the history cursor has advanced' do
+        first_page = success_response(success: true, messages: [media_item])
+        allow(client).to receive(:post).and_return(first_page, success_response(success: true, messages: []))
+        allow(client).to receive(:get).and_return(error_response(404), download)
+        message = sync.perform.imported_messages.sole
+        expect(message.attachments).to be_empty
+        result = described_class.new(conversation: conversation.reload, client: client).perform
+        expect(result.imported_messages).to be_empty
+        expect(message.reload.attachments.sole.file.download).to eq('fake-image-binary-data')
+        expect(message.content).to be_blank
+      end
+
+      it 'deduplicates two overlapping imports when the second finishes during the first download' do
+        allow(client).to receive(:post).and_return(success_response(success: true, messages: [media_item]))
+        concurrent_client = instance_double(Ryze::Client, post: success_response(success: true, messages: [media_item]), get: download)
+        allow(client).to receive(:get) do
+          other = described_class.new(conversation: Conversation.find(conversation.id), client: concurrent_client)
+          expect(other.perform.imported_messages.size).to eq(1)
+          download
+        end
+        expect(sync.perform.imported_messages).to be_empty
+        expect(conversation.messages.where(source_id: img_id).sole.attachments.size).to eq(1)
+      end
+
+      it 'persists a repairable placeholder if storage fails after the download' do
+        allow(client).to receive(:post).and_return(success_response(success: true, messages: [media_item]))
+        allow(client).to receive(:get).and_return(download)
+        allow(ActiveStorage::Blob.service).to receive(:upload).and_raise(IOError, 'storage unavailable')
+        expect { sync.perform }.to have_enqueued_job(ActiveStorage::PurgeJob)
+        message = conversation.messages.find_by!(source_id: img_id)
+        expect(message.attachments).to be_empty
+        expect(message.content).to eq('[Historical media unavailable]')
+      end
 
       it 'fetches base64 media and attaches it when within size limit' do
         raw_history = {
@@ -233,7 +364,7 @@ RSpec.describe Ryze::HistoricalSync do
               id: img_id,
               timestamp: 1.hour.ago.iso8601,
               type: 'image',
-              mediaSize: 1024,
+              mediaSize: 22,
               mimeType: 'image/jpeg',
               fileName: 'photo.jpg',
               caption: 'Nice picture'
@@ -276,7 +407,7 @@ RSpec.describe Ryze::HistoricalSync do
         result = sync.perform
         msg = result.imported_messages.first
         expect(msg).to be_present
-        expect(msg.content).to eq('[Mídia histórica indisponível]')
+        expect(msg.content).to eq('[Historical media unavailable]')
         expect(msg.attachments).to be_empty
       end
 
@@ -297,7 +428,7 @@ RSpec.describe Ryze::HistoricalSync do
 
         result = sync.perform
         msg = result.imported_messages.first
-        expect(msg.content).to eq('[Mídia histórica indisponível]')
+        expect(msg.content).to eq('[Historical media unavailable]')
         expect(msg.attachments).to be_empty
       end
     end

@@ -1,4 +1,4 @@
-import { ref } from 'vue';
+import { nextTick, reactive, ref } from 'vue';
 import { mount } from '@vue/test-utils';
 import { createStore } from 'vuex';
 import { useAlert } from 'dashboard/composables';
@@ -25,15 +25,16 @@ describe('MessagesView Ryze history', () => {
   let currentChat;
   let dispatchMock;
 
-  const createComponent = (chatOverrides = {}) => {
-    currentChat = {
+  const createComponent = async (chatOverrides = {}) => {
+    currentChat = reactive({
       id: 42,
       inbox_id: 1,
       ryze_history_enabled: true,
       dataFetched: true,
+      allMessagesLoaded: true,
       messages: [{ id: 101, created_at: 1700000000 }],
       ...chatOverrides,
-    };
+    });
 
     dispatchMock = vi.fn().mockResolvedValue({
       has_more: true,
@@ -58,7 +59,7 @@ describe('MessagesView Ryze history', () => {
       },
     });
 
-    return mount(MessagesView, {
+    const wrapper = mount(MessagesView, {
       global: {
         plugins: [store],
         provide: {
@@ -96,17 +97,30 @@ describe('MessagesView Ryze history', () => {
         },
       },
     });
+    await nextTick();
+    return wrapper;
   };
 
-  it('renders load older WhatsApp messages button when ryze_history_enabled is true', () => {
-    const wrapper = createComponent();
+  it('renders load older WhatsApp messages button when ryze_history_enabled is true', async () => {
+    const wrapper = await createComponent();
 
     expect(wrapper.vm.showRyzeHistoryButton).toBe(true);
     expect(wrapper.text()).toContain('CONVERSATION.RYZE_HISTORY.LOAD_OLDER');
   });
 
-  it('does not render button when ryze_history_enabled is false or missing', () => {
-    const wrapper = createComponent({ ryze_history_enabled: false });
+  it('does not mark historical imports as the first unread message', async () => {
+    const history = { id: 101, created_at: 42, historical_import: true };
+    const incoming = { id: 102, created_at: 43 };
+    const wrapper = await createComponent({
+      agent_last_seen_at: null,
+      messages: [history, incoming],
+    });
+    expect(wrapper.vm.unReadMessages).toEqual([incoming]);
+    expect(wrapper.vm.readMessages).toEqual([history]);
+  });
+
+  it('does not render button when ryze_history_enabled is false or missing', async () => {
+    const wrapper = await createComponent({ ryze_history_enabled: false });
 
     expect(wrapper.vm.showRyzeHistoryButton).toBe(false);
     expect(wrapper.text()).not.toContain(
@@ -114,8 +128,32 @@ describe('MessagesView Ryze history', () => {
     );
   });
 
+  it('waits for local pagination to finish, including the empty timeline', async () => {
+    const wrapper = await createComponent({
+      allMessagesLoaded: false,
+      messages: [],
+    });
+    expect(wrapper.text()).not.toContain(
+      'CONVERSATION.RYZE_HISTORY.LOAD_OLDER'
+    );
+    currentChat.allMessagesLoaded = true;
+    await nextTick();
+    expect(wrapper.text()).toContain('CONVERSATION.RYZE_HISTORY.LOAD_OLDER');
+  });
+
+  it('ignores a click racing with an in-flight local load', async () => {
+    const wrapper = await createComponent();
+    const button = wrapper.get('button.next-button');
+    wrapper.vm.isLoadingPrevious = true;
+    await button.trigger('click');
+    expect(dispatchMock).not.toHaveBeenCalled();
+    expect(wrapper.text()).not.toContain(
+      'CONVERSATION.RYZE_HISTORY.LOAD_OLDER'
+    );
+  });
+
   it('dispatches syncRyzeHistory on click and preserves state across pages', async () => {
-    const wrapper = createComponent();
+    const wrapper = await createComponent();
 
     const button = wrapper
       .findAll('button')
@@ -141,7 +179,7 @@ describe('MessagesView Ryze history', () => {
   });
 
   it('renders exhausted text when no more messages are available', async () => {
-    const wrapper = createComponent();
+    const wrapper = await createComponent();
     dispatchMock.mockResolvedValueOnce({
       has_more: false,
       next_before: null,
@@ -159,7 +197,7 @@ describe('MessagesView Ryze history', () => {
   });
 
   it('displays error alert when syncRyzeHistory rejects', async () => {
-    const wrapper = createComponent();
+    const wrapper = await createComponent();
     dispatchMock.mockRejectedValueOnce(new Error('Network error'));
 
     const button = wrapper

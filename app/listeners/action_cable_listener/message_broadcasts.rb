@@ -23,7 +23,7 @@ module ActionCableListener::MessageBroadcasts
 
   def message_agent_tokens(message, conversation)
     tokens = inbox_user_tokens(conversation)
-    return tokens unless Ryze::MessageDeletion.suppress_bridge_event?(message)
+    return tokens unless message.suppress_ryze_bridge_event?
 
     bridge_token = conversation.account.users.where(id: Ryze::OutboundDelivery.bridge_user_id).pick(:pubsub_token)
     tokens - [bridge_token]

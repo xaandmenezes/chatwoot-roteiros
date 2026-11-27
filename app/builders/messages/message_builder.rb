@@ -87,8 +87,9 @@ class Messages::MessageBuilder
   end
 
   def existing_incoming_text
-    incoming_delivery_candidates.where.missing(:attachments)
-                                .where(Messages::IncomingAttachmentReplay.fingerprint_attribute.eq(nil)).reorder(:id).first
+    candidates = incoming_delivery_candidates.left_joins(:attachments)
+    text = candidates.where(attachments: { id: nil }).where(Messages::IncomingAttachmentReplay.fingerprint_attribute.eq(nil))
+    text.or(candidates.history_imports).reorder(:id).first
   end
 
   def incoming_delivery_candidates

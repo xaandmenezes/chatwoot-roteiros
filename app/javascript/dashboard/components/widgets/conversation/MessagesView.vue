@@ -225,6 +225,8 @@ export default {
     showRyzeHistoryButton() {
       return (
         Boolean(this.currentChat?.ryze_history_enabled) &&
+        this.currentChat.allMessagesLoaded === true &&
+        !this.isLoadingPrevious &&
         this.currentRyzeHistoryState.hasMore
       );
     },
@@ -567,7 +569,7 @@ export default {
     },
     async loadRyzeHistory() {
       const conversationId = this.currentChat?.id;
-      if (!conversationId) return;
+      if (!conversationId || !this.showRyzeHistoryButton) return;
 
       const currentState =
         this.ryzeHistoryState[conversationId] || defaultRyzeHistoryState();

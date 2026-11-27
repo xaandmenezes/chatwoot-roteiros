@@ -90,7 +90,19 @@ class Message < ApplicationRecord
   attr_accessor :historical_import
 
   def historical_import?
-    historical_import == true
+    historical_import == true || additional_attributes&.fetch('ryze_historical_sync', false) == true
+  end
+
+  def historical_media_pending?
+    historical_import? && !deleted && additional_attributes.key?(Ryze::HistoricalSync::MediaAttacher::PENDING_KEY)
+  end
+
+  def historical_event_data
+    { historical_import: true, historical_media_pending: historical_media_pending? }
+  end
+
+  def suppress_ryze_bridge_event?
+    (historical_import? && inbox.api?) || Ryze::MessageDeletion.suppress_bridge_event?(self)
   end
 
   enum :message_type, { incoming: 0, outgoing: 1, activity: 2, template: 3 }
@@ -126,6 +138,13 @@ class Message < ApplicationRecord
   store :external_source_ids, accessors: [:slack], coder: JSON, prefix: :external_source_id
 
   scope :created_since, ->(datetime) { where('created_at > ?', datetime) }
+  scope :without_history_imports, -> { where(not_historical_condition) }
+  scope :history_imports, -> { where(arel_table[:additional_attributes].contains({ ryze_historical_sync: true })) }
+
+  def self.not_historical_condition
+    key = Arel::Nodes.build_quoted('ryze_historical_sync')
+    Arel::Nodes::InfixOperation.new('->>', arel_table[:additional_attributes], key).is_distinct_from('true')
+  end
   scope :chat, -> { where.not(message_type: :activity).where(private: false) }
   scope :non_activity_messages, -> { where.not(message_type: :activity).reorder('created_at desc') }
   scope :today, -> { where("date_trunc('day', created_at) = ?", Date.current) }
@@ -211,6 +230,7 @@ class Message < ApplicationRecord
       conversation: conversation.present? ? conversation_push_event_data : nil
     )
     data[:echo_id] = echo_id if echo_id.present?
+    data.merge!(historical_event_data) if historical_import?
     data[:attachments] = attachments_event_data if attachments.present?
     data[:additional_attributes] = public_additional_attributes
     merge_sender_attributes(data)
@@ -498,12 +518,11 @@ class Message < ApplicationRecord
   end
 
   def preserve_latest_conversation_activity
-    return if conversation.blank?
-    return unless conversation.last_activity_at.nil? || created_at > conversation.last_activity_at
-
-    # rubocop:disable Rails/SkipsModelValidations
-    conversation.update_columns(last_activity_at: created_at, updated_at: Time.current)
-    # rubocop:enable Rails/SkipsModelValidations
+    table = Conversation.arel_table
+    activity = Arel::Nodes::NamedFunction.new('COALESCE', [table[:last_activity_at], table[:created_at]])
+    scope = Conversation.where(id: conversation_id, account_id: account_id)
+    # Compare and update atomically, without firing live conversation callbacks for history.
+    scope.where(activity.lt(created_at)).update_all(last_activity_at: created_at, updated_at: Time.current) # rubocop:disable Rails/SkipsModelValidations
   end
 
   def update_contact_activity
@@ -566,6 +585,8 @@ class Message < ApplicationRecord
     # ref: https://github.com/rails/rails/issues/44500
     # we want to skip the update event if the message is not updated
     return if previous_changes.blank?
+    # Moving a failed media retry to the back of the queue changes no visible fields.
+    return if historical_import? && previous_changes.keys == ['updated_at']
 
     send_update_event
   end

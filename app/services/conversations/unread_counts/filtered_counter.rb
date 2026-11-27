@@ -178,19 +178,7 @@ class Conversations::UnreadCounts::FilteredCounter
   end
 
   def unread_conversations
-    account.conversations
-           .joins(:messages)
-           .merge(Message.incoming.reorder(nil))
-           .where(messages: { account_id: account.id })
-           .where(unread_since_last_seen_condition)
-           .distinct
-  end
-
-  def unread_since_last_seen_condition
-    conversations = Conversation.arel_table
-    messages = Message.arel_table
-
-    conversations[:agent_last_seen_at].eq(nil).or(messages[:created_at].gt(conversations[:agent_last_seen_at]))
+    account.conversations.with_unread_incoming.distinct
   end
 
   def count_relation(relation) = relation.unscope(:order).count

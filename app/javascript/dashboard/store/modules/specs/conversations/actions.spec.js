@@ -320,6 +320,30 @@ describe('#actions', () => {
       expect(conversationB.dataFetched).toBe(true);
     });
 
+    it('requires a backward page after opening an imported search result above the latest chronological ID', async () => {
+      const page = Array.from({ length: 20 }, (_, i) => ({ id: 80 + i }));
+      axios.get
+        .mockResolvedValueOnce({ data: { meta: {}, payload: [] } })
+        .mockResolvedValueOnce({ data: { meta: {}, payload: page } });
+
+      await store.dispatch('setActiveChat', {
+        data: conversationA,
+        after: 500,
+      });
+      expect(axios.get.mock.calls.map(call => call[1].params)).toEqual([
+        { after: 500, before: 100 },
+        { before: 100 },
+      ]);
+      expect(conversationA.allMessagesLoaded).toBe(false);
+
+      axios.get.mockResolvedValueOnce({ data: { meta: {}, payload: [] } });
+      await store.dispatch('fetchPreviousMessages', {
+        conversationId: 42,
+        before: 80,
+      });
+      expect(conversationA.allMessagesLoaded).toBe(true);
+    });
+
     it('leaves failed history unfetched and retries when the conversation is reopened', async () => {
       axios.get.mockRejectedValueOnce(new Error('Network error'));
 

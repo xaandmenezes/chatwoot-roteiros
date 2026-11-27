@@ -399,7 +399,9 @@
     "RYZE_HISTORY": {
       "LOAD_OLDER": "Load older WhatsApp messages",
       "NO_MORE": "No older messages available",
-      "LOAD_ERROR": "Could not load older messages. Please try again."
+      "LOAD_ERROR": "Could not load older messages. Please try again.",
+      "RETRY_MEDIA": "Retry historical media download",
+      "MEDIA_ERROR": "The media is still unavailable. You can retry this message later."
     },
     "SEND_FAILED": "Couldn't send message! Try again",
     "TRY_AGAIN": "retry",

@@ -167,6 +167,14 @@ class ConversationApi extends ApiClient {
       { timeout: RYZE_HISTORY_TIMEOUT }
     );
   }
+
+  repairHistoricalMedia(conversationId, messageId) {
+    return axios.post(
+      `${this.url}/${conversationId}/ryze_history/media/${messageId}`,
+      {},
+      { timeout: RYZE_HISTORY_TIMEOUT }
+    );
+  }
 }
 
 export default new ConversationApi();

@@ -1,109 +1,97 @@
 class Ryze::HistoricalSync
   class UpstreamError < StandardError; end
   class RateLimitError < UpstreamError; end
+  class InvalidCursor < ArgumentError; end
+  class NotEnabled < ArgumentError; end
 
   Result = Struct.new(:imported_messages, :has_more, :next_before, keyword_init: true)
   PageResult = Struct.new(:imported, :has_more, :next_before, :next_cursor, keyword_init: true)
 
   PAGE_SIZE = 50
   MAX_PAGES_PER_RUN = 3
-  MAX_MEDIA_BYTES = MediaAttacher::MAX_MEDIA_BYTES
+  RUN_BUDGET = 20.seconds
   SKIPPED_TYPES = %w[reaction message_edit message_revoke protocol_message].freeze
-  MEDIA_FILE_TYPES = MediaAttacher::MEDIA_FILE_TYPES
 
   def self.enabled?(conversation)
-    Ryze::OutgoingEditEligibility.pilot_conversation?(conversation) && ENV['RYZE_HISTORY_SYNC_ENABLED'] != 'false'
+    return false if ENV['RYZE_HISTORY_SYNC_ENABLED'] == 'false' || !Ryze::OutgoingEditEligibility.pilot_conversation?(conversation)
+
+    !Ryze::OutgoingEditEligibility.direct_inbox_enabled? || Ryze::HistoryBinding.verified?(conversation)
   end
 
   def initialize(conversation:, before: nil, client: nil)
     @conversation = conversation
     @before = before
-    @client = client || default_client
+    @provided_client = client
   end
 
   def perform
-    validate_sync_prerequisites!
-
+    @session = Session.new(@conversation, client: @provided_client)
     cursor_time = parse_cursor(@before)
-    imported_messages = []
-    seen_ids = Set.new
-    has_more = false
-    next_before = nil
-
-    MAX_PAGES_PER_RUN.times do
-      page_result = process_page(cursor_time, seen_ids)
-      break if page_result.nil?
-
-      imported_messages.concat(page_result.imported)
-      has_more = page_result.has_more
-      next_before = page_result.next_before
-      cursor_time = page_result.next_cursor
-
-      break if imported_messages.any? || !has_more
-    end
-
-    build_result(imported_messages, has_more, next_before)
+    @session.media.repair_pending
+    import_history(cursor_time)
   end
 
   private
 
-  def build_result(imported_messages, has_more, next_before)
-    Result.new(
-      imported_messages: imported_messages.sort_by { |m| [m.created_at, m.id] },
-      has_more: has_more,
-      next_before: next_before
-    )
-  end
+  def import_history(cursor_time)
+    seen_ids = Set.new
+    page = nil
 
-  def default_client
-    Ryze::Client.new(
-      instance: ENV.fetch('RYZE_INSTANCE_NAME'),
-      token: ENV.fetch('RYZE_EDIT_API_TOKEN'),
-      read_timeout: 12,
-      request_budget: 25
-    )
-  end
+    MAX_PAGES_PER_RUN.times do
+      page = process_page(cursor_time, seen_ids)
+      break if page.imported.any? || !page.has_more || Time.current >= @session.deadline
 
-  def validate_sync_prerequisites!
-    chat_jid = Ryze::OutgoingEditEligibility.conversation_jid(@conversation)
-    raise ArgumentError, 'Ryze historical sync is not enabled for this conversation' unless self.class.enabled?(@conversation)
-    raise ArgumentError, 'Conversation does not have a valid WhatsApp JID' if chat_jid.blank?
+      cursor_time = page.next_cursor
+    end
 
-    @chat_jid = chat_jid
+    messages = page.imported.sort_by { |message| [message.created_at, message.id] }
+    Result.new(imported_messages: messages, has_more: page.has_more, next_before: page.next_before)
   end
 
   def process_page(cursor_time, seen_ids)
     raw_messages = fetch_history_page(cursor_time)
-    return if raw_messages.empty?
+    raise UpstreamError, 'Ryze history page exceeds requested size' if raw_messages.size > PAGE_SIZE
 
-    timestamps = raw_messages.filter_map { |item| parse_timestamp(item['timestamp']) }
-    oldest_ts = timestamps.min
+    result = pagination(raw_messages, cursor_time)
+    unseen_items(raw_messages, seen_ids).each do |item|
+      # Replay this page rather than advancing past rows not yet persisted.
+      return interrupted_page(result.imported, cursor_time, raw_messages) if Time.current >= @session.deadline
 
-    imported = import_page_messages(raw_messages, seen_ids)
-    should_stop = raw_messages.size < PAGE_SIZE || oldest_ts.nil? || (cursor_time && oldest_ts >= cursor_time)
+      message = persist_message(item, message_id(item))
+      result.imported << message if message
+    end
+    result
+  end
 
-    PageResult.new(
-      imported: imported,
-      has_more: !should_stop,
-      next_before: should_stop ? nil : oldest_ts.to_i,
-      next_cursor: oldest_ts
-    )
+  def pagination(items, cursor_time)
+    oldest = items.filter_map { |item| parse_timestamp(item['timestamp']) }.min
+    has_more = items.size == PAGE_SIZE && oldest.present? && (!cursor_time || oldest < cursor_time)
+    PageResult.new(imported: [], has_more: has_more, next_before: has_more ? oldest.to_i : nil, next_cursor: oldest)
+  end
+
+  def interrupted_page(imported, cursor_time, items)
+    newest = items.filter_map { |item| parse_timestamp(item['timestamp']) }.max || Time.current
+    retry_before = cursor_time || (newest + 1.second)
+    PageResult.new(imported: imported, has_more: true, next_before: retry_before.to_f.ceil, next_cursor: retry_before)
   end
 
   def parse_cursor(before)
-    return @conversation.messages.minimum(:created_at) if before.blank?
-    return Time.zone.at(before.to_i) if before.is_a?(Numeric) || before.to_s.match?(/\A\d+\z/)
+    return @conversation.messages.minimum(:created_at) if before.nil?
+    return Time.zone.at(before.to_i) if (before.is_a?(Integer) || before.is_a?(String)) && before.to_s.match?(/\A\d{1,10}\z/)
+    raise InvalidCursor unless before.is_a?(String)
 
-    Time.iso8601(before.to_s)
+    Time.iso8601(before)
   rescue ArgumentError
-    Time.zone.at(before.to_i)
+    raise InvalidCursor, 'Invalid history cursor'
   end
 
   def fetch_history_page(cursor_time)
-    payload = { number: @chat_jid, count: PAGE_SIZE }
+    raise UpstreamError, 'Ryze history deadline reached' if Time.current >= @session.deadline
+
+    payload = { number: @session.chat_jid, count: PAGE_SIZE }
     payload[:to] = cursor_time.utc.iso8601 if cursor_time.present?
 
-    response = @client.post('chat/history', payload)
+    response = @session.client.post('chat/history', payload)
     raise RateLimitError, "Ryze rate limit reached: #{response.code}" if response.code.to_i == 429
     raise UpstreamError, "Ryze upstream error: #{response.code}" unless response.code.to_i.between?(200, 299)
 
@@ -127,40 +115,31 @@ class Ryze::HistoricalSync
     messages.is_a?(Array) ? messages : []
   end
 
-  def import_page_messages(raw_messages, seen_ids)
-    candidate_ids = raw_messages.filter_map { |item| message_id(item) }.uniq
-    return [] if candidate_ids.empty?
-
-    existing_ids = @conversation.messages.where(source_id: candidate_ids).pluck(:source_id).to_set
-
-    imported = []
-    raw_messages.each do |item|
+  def unseen_items(raw_messages, seen_ids)
+    candidates = raw_messages.select do |item|
       id = message_id(item)
-      next if duplicate_or_seen?(id, seen_ids, existing_ids)
-
-      seen_ids.add(id)
-      message = persist_message(item, id)
-      imported << message if message
+      id.present? && seen_ids.add?(id)
     end
-
-    imported
-  end
-
-  def duplicate_or_seen?(id, seen_ids, existing_ids)
-    id.blank? || seen_ids.include?(id) || existing_ids.include?(id)
+    ids = candidates.map { |item| message_id(item) }
+    existing_ids = @conversation.messages.where(source_id: ids).pluck(:source_id).to_set
+    candidates.reject { |item| existing_ids.include?(message_id(item)) }
   end
 
   def persist_message(item, id)
     type = (item['type'] || item['messageType']).to_s
     return if SKIPPED_TYPES.include?(type)
 
-    message = build_historical_message(item, id)
-    MediaAttacher.new(conversation: @conversation, client: @client).attach(message, item, id, type)
-    message.save!
-    message
-  rescue RateLimitError
-    raise
-  rescue StandardError => e
+    @session.media.with_download(item, id, type) do |blob|
+      @session.with_current_target do
+        next if @conversation.messages.exists?(source_id: id)
+
+        message = build_historical_message(item, id)
+        @session.media.assign(message, item, type, blob)
+        message.save!
+        message
+      end
+    end
+  rescue ActiveRecord::RecordInvalid => e
     Rails.logger.warn("Ryze historical message import failed for #{id}: #{e.message}")
     nil
   end
