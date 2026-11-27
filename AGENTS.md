@@ -9,9 +9,9 @@ Projeto: https://linear.app/porto-seguro-roteiros/project/implementacao-chatwoot
 ### Orquestração e CI
 
 - Orquestrador principal: Gemini 4 Hydrogen. Delegados usam a família ativa (padrão Codex: papéis operacionais com `serviceTier: "priority"` / Fast e Oracle com `default`). O uso de `agy-fast` via shell é obrigatório; modelos e prompt estão em [Orquestração de IA da PSR](docs/orquestracao-ia-psr.md).
-- Cada issue tem responsável e branch/worktree própria a partir de `origin/develop` atualizado. Trabalho incompleto permanece na branch ou desativado. Entrada em `develop` e `prod` somente por PR; push direto é proibido. Consulte [Build e deploy da imagem PSR](docs/psr-image-ci.md).
+- Cada issue tem responsável e branch/worktree própria a partir de `origin/develop` atualizado. Trabalho incompleto permanece na branch ou desativado. Entrada em `develop` e `prod` somente por PR (com revisão e validação; release `develop` → `prod` listando todas as issues e nomeando o responsável); push direto é proibido. Consulte [Build e deploy da imagem PSR](docs/psr-image-ci.md).
 - Obtenha autorização de deploy antes do merge em `prod` e confira versão ativa, `/health` e Sidekiq após o deploy. Hotfix parte de `prod`, com PR de volta para `develop`.
-- Restrinja testes reais de envio, edição, reação ou exclusão à conversa e às ações autorizadas para a rodada; a conversa `#71` exige autorização específica de Vinicius A. Freire. Registre na issue o destino, as ações autorizadas, o responsável, o que foi confirmado e o que ainda depende de teste real.
+- Restrinja testes reais de envio, edição, reação ou exclusão a uma conversa controlada, com autorização válida apenas para aquela rodada e ações autorizadas; a conversa `#71` é pessoal de Vinicius A. Freire e exige autorização específica dele por rodada. Registre na issue o destino, as ações autorizadas, o responsável, o que foi confirmado e o que ainda depende de teste real.
 
 ## Build, Test, and Lint
 
