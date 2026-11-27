@@ -70,7 +70,7 @@ body {
 }
 
 .text-link {
-  @apply text-n-brand font-medium hover:text-n-blue-10;
+  @apply text-n-brand font-medium hover:text-n-brand-hover;
 }
 
 .v-popper--theme-tooltip .v-popper__inner {

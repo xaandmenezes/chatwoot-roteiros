@@ -11,7 +11,9 @@ RSpec.describe 'Devise::Mailer' do
     let(:mail_body) { CGI.unescapeHTML(mail.body.to_s) }
 
     it 'has the correct header data' do
-      expect(mail.reply_to).to contain_exactly('accounts@chatwoot.com')
+      sender = Mail::Address.new(Devise.mailer_sender)
+      expect(mail[:from].addrs).to contain_exactly(have_attributes(address: sender.address, display_name: sender.display_name))
+      expect(mail.reply_to).to contain_exactly(sender.address)
       expect(mail.to).to contain_exactly(confirmable_user.email)
       expect(mail.subject).to eq('Confirmation Instructions')
     end
@@ -34,13 +36,17 @@ RSpec.describe 'Devise::Mailer' do
 
     it 'shows the default confirmation state' do
       expect(mail_body).to include('Confirm your email to get started')
-      expect(mail_body).to include('Welcome to Chatwoot. We just need to verify your email address before you can start using your account.')
+      expect(mail_body).to include('Welcome to Porto Seguro Roteiros.')
       expect(mail_body).to include('Confirm my account')
       expect(mail_body).not_to include('Workspace invitation')
     end
 
     it 'sends a confirmation link' do
-      expect(mail.body).to include("app/auth/confirmation?confirmation_token=#{confirmable_user.confirmation_token}")
+      document = Nokogiri::HTML(mail.body.decoded)
+      action = document.css('a').find { |link| link.text == 'Confirm my account' }
+      expect(action['href']).to start_with(Rails.application.routes.url_helpers.root_url)
+      expect(action['href']).to include("app/auth/confirmation?confirmation_token=#{confirmable_user.confirmation_token}")
+      expect(document.at_css('img[alt="Porto Seguro Roteiros"]')['src']).to start_with(Rails.application.routes.url_helpers.root_url)
       expect(mail.body).not_to include('app/auth/password/edit')
     end
 
@@ -53,7 +59,7 @@ RSpec.describe 'Devise::Mailer' do
 
       it 'refers to the inviter and their account' do
         expect(mail_body).to include("You're invited to join #{account.name}")
-        expect(mail_body).to include("#{inviter_val.name} invited you to join the #{account.name} workspace on Chatwoot.")
+        expect(mail_body).to include("#{inviter_val.name} invited you to join the #{account.name} workspace on Porto Seguro Roteiros.")
         expect(mail_body).to include('Accept invitation')
         expect(mail_body).not_to include('Confirm your email to get started')
       end

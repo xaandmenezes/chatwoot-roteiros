@@ -16,6 +16,7 @@ const {
   GIT_SHA: gitSha,
   MAXIMUM_FILE_UPLOAD_SIZE: maximumFileUploadSize,
   HCAPTCHA_SITE_KEY: hCaptchaSiteKey,
+  INSTALLATION_BRANDING: originalBranding,
   INSTALLATION_NAME: installationName,
   LOGO_THUMBNAIL: logoThumbnail,
   LOGO: logo,
@@ -32,6 +33,12 @@ const {
   ACTIVE_PLATFORM_BANNERS: activePlatformBanners,
   ACTIVE_FEATURE_ANNOUNCEMENTS: activeFeatureAnnouncements,
 } = window.globalConfig || {};
+
+const {
+  INSTALLATION_NAME: originalInstallationName = installationName,
+  BRAND_NAME: originalBrandName = brandName,
+  LOGO_THUMBNAIL: originalLogoThumbnail = logoThumbnail,
+} = originalBranding || {};
 
 const state = {
   apiChannelName,
@@ -53,6 +60,11 @@ const state = {
   maximumFileUploadSize: resolveMaximumFileUploadSize(maximumFileUploadSize),
   hCaptchaSiteKey,
   installationName,
+  installationBranding: {
+    installationName: originalInstallationName,
+    brandName: originalBrandName,
+    logoThumbnail: originalLogoThumbnail,
+  },
   logo,
   logoDark,
   logoThumbnail,
@@ -72,8 +84,10 @@ export const getters = {
     $state.deploymentEnv === 'cloud' && $state.disableMetaInboxCreation,
   isMetaMessageSendingDisabled: $state =>
     $state.deploymentEnv === 'cloud' && $state.disableMetaMessageSending,
-  isACustomBrandedInstance: $state => $state.installationName !== 'Chatwoot',
-  isAChatwootInstance: $state => $state.installationName === 'Chatwoot',
+  installationBranding: $state => $state.installationBranding,
+  isAChatwootInstance: $state =>
+    $state.installationBranding.installationName === 'Chatwoot',
+  isACustomBrandedInstance: ($state, $getters) => !$getters.isAChatwootInstance,
 };
 
 export const actions = {};

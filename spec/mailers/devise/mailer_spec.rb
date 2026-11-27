@@ -20,9 +20,13 @@ RSpec.describe Devise::Mailer do
            .with(redirect_url: redirect_url, sso_account_id: '42')
            .reset_password_instructions(user, 'reset-token')
 
-    expect(CGI.unescapeHTML(mail.body.to_s)).to include(
+    document = Nokogiri::HTML(mail.body.decoded)
+    action = document.css('a').find { |link| link.text == 'Change my password' }
+    expect(action['href']).to include(
+      '/app/auth/password/edit?reset_password_token=reset-token',
       'route_url=settings%2Fbilling%3Fplan_handle%3Dgrowth',
       'sso_account_id=42'
     )
+    expect(document.at_css('img[alt="Porto Seguro Roteiros"]')).to be_present
   end
 end

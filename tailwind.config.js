@@ -54,11 +54,21 @@ const tailwindConfig = {
           border: colors.n.weak,
           ring: colors.n.strong.replace('<alpha-value>', '0.5'),
           primary: colors.n.brand,
-          'primary-soft': `${colors.n.brand}1a`,
+          'primary-soft': 'rgb(var(--brand, 39 129 246) / 0.1)',
           overlay: colors.n.alpha.black1,
           online: colors.n.teal[10],
           busy: colors.n.amber[10],
           offline: colors.n.slate[10],
+        },
+      },
+      textColor: {
+        n: {
+          brand: 'rgb(var(--brand-text, 39 129 246) / <alpha-value>)',
+          'brand-hover':
+            'rgb(var(--brand-hover, var(--blue-10)) / <alpha-value>)',
+        },
+        jumpbar: {
+          primary: 'rgb(var(--brand-text, 39 129 246) / <alpha-value>)',
         },
       },
       fontFamily: {

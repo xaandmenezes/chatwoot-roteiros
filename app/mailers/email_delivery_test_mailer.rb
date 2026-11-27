@@ -8,11 +8,7 @@ class EmailDeliveryTestMailer < ApplicationMailer
 
   private
 
-  def brand_name
-    GlobalConfig.get_value('BRAND_NAME').presence || 'Chatwoot'
-  end
-
   def liquid_locals
-    super.merge(brand_name: brand_name, recipient_name: @recipient_name)
+    super.merge(recipient_name: @recipient_name)
   end
 end

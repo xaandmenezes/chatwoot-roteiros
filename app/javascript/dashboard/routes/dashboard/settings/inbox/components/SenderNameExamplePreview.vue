@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n';
 import Avatar from 'next/avatar/Avatar.vue';
 import RadioCard from 'dashboard/components-next/radioCard/RadioCard.vue';
 import { useBranding } from 'shared/composables/useBranding';
+import { useMapGetter } from 'dashboard/composables/store';
 
 const props = defineProps({
   senderNameType: {
@@ -23,7 +24,8 @@ const props = defineProps({
 const emit = defineEmits(['update']);
 
 const { t } = useI18n();
-const { replaceInstallationName } = useBranding();
+const installationBranding = useMapGetter('globalConfig/installationBranding');
+const { replaceInstallationName } = useBranding(installationBranding);
 
 const senderNameKeyOptions = computed(() => [
   {

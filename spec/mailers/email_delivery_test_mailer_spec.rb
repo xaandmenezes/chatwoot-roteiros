@@ -8,18 +8,27 @@ RSpec.describe EmailDeliveryTestMailer do
 
   it 'sends a branded test email to the user' do
     expect(mail.to).to eq(['agent@example.com'])
-    expect(mail.from).to eq([Mail::Address.new(ApplicationMailer.default[:from]).address])
-    expect(mail.subject).to eq('Test email from Chatwoot support')
+    sender = Mail::Address.new(ApplicationMailer.default[:from])
+    expect(mail[:from].addrs).to contain_exactly(have_attributes(address: sender.address, display_name: sender.display_name))
+    expect(mail.subject).to eq('Test email from Porto Seguro Roteiros support')
     expect(mail.body.encoded).to include('Hi Jane Agent,')
-    expect(mail.body.encoded).to include('check that emails from Chatwoot reach your inbox')
+    expect(mail.body.decoded).to include('check that emails from Porto Seguro Roteiros reach your inbox')
+    document = Nokogiri::HTML(mail.body.decoded)
+    expect(document.at_css('img[alt="Porto Seguro Roteiros"]')['src']).to end_with('/brand-assets/psr/logo.png')
+    expect(document.at_css('a[href="https://www.portoseguroroteiros.com.br"]').text).to eq('Porto Seguro Roteiros')
   end
 
-  it 'uses the installation brand name' do
-    allow(GlobalConfig).to receive(:get_value).and_call_original
-    allow(GlobalConfig).to receive(:get_value).with('BRAND_NAME').and_return('Acme')
+  it 'retains the configured brand and logo' do
+    allow(GlobalConfig).to receive(:get).and_call_original
+    allow(GlobalConfig).to receive(:get).with('BRAND_NAME', 'BRAND_URL', 'LOGO').and_return(
+      { 'BRAND_NAME' => 'Acme & Co', 'BRAND_URL' => 'https://example.org', 'LOGO' => 'https://images.example.org/logo.png' }
+    )
 
-    expect(mail.subject).to eq('Test email from Acme support')
-    expect(mail.body.encoded).to include('Test email from Acme')
+    expect(mail.subject).to eq('Test email from Acme & Co support')
+    document = Nokogiri::HTML(mail.body.decoded)
+    expect(document.at_css('img')['alt']).to eq('Acme & Co')
+    expect(document.at_css('img')['src']).to eq('https://images.example.org/logo.png')
+    expect(document.at_css('a[href="https://example.org"]').text).to eq('Acme & Co')
   end
 
   it 'greets by address when the name is blank' do
