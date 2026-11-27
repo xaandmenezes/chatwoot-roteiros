@@ -52,15 +52,15 @@ class Webhooks::RyzeController < ActionController::API
     return head :ok unless reaction.in_pilot?(pilot_chat_id)
 
     validation_error = reaction.validation_error
-    return reject_invalid_reaction(validation_error) if validation_error
+    return reject_invalid_reaction(reaction, validation_error) if validation_error
     return head :service_unavailable unless inbox&.api?
 
     result = Ryze::ReactionWebhook.new(inbox: inbox, event: reaction).perform
     head(result == :conflict ? :conflict : :ok)
   end
 
-  def reject_invalid_reaction(reason)
-    Rails.logger.info("Ryze pilot reaction rejected field=#{reason}")
+  def reject_invalid_reaction(reaction, reason)
+    Rails.logger.info("Ryze pilot reaction rejected field=#{reason} target_shape=#{reaction.target_shape}")
     head :bad_request
   end
 
