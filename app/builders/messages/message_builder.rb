@@ -65,8 +65,9 @@ class Messages::MessageBuilder
   end
 
   def receive_native_mirror
-    @conversation.with_lock do
-      @message = Ryze::OutboundMessageCorrelation.matching_message(@conversation, @params[:source_id]) || create_message(native_mirror: true)
+    mirror = Ryze::ReactionMirror.new(conversation: @conversation, provider_id: @params[:source_id])
+    @message = mirror.receive(content: @params[:content]) do
+      Ryze::OutboundMessageCorrelation.matching_message(@conversation, @params[:source_id]) || create_message(native_mirror: true)
     end
   end
 

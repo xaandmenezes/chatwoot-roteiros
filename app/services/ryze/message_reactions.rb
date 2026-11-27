@@ -75,18 +75,15 @@ class Ryze::MessageReactions
   end
 
   # Callers hold the original message lock while writing or comparing its state.
-  def apply!(direction, attributes, source:)
+  def apply!(direction, attributes, source:, replayed: false)
     current = state.dup
     pending = matching_claim(direction, source, attributes['emoji'])
     previous = current[direction]
-    advanced = newer?(previous, attributes, pending: pending)
+    advanced = (!replayed || pending) && newer?(previous, attributes, pending: pending)
     return unless advanced || pending
 
-    if pending
-      current.delete('pending')
-      attributes = attributes.merge(pending.slice('author', 'agent_id'))
-    end
     current[direction] = attributes if advanced
+    apply_claim!(current, direction, attributes['id'], pending) if pending
     write!(current)
   end
 
@@ -103,6 +100,12 @@ class Ryze::MessageReactions
   end
 
   private
+
+  def apply_claim!(current, direction, id, pending)
+    current.delete('pending')
+    confirmed = current[direction]
+    current[direction] = confirmed.merge(pending.slice('author', 'agent_id')) if confirmed&.fetch('id') == id
+  end
 
   def matching_claim(direction, source, emoji)
     pending = state['pending']

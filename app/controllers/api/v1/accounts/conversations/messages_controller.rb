@@ -33,6 +33,7 @@ class Api::V1::Accounts::Conversations::MessagesController < Api::V1::Accounts::
     user = Current.user || @resource
     mb = Messages::MessageBuilder.new(user, @conversation, params, api_token_request: @access_token.present?)
     @message = mb.perform(replay_incoming_attachments: true)
+    head :no_content unless @message
   rescue StandardError => e
     render_could_not_create_error(e.message)
   end

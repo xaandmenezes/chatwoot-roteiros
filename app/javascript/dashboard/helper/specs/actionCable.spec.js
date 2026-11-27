@@ -34,6 +34,7 @@ describe('ActionCableConnector - Copilot Tests', () => {
     store = {
       $store: {
         dispatch: mockDispatch,
+        commit: vi.fn(),
         getters: {
           getCurrentAccountId: 1,
           'accounts/isFeatureEnabledonAccount': vi.fn(() => true),
@@ -127,6 +128,19 @@ describe('ActionCableConnector - Copilot Tests', () => {
         expect.anything()
       );
     });
+  });
+
+  it('applies a reaction echo removal only in the active account', () => {
+    const event = 'message.ryze_reaction_echo_removed';
+    const data = { id: 2, account_id: 1, conversation_id: 71 };
+
+    actionCable.onReceived({ event, data: { ...data, account_id: 2 } });
+    actionCable.onReceived({ event, data });
+
+    expect(store.$store.commit).toHaveBeenCalledExactlyOnceWith(
+      'REMOVE_RYZE_REACTION_ECHO',
+      data
+    );
   });
 
   describe('presence.update', () => {

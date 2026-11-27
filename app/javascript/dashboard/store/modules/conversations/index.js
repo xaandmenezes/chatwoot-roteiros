@@ -25,6 +25,7 @@ const state = {
   conversationFilters: {},
   copilotAssistant: {},
   autoTranslating: {},
+  removedRyzeEchoIds: {},
 };
 
 const getConversationById = _state => conversationId => {
@@ -114,6 +115,7 @@ export const mutations = {
   [types.EMPTY_ALL_CONVERSATION](_state) {
     _state.allConversations = [];
     _state.selectedChatId = null;
+    _state.removedRyzeEchoIds = {};
   },
   [types.SET_ALL_MESSAGES_LOADED](_state, conversationId) {
     const chat = getConversationById(_state)(conversationId);
@@ -137,7 +139,12 @@ export const mutations = {
       const [chat] = _state.allConversations.filter(c => c.id === id);
       const messageIds = new Set(chat.messages.map(message => message.id));
       const newMessages = data.filter(message => {
-        if (messageIds.has(message.id)) return false;
+        if (
+          messageIds.has(message.id) ||
+          _state.removedRyzeEchoIds?.[message.id]
+        ) {
+          return false;
+        }
         messageIds.add(message.id);
         return true;
       });
@@ -150,16 +157,19 @@ export const mutations = {
   [types.SET_MISSING_MESSAGES](_state, { id, data }) {
     const [chat] = _state.allConversations.filter(c => c.id === id);
     if (!chat) return;
+    const remaining = data.filter(
+      message => !_state.removedRyzeEchoIds?.[message.id]
+    );
     const previousMessages = new Map(
       (chat.messages ?? [])
         .filter(message => message.ryze_reactions)
         .map(message => [message.id, message])
     );
     chat.messages = previousMessages.size
-      ? data.map(message =>
+      ? remaining.map(message =>
           preserveNewerReactions(message, previousMessages.get(message.id))
         )
-      : data;
+      : remaining;
   },
 
   [types.SET_CHAT_DATA_FETCHED](_state, conversationId) {
@@ -287,7 +297,12 @@ export const mutations = {
     });
   },
 
-  [types.ADD_MESSAGE]({ allConversations, selectedChatId }, message) {
+  [types.ADD_MESSAGE](
+    { allConversations, selectedChatId, removedRyzeEchoIds },
+    message
+  ) {
+    if (removedRyzeEchoIds?.[message.id]) return;
+
     const { conversation_id: conversationId } = message;
     const [chat] = getSelectedChatConversation({
       allConversations,
@@ -354,6 +369,31 @@ export const mutations = {
       reactions?.revision > (message.ryze_reactions?.revision ?? 0)
     ) {
       message.ryze_reactions = reactions;
+    }
+  },
+  [types.REMOVE_RYZE_REACTION_ECHO](_state, payload) {
+    const {
+      id,
+      conversation_id: conversationId,
+      last_non_activity_message: preview,
+    } = payload;
+    _state.removedRyzeEchoIds ??= {};
+    _state.removedRyzeEchoIds[id] = true;
+
+    const chat = getConversationById(_state)(conversationId);
+    if (!chat) return;
+
+    chat.messages = chat.messages.filter(message => message.id !== id);
+    if (chat.last_non_activity_message?.id === id) {
+      chat.last_non_activity_message = _state.removedRyzeEchoIds[preview?.id]
+        ? null
+        : preview;
+    }
+    if (chat.last_activity_at <= payload.echo_created_at) {
+      chat.last_activity_at = payload.last_activity_at;
+    }
+    if (chat.timestamp <= payload.echo_created_at) {
+      chat.timestamp = payload.last_activity_at;
     }
   },
 

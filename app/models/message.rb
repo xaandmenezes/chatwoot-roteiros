@@ -238,6 +238,17 @@ class Message < ApplicationRecord
     data
   end
 
+  def referenced_in_conversation?
+    column = self.class.arel_table[:content_attributes]
+    # ActiveRecord::Store wraps this JSON column in serialized JSON.
+    serialized = Arel::Nodes::InfixOperation.new('#>>', column, Arel::Nodes.build_quoted('{}'))
+    attributes = Arel::Nodes::NamedFunction.new('CAST', [Arel::Nodes::Grouping.new(serialized).as('jsonb')])
+    references = %w[in_reply_to forwarded_message_id].map do |attribute|
+      Arel::Nodes::InfixOperation.new('->>', attributes, Arel::Nodes.build_quoted(attribute)).eq(id.to_s)
+    end
+    conversation.messages.where(references.reduce(&:or)).exists?
+  end
+
   def agent_revocation_data(data)
     revocation = customer_revocation
     return data unless revocation

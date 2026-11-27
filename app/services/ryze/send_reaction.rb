@@ -1,4 +1,6 @@
 class Ryze::SendReaction
+  REMOVAL_RECEIPT = 'Reaction removed successfully'.freeze
+
   def initialize(message:, actor:, emoji:)
     @message = message
     @actor = actor
@@ -56,8 +58,12 @@ class Ryze::SendReaction
   end
 
   def acknowledgment(response, instance)
-    data = accepted_body(response)
-    return unless data && matches_command?(data) && matches_session?(data, instance)
+    body = accepted_receipt(response)
+    return unless body
+
+    data = body['data']
+    return unless matches_command?(data) && matches_session?(data, instance)
+    return unless matches_content?(data['content'], body['message'])
 
     timestamp = data['timestamp']
     return unless timestamp.is_a?(String)
@@ -67,13 +73,17 @@ class Ryze::SendReaction
     nil
   end
 
-  def accepted_body(response)
+  def accepted_receipt(response)
     body = JSON.parse(response.body)
-    body['data'] if body.is_a?(Hash) && body.values_at('success', 'status') == [true, 'sent'] && body['data'].is_a?(Hash)
+    body if body.is_a?(Hash) && body.values_at('success', 'status') == [true, 'sent']
+  end
+
+  def matches_content?(content, receipt)
+    content == @emoji || (@emoji.empty? && content.nil? && receipt == REMOVAL_RECEIPT)
   end
 
   def matches_command?(data)
-    data.values_at('direction', 'messageType', 'source', 'content') == ['sent', 'reaction', @source, @emoji] &&
+    data.is_a?(Hash) && data.values_at('direction', 'messageType', 'source') == ['sent', 'reaction', @source] &&
       Ryze::OutboundDelivery.provider_id?(data['messageId']) && data['messageId'] != @target_id &&
       data['replyTo'].is_a?(Hash) && data['replyTo']['messageId'] == @target_id
   end
@@ -84,12 +94,19 @@ class Ryze::SendReaction
   end
 
   def confirm(attributes)
-    @message.with_lock do
-      next :confirmed unless pending?
-      next :pending unless attributes
+    conversation = @message.conversation
+    conversation.with_lock do
+      @message.with_lock do
+        next :confirmed unless pending?
+        next :pending unless attributes
 
-      @reactions.apply!('outgoing', attributes, source: @source)
-      :confirmed
+        echo = Ryze::ReactionMirror.new(conversation: conversation, provider_id: attributes.fetch('id'))
+        receipt = echo.record!(target_id: @target_id, emoji: @emoji)
+        next :pending if receipt == :conflict
+
+        @reactions.apply!('outgoing', attributes, source: @source, replayed: receipt == :replayed)
+        :confirmed
+      end
     end
   end
 
