@@ -34,7 +34,7 @@ class Webhooks::RyzeController < ActionController::API
   end
 
   def log_pilot_event(event)
-    Rails.logger.info(event.pilot_log_line) if pilot_chat_id.present? && event.chat_ids.include?(pilot_chat_id)
+    Rails.logger.info(event.pilot_log_line) if eligible_chat?(event)
   end
 
   def process_outgoing(event)
@@ -49,7 +49,8 @@ class Webhooks::RyzeController < ActionController::API
   end
 
   def process_reaction(reaction)
-    return head :ok unless reaction.in_pilot?(pilot_chat_id)
+    allowed = direct_inbox_enabled? ? reaction.in_direct_chat? : reaction.in_pilot?(pilot_chat_id)
+    return head :ok unless allowed
 
     validation_error = reaction.validation_error
     return reject_invalid_reaction(reaction, validation_error) if validation_error
@@ -65,7 +66,7 @@ class Webhooks::RyzeController < ActionController::API
   end
 
   def outgoing_pilot_event?(event)
-    pilot_chat_id.present? && ENV['RYZE_EDIT_API_TOKEN'].present? && !event.outside_pilot?(pilot_chat_id)
+    ENV['RYZE_EDIT_API_TOKEN'].present? && eligible_chat?(event)
   end
 
   def confirm_delivery(event)
@@ -74,13 +75,29 @@ class Webhooks::RyzeController < ActionController::API
   end
 
   def process_event(event)
-    pilot_revocation = pilot_chat_id.present? && event.customer_revoked?
-    return head :bad_request unless event.valid?(require_chat: !pilot_revocation)
-    return head :ok if event.outside_pilot?(pilot_chat_id) && !pilot_revocation
+    revocation = scoped_revocation?(event)
+    return head :bad_request unless event.valid?(require_chat: !revocation)
+    return head :ok if event_outside_scope?(event) && !revocation
     return head :service_unavailable unless inbox&.api?
 
     Ryze::IncomingMessageChange.new(inbox: inbox, event: event).perform(pilot_chat_id: pilot_chat_id)
     head :ok
+  end
+
+  def scoped_revocation?(event)
+    event.customer_revoked? && (direct_inbox_enabled? || pilot_chat_id.present?)
+  end
+
+  def direct_inbox_enabled?
+    Ryze::OutgoingEditEligibility.direct_inbox_enabled?
+  end
+
+  def eligible_chat?(event)
+    direct_inbox_enabled? ? event.direct_chat? : (pilot_chat_id.present? && !event.outside_pilot?(pilot_chat_id))
+  end
+
+  def event_outside_scope?(event)
+    direct_inbox_enabled? ? !event.direct_chat? : event.outside_pilot?(pilot_chat_id)
   end
 
   def configured?

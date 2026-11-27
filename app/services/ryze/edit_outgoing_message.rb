@@ -38,8 +38,9 @@ class Ryze::EditOutgoingMessage
   def edit_at_provider
     provider = Ryze::MessageProvider.new
     source_id = @message.source_id
+    chat_jid = Ryze::OutgoingEditEligibility.conversation_jid(@conversation)
     revision = previous_revision
-    snapshot = provider.text(source_id)
+    snapshot = provider.text(source_id, chat_jid: chat_jid)
     return snapshot unless snapshot.is_a?(String)
     return :edit_pending unless snapshot == previous_remote_text
     return :edit_unavailable unless @claim.original?(@message.reload) && @eligibility.permitted?

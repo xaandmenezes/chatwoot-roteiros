@@ -5,7 +5,7 @@ class Ryze::ReactionWebhook
   end
 
   def perform
-    conversation = @inbox.conversations.find_by(display_id: Integer(ENV.fetch('RYZE_EDIT_CONVERSATION_ID', ''), 10, exception: false))
+    conversation = target_conversation
     return unless conversation
 
     conversation.with_lock do
@@ -22,6 +22,12 @@ class Ryze::ReactionWebhook
   end
 
   private
+
+  def target_conversation
+    return Ryze::OutgoingEditEligibility.matching_direct_conversation(@inbox, @event.chat_ids) if Ryze::OutgoingEditEligibility.direct_inbox_enabled?
+
+    @inbox.conversations.find_by(display_id: Integer(ENV.fetch('RYZE_EDIT_CONVERSATION_ID', ''), 10, exception: false))
+  end
 
   def record_echo(conversation)
     Ryze::ReactionMirror.new(conversation: conversation, provider_id: @event.id).record!(target_id: @event.target_id, emoji: @event.emoji)
