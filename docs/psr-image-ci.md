@@ -1,6 +1,6 @@
 # Build, homologação e deploy da imagem PSR
 
-O GitHub mantém os checks de código. PRs PSR para `develop` e `prod` e pushes em `develop` seguem sem build ou publicação da imagem PSR. O workflow upstream **Test Docker Build** continua disponível para PRs com base `master` e por execução manual. Se houver proteção de branch que exija um dos checks de imagem removidos, o administrador deve retirar essa exigência e manter os checks de código.
+Os testes de código, lint e verificações de segurança do diff rodam localmente. Registre o SHA validado, os resultados e as lacunas no PR. PRs PSR para `develop` e `prod` e pushes em `develop` seguem sem build ou publicação da imagem PSR. O workflow upstream **Test Docker Build** continua disponível para PRs com base `master` e por execução manual. No fork da PSR, mantenha desativados em Actions os workflows de validação automática de PR: Run Chatwoot CE spec, Run MFA Tests, Frontend Lint & Test, Run Size Limit Check, Migration Version Check, Log Lines Percentage Check e Lint PR. Confira as proteções de develop e prod para que o merge use as evidências locais registradas.
 
 Use o SHA completo do head do PR de release revisado. Se o head mudar, homologue o novo SHA. Para hotfix, use o head do PR de hotfix. Registre na issue o SHA, o ID Docker `sha256:…`, o SHA-256 do arquivo, o local de armazenamento e o resultado do smoke.
 
@@ -93,7 +93,7 @@ O smoke confere a revisão OCI, `/app/.git_sha` e o manifesto do Vite. O projeto
 
 ## 4. Ative no Dokploy
 
-Antes do merge em `prod`, obtenha autorização, confirme revisão e checks e registre o smoke aprovado. Confirme o artefato anterior, seu ID e o SHA do Compose anterior. Para a primeira transição, preserve a imagem atualmente em execução com `docker image save` e registre sua tag, SHA, ID e checksum. Verifique a rota de restauração do banco e do storage antes de aplicar migrações.
+Antes do merge em `prod`, obtenha autorização, confirme a revisão e as evidências locais do commit e registre o smoke aprovado. Confirme o artefato anterior, seu ID e o SHA do Compose anterior. Para a primeira transição, preserve a imagem atualmente em execução com `docker image save` e registre sua tag, SHA, ID e checksum. Verifique a rota de restauração do banco e do storage antes de aplicar migrações.
 
 No Dokploy, use implantação manual no projeto Docker Compose existente. Confirme que PostgreSQL e Redis já estão disponíveis no mesmo Docker Engine. Aponte a origem para a revisão de Compose aprovada para a release e defina `CHATWOOT_IMAGE_TAG` com o SHA Git da imagem homologada. No comando personalizado, preserve o nome do projeto e o caminho Compose do comando padrão exibido pelo Dokploy e use a forma abaixo, substituindo os valores:
 

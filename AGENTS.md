@@ -13,8 +13,8 @@ A família dos modelos delegados é selecionável no Linear ou por sessão; os m
 ### PR, deploy e testes em produção
 
 - Cada issue tem responsável e branch/worktree própria baseada em `develop` atualizado. Trabalho incompleto permanece na branch ou desativado.
-- A branch da issue entra em `develop` por PR vinculado, com revisão de outra pessoa e checks obrigatórios aprovados. A release entra em `prod` por PR de `develop`, listando todas as issues e nomeando o responsável. Push direto é proibido nas duas branches.
-- O fluxo PSR mantém os checks de código no GitHub. O responsável constrói a imagem `linux/amd64` na VPS com limites de recursos ou no Mac, conforme o [roteiro da imagem PSR](docs/psr-image-ci.md).
+- A branch da issue entra em `develop` por PR vinculado, com revisão de outra pessoa e validação local do commit. A release entra em `prod` por PR de `develop`, listando todas as issues e nomeando o responsável. Push direto é proibido nas duas branches.
+- Para cada PR, execute localmente os testes, lint e verificações de segurança aplicáveis ao diff. Registre o SHA, os resultados e eventuais lacunas no PR. Use essa evidência para decidir o merge, sem aguardar checks do GitHub Actions. Se o código mudar, repita as verificações afetadas. O responsável constrói a imagem `linux/amd64` na VPS com limites de recursos ou no Mac, conforme o [roteiro da imagem PSR](docs/psr-image-ci.md).
 - Antes do merge em `prod`, obtenha autorização de deploy, homologue a imagem carregada e preserve o arquivo com SHA Git, ID Docker e checksum. Confirme a recuperação da versão anterior. Use o artefato homologado no Dokploy com `--no-build --pull never`.
 - Em emergência, crie hotfix a partir de `prod`, com PR para `prod`, revisão, verificações e autorização; depois abra PR de `prod` para `develop`.
 - O enforcement das proteções no GitHub depende de administrador; confirme a configuração aplicável à release.
@@ -75,7 +75,7 @@ A família dos modelos delegados é selecionável no Linear ou por sessão; os m
 
 ## Code Review Rules
 
-- Apply these checks during implementation and PR review. Report concrete regressions on supported paths, with the trigger, impact, and evidence; distinguish intended behavior from defects. Leave formatting and lint-only findings to CI.
+- Apply these checks during implementation and PR review. Report concrete regressions on supported paths, with the trigger, impact, and evidence; distinguish intended behavior from defects. Use the local linters for formatting and lint-only findings.
 - Name the affected behavior and trace entry points, source of truth, side effects, and consumers across APIs, jobs, supported clients, and Enterprise overlays.
 - Inspect unchanged helpers reached by new callers or defaults. Treat valid `false` configuration distinctly from missing values; check repeated reads, cache invalidation, and disabled-feature work.
 - Bound database/Redis work, fanout, retries, scheduled jobs, and lock/connection hold time at representative production scale. Green unit tests or the existence of an index do not establish capacity.
