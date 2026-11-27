@@ -25,10 +25,6 @@ class Enterprise::DeviceVerificationMailer < ApplicationMailer
 
   private
 
-  def brand_name
-    GlobalConfig.get_value('BRAND_NAME').presence || 'Chatwoot'
-  end
-
   # ApplicationMailer swallows SMTP failures with a log line, which records a
   # failed challenge delivery as a successful job. Auth mail must fail loudly
   # so the delivery job retries and failures are observable.
@@ -56,7 +52,6 @@ class Enterprise::DeviceVerificationMailer < ApplicationMailer
 
   def liquid_locals
     super.merge(
-      brand_name: brand_name,
       recipient_name: @user.name.presence || @user.email,
       code: @code,
       ip: @meta[:ip],

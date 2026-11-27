@@ -10,11 +10,7 @@ class ApplicationMailer < ActionMailer::Base
   prepend_view_path ::EmailTemplate.resolver
   append_view_path Rails.root.join('app/views/mailers')
   helper :frontend_urls
-  helper do
-    def global_config
-      @global_config ||= GlobalConfig.get('BRAND_NAME', 'BRAND_URL')
-    end
-  end
+  helper_method :global_config
 
   rescue_from(*ExceptionList::SMTP_EXCEPTIONS, with: :handle_smtp_exceptions)
 
@@ -51,10 +47,31 @@ class ApplicationMailer < ActionMailer::Base
     }
   end
 
+  def global_config
+    @global_config ||= Psr::Branding.apply(GlobalConfig.get('BRAND_NAME', 'BRAND_URL', 'LOGO'))
+  end
+
+  def brand_name
+    global_config['BRAND_NAME'].presence || Psr::Branding::NAME
+  end
+
+  def brand_logo_url
+    logo = global_config['LOGO'].presence
+    return if logo.nil?
+
+    uri = URI.parse(logo)
+    uri = URI.join(root_url, logo) if uri.relative? && url_options[:host].present?
+    uri.to_s if uri.is_a?(URI::HTTP) && uri.host.present?
+  rescue URI::InvalidURIError
+    nil
+  end
+
   def liquid_locals
     # expose variables you want to be exposed in liquid
     locals = {
-      global_config: GlobalConfig.get('BRAND_NAME', 'BRAND_URL'),
+      global_config: global_config,
+      brand_name: brand_name,
+      brand_logo_url: brand_logo_url,
       action_url: @action_url
     }
 

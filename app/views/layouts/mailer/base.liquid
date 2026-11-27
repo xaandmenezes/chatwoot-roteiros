@@ -17,7 +17,7 @@
         width: 100% !important;
         margin: 0;
         padding: 0;
-        background-color: #F4F7FB;
+        background-color: #F5FAFA;
       }
 
       table {
@@ -27,7 +27,7 @@
       }
 
       a {
-        color: #2781F6;
+        color: #2A7A84;
       }
 
       .email-container {
@@ -37,7 +37,7 @@
 
       .main-card {
         width: 100%;
-        border: 1px solid #DCE7F5;
+        border: 1px solid #D8E6E7;
         border-radius: 24px;
         background-color: #FFFFFF;
         box-shadow: 0 12px 32px rgba(15, 23, 42, 0.06);
@@ -46,7 +46,7 @@
 
       .accent-bar {
         height: 6px;
-        background-color: #2781F6;
+        background-color: #2A7A84;
         font-size: 0;
         line-height: 0;
       }
@@ -64,9 +64,9 @@
       }
 
       .footer a {
-        color: #2781F6;
+        color: #2A7A84;
         font-weight: 600;
-        text-decoration: none;
+        text-decoration: underline;
       }
 
       @media only screen and (max-width: 640px) {
@@ -83,6 +83,10 @@
           border-radius: 20px !important;
         }
 
+        .brand-header {
+          padding: 24px 24px 0 !important;
+        }
+
         .content-wrap {
           padding: 32px 24px 18px !important;
         }
@@ -96,17 +100,24 @@
   {% endif %}
   {% assign brand_url = global_config['BRAND_URL'] %}
 
-  <body itemscope itemtype="http://schema.org/EmailMessage" style="font-size: 14px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,Helvetica,Arial,sans-serif; box-sizing: border-box; -webkit-font-smoothing: antialiased; -webkit-text-size-adjust: none; width: 100% !important; line-height: 21px; background-color: #F4F7FB; margin: 0; padding: 0;" bgcolor="#F4F7FB">
-    <table class="body-wrap" role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width: 100%; background-color: #F4F7FB; margin: 0;" bgcolor="#F4F7FB">
+  <body itemscope itemtype="http://schema.org/EmailMessage" style="font-size: 14px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,Helvetica,Arial,sans-serif; box-sizing: border-box; -webkit-font-smoothing: antialiased; -webkit-text-size-adjust: none; width: 100% !important; line-height: 21px; background-color: #F5FAFA; margin: 0; padding: 0;" bgcolor="#F5FAFA">
+    <table class="body-wrap" role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width: 100%; background-color: #F5FAFA; margin: 0;" bgcolor="#F5FAFA">
       <tr style="margin: 0;">
         <td align="center" class="page-wrap" style="padding: 32px 16px 40px;" valign="top">
           <table class="email-container" role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width: 100%; max-width: 640px; margin: 0 auto;">
             <tr style="margin: 0;">
               <td style="margin: 0;">
-                <table class="main-card" role="presentation" width="100%" cellpadding="0" cellspacing="0" itemprop="action" itemscope itemtype="http://schema.org/ConfirmAction" style="width: 100%; border: 1px solid #DCE7F5; border-radius: 24px; background-color: #FFFFFF; box-shadow: 0 12px 32px rgba(15, 23, 42, 0.06); overflow: hidden;" bgcolor="#FFFFFF">
+                <table class="main-card" role="presentation" width="100%" cellpadding="0" cellspacing="0" itemprop="action" itemscope itemtype="http://schema.org/ConfirmAction" style="width: 100%; border: 1px solid #D8E6E7; border-radius: 24px; background-color: #FFFFFF; box-shadow: 0 12px 32px rgba(15, 23, 42, 0.06); overflow: hidden;" bgcolor="#FFFFFF">
                   <tr style="margin: 0;">
-                    <td class="accent-bar" style="height: 6px; background-color: #2781F6; font-size: 0; line-height: 0;">&nbsp;</td>
+                    <td class="accent-bar" style="height: 6px; background-color: #2A7A84; font-size: 0; line-height: 0;">&nbsp;</td>
                   </tr>
+                  {% if brand_logo_url != nil %}
+                    <tr>
+                      <td class="brand-header" bgcolor="#FFFFFF" style="padding: 32px 36px 0; background-color: #FFFFFF;">
+                        <img src="{{ brand_logo_url | escape }}" alt="{{ brand_name | escape }}" width="165" style="display: block; width: 165px; max-width: 100%; height: auto; color: #1C2E32;" />
+                      </td>
+                    </tr>
+                  {% endif %}
                   <tr style="margin: 0;">
                     <td class="content-wrap" style="vertical-align: top; margin: 0; padding: 40px 36px 20px; font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;" valign="top">
                       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width: 100%; margin: 0;">
@@ -122,9 +133,9 @@
                 <td class="footer" style="padding: 20px 8px 0; text-align: center; color: #64748B; font-size: 13px; line-height: 21px;">
                   This email was sent by
                   {% if brand_url != nil and brand_url != '' %}
-                    <a href="{{ brand_url }}" style="color: #2781F6; font-weight: 600; text-decoration: none;">{{ brand_name }}</a>.
+                    <a href="{{ brand_url | escape }}" style="color: #2A7A84; font-weight: 600; text-decoration: underline;">{{ brand_name | escape }}</a>.
                   {% else %}
-                    <span style="color: #0F172A; font-weight: 600;">{{ brand_name }}</span>.
+                    <span style="color: #1C2E32; font-weight: 600;">{{ brand_name | escape }}</span>.
                   {% endif %}
                 </td>
               </tr>
@@ -133,7 +144,7 @@
               <tr style="margin: 0;">
                 <td class="footer" style="padding: 8px 8px 0; text-align: center; color: #64748B; font-size: 13px; line-height: 21px;">
                   You're receiving this email because email notifications are enabled for your account.
-                  <a href="{{ notification_settings_url }}" style="color: #2781F6; font-weight: 600; text-decoration: none;">Manage notification preferences</a>.
+                  <a href="{{ notification_settings_url }}" style="color: #2A7A84; font-weight: 600; text-decoration: underline;">Manage notification preferences</a>.
                 </td>
               </tr>
             {% endif %}

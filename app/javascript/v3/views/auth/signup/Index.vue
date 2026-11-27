@@ -20,7 +20,7 @@ const { replaceInstallationName } = useBranding();
 const isLoading = ref(false);
 const globalConfig = computed(() => store.getters['globalConfig/get']);
 const isAChatwootInstance = computed(
-  () => globalConfig.value.installationName === 'Chatwoot'
+  () => store.getters['globalConfig/isAChatwootInstance']
 );
 const isShopifySignup = computed(() => Boolean(props.shopifyPendingInstall));
 const loginRoute = computed(() => {
@@ -72,7 +72,7 @@ const resizeContainers = () => {
                 isShopifySignup
                   ? replaceInstallationName($t('REGISTER.SHOPIFY.TITLE'))
                   : isAChatwootInstance
-                    ? $t('REGISTER.GET_STARTED')
+                    ? replaceInstallationName($t('REGISTER.GET_STARTED'))
                     : $t('REGISTER.TRY_WOOT')
               }}
             </h2>

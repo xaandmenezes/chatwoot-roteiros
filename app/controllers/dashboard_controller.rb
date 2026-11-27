@@ -40,7 +40,10 @@ class DashboardController < ActionController::Base
   before_action :ensure_html_format
   layout 'vueapp'
 
-  def index; end
+  def index
+    installation_branding = @global_config.slice('INSTALLATION_NAME', 'LOGO_THUMBNAIL', 'BRAND_NAME')
+    @global_config = Psr::Branding.apply(@global_config).merge('INSTALLATION_BRANDING' => installation_branding)
+  end
 
   private
 

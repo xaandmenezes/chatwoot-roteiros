@@ -25,7 +25,10 @@ RSpec.describe AgentNotifications::ConversationNotificationsMailer do
       expect(mail.to).to eq([agent.email])
     end
 
-    it 'renders the manage notification preferences footer link' do
+    it 'renders the brand without changing the notification preferences destination' do
+      document = Nokogiri::HTML(mail.body.decoded)
+      expect(document.at_css('img[alt="Porto Seguro Roteiros"]')).to be_present
+      expect(document.at_css('a[href="https://www.portoseguroroteiros.com.br"]')).to be_present
       expect(mail.body.encoded).to match('Manage notification preferences')
       expect(mail.body.encoded).to include("/app/accounts/#{account.id}/profile/settings")
     end
