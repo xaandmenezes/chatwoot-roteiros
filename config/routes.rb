@@ -225,6 +225,7 @@ Rails.application.routes.draw do
               resource :direct_uploads, only: [:create]
               resource :draft_messages, only: [:show, :update, :destroy]
               resource :ryze_presence, only: [:create]
+              resources :audio_transcriptions, only: [:index]
               resource :ryze_history, only: [:create] do
                 post 'media/:message_id', action: :repair
               end

@@ -36,6 +36,13 @@ const mountConversation = (message, stubs = {}, chat = {}) => {
       'globalConfig/isOnChatwootCloud': () => false,
       getAutoTranslate: () => ({}),
       getMessageTranslationState: () => () => ({}),
+      'conversationMetadata/getConversationMetadata': () => id =>
+        id === currentChat.id
+          ? {
+              ryze_audio_transcription_enabled:
+                currentChat.ryze_audio_transcription_enabled === true,
+            }
+          : {},
     },
     actions: {
       sendMessageWithData: actions.sendMessageWithData,
@@ -80,6 +87,80 @@ describe('conversation messages', () => {
     const response = { data: { id: 100, conversation_id: CONVERSATION_ID } };
     axios.mockResolvedValue(response);
     axios.post.mockResolvedValue(response);
+  });
+
+  it('shows one transcript panel per MP3 attachment when the conversation capability is enabled', async () => {
+    axios.get.mockResolvedValue({
+      data: {
+        transcriptions: [
+          { attachment_id: 501, status: 'completed', text: 'First transcript' },
+          {
+            attachment_id: 502,
+            status: 'completed',
+            text: 'Second transcript',
+          },
+        ],
+      },
+    });
+    const message = {
+      id: 100,
+      status: 'sent',
+      message_type: 0,
+      content: null,
+      conversation_id: CONVERSATION_ID,
+      created_at: NOW,
+      attachments: [501, 502].map(id => ({
+        id,
+        file_type: 'audio',
+        extension: 'mp3',
+        data_url: `https://example.test/${id}.mp3`,
+      })),
+    };
+    const wrapper = mountConversation(
+      message,
+      { AudioBubble: false, TextBubble: false },
+      { ryze_audio_transcription_enabled: true }
+    );
+
+    await flushPromises();
+
+    expect(axios.get).toHaveBeenCalledTimes(1);
+    expect(axios.get.mock.calls[0][0]).toContain(
+      `/conversations/${CONVERSATION_ID}/audio_transcriptions`
+    );
+    expect(axios.get.mock.calls[0][1].params).toEqual({
+      attachment_ids: ['501', '502'],
+    });
+    expect(wrapper.text()).toContain('First transcript');
+    expect(wrapper.text()).toContain('Second transcript');
+    expect(wrapper.findAll('audio source')).toHaveLength(2);
+    wrapper.unmount();
+  });
+
+  it('does not request or decorate audio transcripts without the conversation capability', async () => {
+    const message = {
+      id: 100,
+      status: 'sent',
+      message_type: 0,
+      content: null,
+      conversation_id: CONVERSATION_ID,
+      created_at: NOW,
+      attachments: [
+        {
+          id: 501,
+          file_type: 'audio',
+          extension: 'mp3',
+          data_url: 'https://example.test/501.mp3',
+        },
+      ],
+    };
+    const wrapper = mountConversation(message, { AudioBubble: false });
+
+    await flushPromises();
+
+    expect(axios.get).not.toHaveBeenCalled();
+    expect(wrapper.text()).not.toContain('Transcription in progress');
+    wrapper.unmount();
   });
 
   afterEach(() => {

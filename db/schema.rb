@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_11_27_002924) do
+ActiveRecord::Schema[7.1].define(version: 2026_11_27_195314) do
   # These extensions should be enabled to support this database
   enable_extension "pg_stat_statements"
   enable_extension "pg_trgm"
@@ -1709,6 +1709,18 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_27_002924) do
     t.index ["account_id", "metric", "date"], name: "index_rollup_timeseries"
   end
 
+  create_table "ryze_audio_transcriptions", force: :cascade do |t|
+    t.integer "attachment_id", null: false
+    t.integer "status", default: 0, null: false
+    t.integer "attempts", default: 0, null: false
+    t.datetime "next_attempt_at"
+    t.text "text"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["attachment_id"], name: "index_ryze_audio_transcriptions_on_attachment_id", unique: true
+    t.index ["status", "next_attempt_at"], name: "index_ryze_audio_transcriptions_on_status_and_next_attempt_at"
+  end
+
   create_table "ryze_reaction_echoes", force: :cascade do |t|
     t.bigint "conversation_id", null: false
     t.string "provider_key", limit: 64, null: false
@@ -1932,6 +1944,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_27_002924) do
   add_foreign_key "data_exports", "users", column: "initiated_by_id", on_delete: :nullify
   add_foreign_key "inboxes", "portals"
   add_foreign_key "message_revocations", "messages", on_delete: :cascade
+  add_foreign_key "ryze_audio_transcriptions", "attachments", on_delete: :cascade
   add_foreign_key "ryze_reaction_echoes", "conversations", on_delete: :cascade
   add_foreign_key "shopify_custom_apps", "accounts"
   add_foreign_key "umbler_label_syncs", "accounts", on_delete: :cascade

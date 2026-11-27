@@ -16,6 +16,8 @@ module Enterprise::Concerns::Attachment
 
   def enqueue_audio_transcription
     return unless file_type.to_sym == :audio
+    return if Ryze::AudioTranscription.enabled_for_attachment?(self)
+
     # This callback can run twice for one new attachment. When the incoming message updates its
     # conversation, the conversation autosaves the message and commits the attachment again before
     # ActiveStorage clears its pending upload. Two jobs would both call OpenAI and use two credits.

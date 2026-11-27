@@ -8,6 +8,13 @@ dispatch_conversation_monitors_job:
   class: 'Internal::DispatchConversationMonitorsJob'
   queue: scheduled_jobs
 
+# Recover committed audio transcription work after dispatch failures or worker interruptions.
+recover_ryze_audio_transcriptions_job:
+  cron: '* * * * *'
+  class: 'Ryze::AudioTranscriptionJob'
+  queue: ryze_audio_transcription
+  status: <%= ENV['RYZE_AUDIO_TRANSCRIPTION_ENABLED'] == 'true' ? 'enabled' : 'disabled' %>
+
 # executed daily at 0000 UTC; schedules deferred jobs at stable times for each installation
 internal_check_new_versions_job:
   cron: '0 0 * * *'

@@ -28,10 +28,16 @@ class Messages::AudioTranscriptionService
 
   def transcription_skip_reason
     return 'Message not found' if message.blank?
+    return 'Audio transcription is handled locally' if Ryze::AudioTranscription.enabled_for_attachment?(attachment)
     return 'Transcription disabled for this inbox' if call_recording_transcription_disabled?
     return 'Transcription limit exceeded' unless Llm::SpeechToTextService.available_for?(account)
+    return 'Audio too large for transcription' if Llm::SpeechToTextService.too_large?(attachment.file.blob)
 
-    'Audio too large for transcription' if Llm::SpeechToTextService.too_large?(attachment.file&.blob)
+    'Audio transcription is handled locally' if locally_transcribed?
+  end
+
+  def locally_transcribed?
+    attachment.audio? && attachment.ryze_audio_transcription.present?
   end
 
   # Call recordings honour the inbox's "Transcribe recordings" setting; ordinary voice notes don't.

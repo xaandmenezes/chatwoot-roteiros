@@ -19,6 +19,13 @@ end
 Sidekiq.configure_server do |config|
   config.redis = Redis::Config.app
 
+  if ENV['RYZE_AUDIO_TRANSCRIPTION_ENABLED'] == 'true'
+    config.capsule('ryze_audio_transcription') do |capsule|
+      capsule.concurrency = 1
+      capsule.queues = %w[ryze_audio_transcription]
+    end
+  end
+
   config.server_middleware do |chain|
     chain.add CaptainResponseDequeuedLogger
 
