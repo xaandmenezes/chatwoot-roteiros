@@ -211,22 +211,35 @@ RSpec.describe 'Ryze message reactions', type: :request do
     )
   end
 
-  it 'ignores an event for a different chat and rejects a mismatched target key and sender' do
+  it 'ignores an out-of-scope event and rejects an invalid sender' do
     data = event(id: 'REACTION_ONE', emoji: '👍', at: '2026-11-26T18:00:00Z')
     out_of_scope = data.deep_dup
     out_of_scope[:data][:chat][:jid] = '15550003333@s.whatsapp.net'
     post_event(out_of_scope)
     expect(response).to have_http_status(:ok)
+    expect(history['ryze_reactions']).to be_nil
 
-    data[:data][:message][:reaction][:targetMessageId][:remoteJID] = '15550003333@s.whatsapp.net'
-    post_event(data)
-    expect(response).to have_http_status(:bad_request)
-
-    data[:data][:message][:reaction][:targetMessageId][:remoteJID] = jid
     data[:data][:sender][:jid] = '15550003333@s.whatsapp.net'
     post_event(data)
     expect(response).to have_http_status(:bad_request)
     expect(history['ryze_reactions']).to be_nil
+  end
+
+  it 'accepts a valid target chat differing from data[:chat] for both @s.whatsapp.net and @lid' do
+    differing_jid = event(id: 'DIFFERING_JID', emoji: '👍', at: '2026-11-26T18:00:00Z')
+    differing_jid[:data][:message][:reaction][:targetMessageId][:remoteJID] = '15550003333@s.whatsapp.net'
+    post_event(differing_jid)
+    expect(response).to have_http_status(:ok)
+    expect(history.fetch('ryze_reactions')).to include('incoming' => include('emoji' => '👍'))
+
+    differing_lid = event(id: 'DIFFERING_LID', emoji: '😂', at: '2026-11-26T18:00:01Z')
+    differing_lid[:data][:chat][:lid] = '123456789012345@lid'
+    differing_lid[:data][:message][:reaction][:targetMessageId] = {
+      ID: message.source_id, remoteJID: '999999999999999@lid', fromMe: false
+    }
+    post_event(differing_lid)
+    expect(response).to have_http_status(:ok)
+    expect(history.fetch('ryze_reactions')).to include('incoming' => include('emoji' => '😂'))
   end
 
   it 'accepts an @lid target chat when chat.lid is absent or empty' do
@@ -246,27 +259,31 @@ RSpec.describe 'Ryze message reactions', type: :request do
     expect(history.fetch('ryze_reactions')).to include('outgoing' => include('emoji' => '❤️'))
   end
 
-  it 'accepts a matching @lid target chat and rejects a mismatched @lid when chat.lid is present' do
-    lid = '123456789012345@lid'
+  it 'rejects a reaction targeting its own event ID' do
     allow(Rails.logger).to receive(:info)
+    payload = event(id: 'SELF_TARGET_ID', emoji: '👍', at: '2026-11-26T18:00:00Z')
+    payload[:data][:message][:reaction][:targetMessageId] = { ID: 'SELF_TARGET_ID', remoteJID: jid }
+    post_event(payload)
 
-    mismatched_lid = event(id: 'MISMATCHED_LID', emoji: '😂', at: '2026-11-26T18:00:02Z')
-    mismatched_lid[:data][:chat][:lid] = lid
-    mismatched_lid[:data][:message][:reaction][:targetMessageId] = {
-      ID: message.source_id, remoteJID: '999999999999999@lid', fromMe: false
-    }
-    post_event(mismatched_lid)
     expect(response).to have_http_status(:bad_request)
     expect(Rails.logger).to have_received(:info).with(
-      'Ryze pilot reaction rejected field=target_chat_mismatch target_shape=object:id,chat,unknown=1'
+      'Ryze pilot reaction rejected field=target_self target_shape=object:id,chat'
     )
+    expect(history['ryze_reactions']).to be_nil
+  end
 
-    matching_lid = mismatched_lid.deep_dup
-    matching_lid[:data][:id] = 'MATCHING_LID'
-    matching_lid[:data][:message][:reaction][:targetMessageId][:remoteJID] = lid
-    post_event(matching_lid)
-    expect(response).to have_http_status(:ok)
-    expect(history.fetch('ryze_reactions')).to include('incoming' => include('emoji' => '😂'))
+  it 'does not mutate messages when the target message belongs to another conversation' do
+    other_conv = create(:conversation, account: account, inbox: inbox, additional_attributes: { whatsapp_jid: '15550009999@s.whatsapp.net' })
+    other_msg = create(:message, account: account, inbox: inbox, conversation: other_conv,
+                                 message_type: :incoming, source_id: 'OTHER_CONV_MSG', content: 'Other conv text')
+
+    payload = event(id: 'CROSS_CONV_REACTION', emoji: '👍', at: '2026-11-26T18:00:00Z')
+    payload[:data][:message][:reaction][:targetMessageId] = { ID: other_msg.source_id, remoteJID: jid }
+    post_event(payload)
+
+    expect(response).to have_http_status(:service_unavailable)
+    expect(other_msg.reload.additional_attributes&.fetch('ryze_reactions', nil)).to be_nil
+    expect(history['ryze_reactions']).to be_nil
   end
 
   it 'rejects missing identifiers and preserves a generic bridge message' do
