@@ -54,6 +54,15 @@ export default {
           },
         },
         {
+          path: 'viari',
+          component: () => import('./ViariSettings.vue'),
+          name: 'settings_integrations_viari',
+          meta: {
+            permissions: ['administrator'],
+            featureFlag: FEATURE_FLAGS.INTEGRATIONS,
+          },
+        },
+        {
           path: 'dashboard_apps',
           component: DashboardApps,
           name: 'settings_integrations_dashboard_apps',

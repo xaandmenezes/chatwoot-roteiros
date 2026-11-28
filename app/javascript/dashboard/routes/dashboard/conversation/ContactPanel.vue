@@ -1,4 +1,5 @@
 <script setup>
+import ViariPanel from 'dashboard/components/widgets/conversation/viari/ViariPanel.vue';
 import { computed, watch, onMounted, ref } from 'vue';
 import {
   useMapGetter,
@@ -57,7 +58,7 @@ const isShopifyFeatureEnabled = computed(
   () => shopifyIntegration.value.enabled
 );
 
-const { isCloudFeatureEnabled } = useAccount();
+const { isCloudFeatureEnabled, currentAccount } = useAccount();
 
 const isLinearFeatureEnabled = computed(() =>
   isCloudFeatureEnabled(FEATURE_FLAGS.LINEAR)
@@ -210,6 +211,24 @@ onMounted(() => {
               <ConversationInfo
                 :conversation-attributes="conversationAdditionalAttributes"
                 :contact-attributes="contactAdditionalAttributes"
+              />
+            </AccordionItem>
+          </div>
+          <div
+            v-else-if="
+              element.name === 'viari' && currentAccount?.viari_enabled
+            "
+          >
+            <AccordionItem
+              :title="$t('VIARI.TITLE')"
+              :is-open="isContactSidebarItemOpen('is_viari_open')"
+              @toggle="value => toggleSidebarUIState('is_viari_open', value)"
+            >
+              <ViariPanel
+                v-if="isContactSidebarItemOpen('is_viari_open') && contact?.id"
+                :key="`${currentAccount.id}/${conversationId}/${contact.id}`"
+                :conversation-id="conversationId"
+                :contact="contact"
               />
             </AccordionItem>
           </div>
