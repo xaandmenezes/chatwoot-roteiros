@@ -1,10 +1,11 @@
 class Messages::StatusUpdateService
   attr_reader :message, :status, :external_error
 
-  def initialize(message, status, external_error = nil)
+  def initialize(message, status, external_error = nil, source: nil)
     @message = message
     @status = status.to_s
     @external_error = external_error
+    @source = source
   end
 
   def perform
@@ -12,6 +13,7 @@ class Messages::StatusUpdateService
     # webhook workers can't race past the forward-only guard.
     message.with_lock do
       next false unless valid_status_transition?
+      next false if @source && !Ryze::AudioDelivery.apply_source(message, status, @source)
 
       update_message_status
     end
