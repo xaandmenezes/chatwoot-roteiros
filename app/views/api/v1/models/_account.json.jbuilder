@@ -1,3 +1,4 @@
+json.viari_enabled Viari::Configuration.for(resource)&.actor_for(Current.user).present? if Current.user.is_a?(User)
 json.settings resource.settings
 json.reporting_timezone ActiveSupport::TimeZone[resource.reporting_timezone].tzinfo.name if resource.reporting_timezone.present?
 json.created_at resource.created_at

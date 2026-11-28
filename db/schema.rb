@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_11_27_212024) do
+ActiveRecord::Schema[7.1].define(version: 2026_11_28_013636) do
   # These extensions should be enabled to support this database
   enable_extension "pg_stat_statements"
   enable_extension "pg_trgm"
@@ -1897,6 +1897,17 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_27_212024) do
     t.index ["uid", "provider"], name: "index_users_on_uid_and_provider", unique: true
   end
 
+  create_table "viari_contact_links", force: :cascade do |t|
+    t.integer "contact_id", null: false
+    t.string "integration_scope", null: false
+    t.uuid "customer_id"
+    t.uuid "creation_key"
+    t.string "creation_digest"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["contact_id", "integration_scope"], name: "index_viari_contact_links_on_contact_id_and_integration_scope", unique: true
+  end
+
   create_table "webhooks", force: :cascade do |t|
     t.integer "account_id"
     t.integer "inbox_id"
@@ -1950,6 +1961,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_27_212024) do
   add_foreign_key "shopify_custom_apps", "accounts"
   add_foreign_key "umbler_label_syncs", "accounts", on_delete: :cascade
   add_foreign_key "user_sessions", "users"
+  add_foreign_key "viari_contact_links", "contacts", on_delete: :cascade
   create_trigger("accounts_after_insert_row_tr", :generated => true, :compatibility => 1).
       on("accounts").
       after(:insert).
