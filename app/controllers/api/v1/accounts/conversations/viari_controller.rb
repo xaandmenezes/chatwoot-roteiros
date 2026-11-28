@@ -7,7 +7,8 @@ class Api::V1::Accounts::Conversations::ViariController < Api::V1::Accounts::Con
   end
 
   READS = {
-    'capacidades' => [], 'catalogo' => [], 'parceiros' => [:busca, :incluirInativos], 'cliente_detalhe' => [], 'orcamento' => [:orcamentoId],
+    'resumo_comercial' => [], 'capacidades' => [], 'catalogo' => [], 'parceiros' => [:busca, :incluirInativos],
+    'cliente_detalhe' => [], 'orcamento' => [:orcamentoId], 'orcamento_texto' => [:orcamentoId],
     'reserva_agendas_remarcacao' => [:reservaId], 'reserva' => [:reservaId], 'os' => [:grupoId], 'agendas' => [:produtoId, :dataInicio, :dataFim],
     'tarifas' => [:produtoId, :grupoTarifaId, :data]
   }.freeze
@@ -55,6 +56,7 @@ class Api::V1::Accounts::Conversations::ViariController < Api::V1::Accounts::Con
     action = params.require(:acao)
     return head :bad_request unless Viari::Settings::UUID.match?(request.headers['Idempotency-Key'].to_s)
     return link_customer if action == 'cliente_vincular'
+    return launch_native if action == 'abrir_nativo'
     return head :bad_request unless COMMANDS.key?(action)
     return head :conflict if !%w[cliente_criar parceiro_criar parceiro_editar parceiro_ativar].include?(action) && @binding.customer_id.blank?
     return render json: { ok: true, data: { id: @binding.customer_id } } if action == 'cliente_criar' && @binding.customer_id.present?
@@ -81,6 +83,7 @@ class Api::V1::Accounts::Conversations::ViariController < Api::V1::Accounts::Con
     @viari_actor = configuration&.actor_for(Current.user)
     head :forbidden and return if @viari_actor.blank? || Ryze::GroupConversations.group?(@conversation)
 
+    @configuration = configuration
     @client = Viari::Client.new(configuration, @viari_actor)
     status, response_data = @client.get('capacidades')
     return relay([status, response_data]) unless response_data['ok']
@@ -118,6 +121,18 @@ class Api::V1::Accounts::Conversations::ViariController < Api::V1::Accounts::Con
 
     @binding.bind(id)
     render json: { ok: true, data: { clienteId: id } }
+  end
+
+  def launch_native
+    data = params.fetch(:dados, ActionController::Parameters.new).permit(:destino, :orcamentoId, :reservaId, :grupoId).to_h
+    return head :conflict if @binding.customer_id.blank? && data['destino'] != 'cliente_criar'
+    attributes = params.permit(:orcamentoId, :reservaId, :grupoId).to_h
+    attributes[:clienteId] = @binding.customer_id if @binding.customer_id
+    status, result = @client.post('abrir_nativo', attributes.merge(dados: data), request.headers['Idempotency-Key'])
+    return relay([status, result]) unless result['ok']
+
+    launch = Viari::NativeLaunch.new(@configuration.origin, result.fetch('data')).data
+    render json: { ok: true, data: launch }, status: status
   end
 
   def relay(result)
