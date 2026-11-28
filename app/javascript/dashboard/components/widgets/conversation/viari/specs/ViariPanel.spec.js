@@ -385,6 +385,13 @@ describe('Viari conversation summary', () => {
         officialText
       );
       expect(api.command).toHaveBeenCalledTimes(1);
+      await wrapper
+        .findAll('button')
+        .find(button => button.text() === ptBR.VIARI.REFRESH)
+        .trigger('click');
+      await flushPromises();
+      expect(wrapper.text()).not.toContain(ptBR.VIARI.COMPOSER);
+      expect(wrapper.text()).not.toContain(ptBR.VIARI.PROPOSAL_COPIED);
       copyTextToClipboard.mockRejectedValueOnce(new Error('Clipboard denied'));
       await wrapper
         .findAll('button')
@@ -470,6 +477,95 @@ describe('Viari conversation summary', () => {
       await wrapper.get('select[aria-label="Quote"]').setValue('orcamento:1');
       expect(wrapper.text()).not.toContain(en.VIARI.COMPOSER);
       expect(wrapper.text()).not.toContain(en.VIARI.PROPOSAL_COPIED);
+    } finally {
+      wrapper.unmount();
+    }
+  });
+  it('reconciles deleted related records and refreshes payment amounts while the native workspace stays open', async () => {
+    HTMLDialogElement.prototype.showModal = vi.fn();
+    const makeOrder = (id, paid = 20) => ({
+      id: 'os:' + id,
+      tipo: 'os',
+      codigo: id,
+      orcamentoIds: ['q'],
+      grupoIds: [id],
+      grupoId: id,
+      reservaIds: [],
+      passeios: [{ id: 'tour-' + id, produtoNome: 'Tour ' + id }],
+      financeiro: { total: 100, pago: paid, saldo: 100 - paid },
+    });
+    const quote = {
+      id: 'orcamento:q',
+      tipo: 'orcamento',
+      codigo: 'Q',
+      orcamentoIds: ['q'],
+      grupoIds: ['g1', 'g2'],
+      reservaIds: [],
+      passeios: [],
+      financeiro: {},
+    };
+    let records = [quote, makeOrder('g1'), makeOrder('g2')];
+    api.read.mockImplementation(async (_id, action) => {
+      if (action === 'contexto')
+        return { clienteId: 'customer', accountId: 1, userId: 5, acoes: [] };
+      if (action === 'cliente_detalhe') return { cliente: { nome: 'Ana' } };
+      return { negociacoes: records };
+    });
+    api.command.mockResolvedValue({
+      url: 'https://viari.example/atendimento/nativo',
+      origin: 'https://viari.example',
+      channel: 'lifecycle',
+      mode: 'iframe',
+    });
+    const wrapper = mount(Panel, {
+      global,
+      props: { conversationId: 7, contact: { id: 8 } },
+    });
+    const click = label =>
+      wrapper
+        .findAll('button')
+        .find(button => button.text() === label)
+        .trigger('click');
+    const refreshNative = async () => {
+      wrapper.getComponent(NativeModal).vm.$emit('refresh');
+      await flushPromises();
+    };
+    try {
+      await flushPromises();
+      await click(en.VIARI.ORDER);
+      await wrapper.get('select[aria-label="Service order"]').setValue('g2');
+      expect(wrapper.text()).toContain('Tour g2');
+      await click(en.VIARI.OPEN_NATIVE);
+      await flushPromises();
+      records = [{ ...quote, grupoIds: ['g1'] }, makeOrder('g1')];
+      await refreshNative();
+      expect(wrapper.get('select').element.value).toBe('orcamento:q');
+      expect(wrapper.text()).toContain('Tour g1');
+      expect(wrapper.text()).not.toContain('Tour g2');
+      await wrapper.get('select').setValue('os:g1');
+      await click(en.VIARI.QUOTE_STAGE);
+      records = [{ ...makeOrder('g1'), orcamentoIds: [] }];
+      await refreshNative();
+      expect(wrapper.get('button[aria-current=step]').text()).toBe(
+        en.VIARI.ORDER
+      );
+      expect(wrapper.text()).toContain('Tour g1');
+      await click(en.VIARI.PAYMENT_STAGE);
+      records = [{ ...makeOrder('g1', 80), orcamentoIds: [] }];
+      await refreshNative();
+      expect(wrapper.get('button[aria-current=step]').text()).toBe(
+        en.VIARI.PAYMENT_STAGE
+      );
+      expect(wrapper.text()).toContain('80.00');
+      expect(wrapper.findComponent(NativeModal).exists()).toBe(true);
+      records = [];
+      await refreshNative();
+      expect(wrapper.text()).not.toContain('Tour g1');
+      expect(wrapper.text()).not.toContain('80.00');
+      expect(wrapper.get('select').element.value).toBe('');
+      wrapper.getComponent(NativeModal).vm.$emit('close');
+      await flushPromises();
+      expect(wrapper.findComponent(NativeModal).exists()).toBe(false);
     } finally {
       wrapper.unmount();
     }

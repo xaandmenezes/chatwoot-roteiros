@@ -47,7 +47,7 @@ const activeNegotiation = computed(() =>
         item => item.tipo === 'os' && item.grupoId === selectedGroup.value
       ) ||
       negotiations.value.find(item => item.id === selectedReservation.value) ||
-      negotiation.value
+      (negotiation.value?.tipo !== 'orcamento' ? negotiation.value : null)
 );
 const error = ref('');
 const session = ref(null);
@@ -121,6 +121,8 @@ async function refresh(signal) {
   negotiations.value = context.value.clienteId
     ? (await read('resumo_comercial', {}, signal)).negociacoes
     : [];
+  proposal.value = '';
+  copiedProposal.value = false;
   if (!negotiations.value.some(item => item.id === selected.value)) {
     selectNegotiation(negotiations.value[0]?.id || '');
     return;
@@ -136,6 +138,14 @@ async function refresh(signal) {
     selectedReservation.value = relatedReservations.value[0]?.id || '';
   if (!relatedQuotes.value.some(item => item.id === selectedQuote.value))
     selectedQuote.value = relatedQuotes.value[0]?.id || '';
+  if (stage.value === 'quote' && !selectedQuote.value) stage.value = 'order';
+  if (
+    stage.value !== 'quote' &&
+    !selectedGroup.value &&
+    !selectedReservation.value &&
+    negotiation.value.tipo === 'orcamento'
+  )
+    stage.value = 'quote';
 }
 async function openNative(destino, signal, target = null) {
   const result = await command(
@@ -243,7 +253,11 @@ async function link(customer, signal) {
 async function prepare(signal) {
   const orcamentoId = activeNegotiation.value.orcamentoIds[0];
   const response = await read('orcamento', { orcamentoId }, signal);
-  if (activeNegotiation.value?.orcamentoIds[0] !== orcamentoId) return;
+  if (
+    signal.aborted ||
+    activeNegotiation.value?.orcamentoIds[0] !== orcamentoId
+  )
+    return;
   const quote = response.orcamento || response;
   const result = await command(
     'orcamento_enviar',
@@ -253,9 +267,17 @@ async function prepare(signal) {
     },
     signal
   );
-  if (activeNegotiation.value?.orcamentoIds[0] !== orcamentoId) return;
+  if (
+    signal.aborted ||
+    activeNegotiation.value?.orcamentoIds[0] !== orcamentoId
+  )
+    return;
   await refresh(signal);
-  if (activeNegotiation.value?.orcamentoIds[0] !== orcamentoId) return;
+  if (
+    signal.aborted ||
+    activeNegotiation.value?.orcamentoIds[0] !== orcamentoId
+  )
+    return;
   proposal.value = result.textoWhatsapp || '';
   copiedProposal.value = false;
 }
@@ -263,10 +285,17 @@ async function copyProposal(signal) {
   copiedProposal.value = false;
   const orcamentoId = activeNegotiation.value.orcamentoIds[0];
   const result = await read('orcamento_texto', { orcamentoId }, signal);
-  if (activeNegotiation.value?.orcamentoIds[0] !== orcamentoId) return;
+  if (
+    signal.aborted ||
+    activeNegotiation.value?.orcamentoIds[0] !== orcamentoId
+  )
+    return;
   proposal.value = result.textoWhatsapp;
   await copyTextToClipboard(proposal.value);
-  if (activeNegotiation.value?.orcamentoIds[0] === orcamentoId)
+  if (
+    !signal.aborted &&
+    activeNegotiation.value?.orcamentoIds[0] === orcamentoId
+  )
     copiedProposal.value = true;
 }
 watch(session, value => {
