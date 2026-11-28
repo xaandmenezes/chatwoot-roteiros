@@ -42,6 +42,7 @@ describe('Viari conversation summary', () => {
                   produtoNome: 'Tour A',
                   data: '2026-12-02',
                   totalPax: 2,
+                  valor: 37.5,
                   qtdAdt: 2,
                   qtdChd: 0,
                   qtdInf: 0,
@@ -82,8 +83,10 @@ describe('Viari conversation summary', () => {
     expect(wrapper.text()).not.toContain('Tour B');
     expect(wrapper.text()).toContain('CHD 0');
     expect(wrapper.text()).toContain('02/12/2026');
+    expect(wrapper.get('li').text()).toContain('37.50');
     await wrapper.get('select').setValue('os:2');
     expect(wrapper.text()).toContain('Tour B');
+    expect(wrapper.get('li').text()).toContain('—');
     expect(wrapper.text()).not.toContain('Tour A');
     expect(wrapper.text()).toContain('80.00');
     expect(wrapper.text()).toContain('120.00');
@@ -166,6 +169,24 @@ describe('Viari conversation summary', () => {
         expect.any(String),
         expect.any(AbortSignal)
       );
+      expect(wrapper.get('select').element.value).toBe('orcamento:1');
+      wrapper
+        .getComponent(NativeModal)
+        .vm.$emit('navigate', { destino: 'pagamento', grupoId: '2' });
+      await flushPromises();
+      expect(wrapper.get('select').element.value).toBe('os:2');
+      expect(wrapper.find('button[aria-current=step]').text()).toBe(
+        en.VIARI.PAYMENT_STAGE
+      );
+      api.command.mockRejectedValueOnce(new Error('Launch failed'));
+      wrapper.getComponent(NativeModal).vm.$emit('navigate', {
+        destino: 'orcamento_editar',
+        orcamentoId: '1',
+      });
+      await flushPromises();
+      expect(wrapper.findComponent(NativeModal).exists()).toBe(true);
+      expect(wrapper.get('select').element.value).toBe('os:2');
+      expect(wrapper.get('[role=alert]').text()).toBe(en.VIARI.ERROR);
     } finally {
       wrapper.unmount();
       vi.unstubAllGlobals();

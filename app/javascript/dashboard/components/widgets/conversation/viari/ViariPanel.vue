@@ -179,6 +179,7 @@ async function openNative(destino, signal, target = null) {
     return;
   }
   session.value = result;
+  return true;
 }
 async function closeNative() {
   session.value = null;
@@ -207,7 +208,28 @@ async function navigateNative(event) {
     'reserva',
   ];
   if (!destinations.includes(event.destino)) return;
-  await run(signal => openNative(event.destino, signal, event));
+  await run(async signal => {
+    const opened = await openNative(event.destino, signal, event);
+    if (!opened) return;
+    await refresh(signal);
+    const target = negotiations.value.find(item => {
+      if (event.grupoId)
+        return item.tipo === 'os' && item.grupoId === event.grupoId;
+      if (event.reservaId)
+        return (
+          item.tipo === 'reserva' && item.reservaIds.includes(event.reservaId)
+        );
+      return (
+        event.orcamentoId &&
+        item.tipo === 'orcamento' &&
+        item.orcamentoIds.includes(event.orcamentoId)
+      );
+    });
+    if (target) {
+      selectNegotiation(target.id);
+      if (event.destino === 'pagamento') stage.value = 'payment';
+    }
+  });
 }
 async function link(customer, signal) {
   await command('cliente_vincular', { clienteId: customer.id }, signal);
@@ -418,6 +440,7 @@ onMounted(() => run(refresh));
             <p class="m-0 text-end">
               {{ item.horario || '' }}
             </p>
+            <p class="m-0 text-end font-medium">{{ money(item.valor) }}</p>
           </li>
         </ol>
         <dl class="m-0 grid grid-cols-2 gap-1 rounded-lg bg-n-alpha-2 p-2">
