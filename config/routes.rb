@@ -219,6 +219,7 @@ Rails.application.routes.draw do
                   post :delete_only_in_chatwoot
                 end
               end
+              resource :viari, only: [:show, :create], controller: :viari
               resource :contact_info_request, only: [:show, :create]
               resources :assignments, only: [:create]
               resources :labels, only: [:create, :index]
@@ -472,6 +473,7 @@ Rails.application.routes.draw do
 
           resources :webhooks, only: [:index, :create, :update, :destroy]
           namespace :integrations do
+            resource :viari_settings, only: [:show, :update, :destroy], controller: :viari_settings
             resource :stripe, controller: 'stripe', only: [:show, :destroy] do
               post :auth
               get :customer

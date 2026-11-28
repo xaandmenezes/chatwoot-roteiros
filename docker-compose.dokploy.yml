@@ -39,6 +39,8 @@ services:
     <<: *chatwoot
     environment: &chatwoot-runtime-environment
       <<: *chatwoot-environment
+      VIARI_CHATWOOT_ALLOWED_ORIGINS: ${VIARI_CHATWOOT_ALLOWED_ORIGINS:-}
+      VIARI_CHATWOOT_SIGNING_SECRET: ${VIARI_CHATWOOT_SIGNING_SECRET:-}
       MAILER_SENDER_EMAIL:
       SMTP_ADDRESS:
       SMTP_PORT:

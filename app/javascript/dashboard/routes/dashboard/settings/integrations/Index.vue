@@ -77,7 +77,11 @@ usePageCommands(() =>
     <template #body>
       <div class="flex-grow flex-shrink overflow-auto">
         <span
-          v-if="!filteredIntegrationList.length && searchQuery"
+          v-if="
+            !filteredIntegrationList.length &&
+            searchQuery &&
+            !'viari'.includes(searchQuery.toLowerCase())
+          "
           class="flex-1 flex items-center justify-center py-20 text-center text-body-main !text-base text-n-slate-11"
         >
           {{ $t('INTEGRATION_SETTINGS.NO_RESULTS') }}
@@ -86,6 +90,13 @@ usePageCommands(() =>
           v-else
           class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"
         >
+          <router-link
+            v-if="!searchQuery || 'viari'.includes(searchQuery.toLowerCase())"
+            :to="{ name: 'settings_integrations_viari', params: { accountId } }"
+            class="rounded-lg border border-n-weak p-4"
+          >
+            {{ t('VIARI.TITLE') }}
+          </router-link>
           <IntegrationItem
             v-for="item in filteredIntegrationList"
             :id="item.id"
