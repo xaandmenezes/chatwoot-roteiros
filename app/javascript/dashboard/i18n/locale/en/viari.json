@@ -128,6 +128,19 @@
     "INACTIVE": "Inactive",
     "DISABLE": "Disable integration",
     "RETRY": "Retry",
-    "BANK_SELECT": "Bank account"
+    "BANK_SELECT": "Bank account",
+    "NATIVE_TITLE": "Viari workspace",
+    "CLOSE": "Close",
+    "NATIVE_UNAVAILABLE": "The secure Viari workspace is unavailable. Refresh or contact your administrator.",
+    "LINK_REQUIRED": "Link this contact to a Viari customer to view their negotiations.",
+    "NEGOTIATION": "Negotiation",
+    "NO_QUOTES": "No negotiations",
+    "STAGES": "Negotiation stages",
+    "QUOTE_STAGE": "Quote",
+    "PAYMENT_STAGE": "Payment",
+    "OPEN_NATIVE": "Manage in Viari",
+    "NORMAL_TOTAL": "Standard total",
+    "PIX_TOTAL": "Pix total",
+    "NEW_ORDER": "New service order"
   }
 }

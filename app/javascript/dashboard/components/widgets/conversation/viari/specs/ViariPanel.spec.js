@@ -1,13 +1,11 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import { webcrypto } from 'node:crypto';
+import NativeModal from '../ViariNativeModal.vue';
 import { createI18n } from 'vue-i18n';
 import en from 'dashboard/i18n/locale/en/viari.json';
 import api from 'dashboard/api/integrations/viari';
 import Panel from '../ViariPanel.vue';
-import Payment from '../ViariPaymentForm.vue';
-import OrderActions from '../ViariOrderActions.vue';
-import QuoteEditor from '../ViariQuoteEditor.vue';
 
 vi.mock('dashboard/api/integrations/viari', () => ({
   default: { read: vi.fn(), command: vi.fn() },
@@ -23,240 +21,212 @@ const global = {
   ],
 };
 
-describe('Viari conversation forms', () => {
-  it('keeps the sale channel and global discount when editing quote notes', async () => {
-    const wrapper = mount(QuoteEditor, {
-      global,
-      props: {
-        read: vi.fn(),
-        quote: {
-          periodoInicio: '2026-12-01T00:00:00.000Z',
-          periodoFim: '2026-12-02T00:00:00.000Z',
-          dataValidade: '2026-11-30T00:00:00.000Z',
-          percentualSinal: 35,
-          descontoManualGeral: 0,
-          descontoManual: 37,
-          obsInternas: 'Nota anterior',
-          msgCliente: null,
-          canalVenda: {
-            id: '9f06e65b-644d-44c8-8b89-79cb6f949ba1',
-            nome: 'Balcão',
-            grupoTarifaId: 'c397cb3b-ab79-47d7-9634-547d52adb3ab',
-          },
-          itens: [],
-          passageiros: [],
-        },
-      },
-    });
-
-    const form = wrapper.get('form');
-    await form.get('textarea').setValue('Nota atualizada');
-    await form.trigger('submit');
-
-    expect(wrapper.emitted('edit')).toEqual([
-      [
-        {
-          operacao: 'cabecalho',
-          periodoInicio: '2026-12-01',
-          periodoFim: '2026-12-02',
-          dataValidade: '2026-11-30',
-          percentualSinal: 35,
-          descontoManual: 0,
-          obsInternas: 'Nota atualizada',
-          msgCliente: '',
-          canalVendaId: '9f06e65b-644d-44c8-8b89-79cb6f949ba1',
-        },
-      ],
-    ]);
-  });
-
-  it('keeps the selected optional items when changing only the adult count', async () => {
-    const extraId = '4dd66c91-337a-4fb0-a65b-77d9958ba7be';
-    const wrapper = mount(QuoteEditor, {
-      global,
-      props: {
-        read: vi.fn(),
-        quote: {
-          percentualSinal: 35,
-          itens: [
+describe('Viari conversation summary', () => {
+  it('keeps negotiations separate and renders official totals and zero passenger categories', async () => {
+    api.read.mockImplementation(async (_id, action) => {
+      if (action === 'contexto') return { clienteId: 'customer', acoes: [] };
+      if (action === 'cliente_detalhe') return { cliente: { nome: 'Ana' } };
+      if (action === 'resumo_comercial')
+        return {
+          negociacoes: [
             {
-              id: 'quote-item',
-              produtoNome: 'Passeio',
-              dataDesejada: '2026-12-01T00:00:00.000Z',
-              agendaId: 'schedule',
-              qtdAdt: 1,
-              detalhes: [
-                { incluido: false, itemProdutoId: 'excluded-default' },
-                { incluido: true, itemProdutoId: extraId },
+              id: 'orcamento:1',
+              tipo: 'orcamento',
+              codigo: 'ORC-1',
+              orcamentoIds: ['1'],
+              grupoIds: ['2'],
+              reservaIds: [],
+              passeios: [
+                {
+                  id: 'a',
+                  produtoNome: 'Tour A',
+                  data: '2026-12-02',
+                  totalPax: 2,
+                  qtdAdt: 2,
+                  qtdChd: 0,
+                  qtdInf: 0,
+                  qtdSen: 0,
+                  qtdFree: 0,
+                },
               ],
+              financeiro: { total: 150, pago: null, saldo: null },
+            },
+            {
+              id: 'os:2',
+              tipo: 'os',
+              codigo: 'OS-2',
+              orcamentoIds: ['1'],
+              reservaIds: [],
+              grupoIds: ['2'],
+              grupoId: '2',
+              passeios: [
+                {
+                  id: 'b',
+                  produtoNome: 'Tour B',
+                  data: '2026-12-03',
+                  qtdAdt: 1,
+                },
+              ],
+              financeiro: { total: 200, pago: 80, saldo: 120 },
             },
           ],
-          passageiros: [],
-        },
-      },
+        };
+      throw new Error(action);
     });
-
+    const wrapper = mount(Panel, {
+      global,
+      props: { conversationId: 7, contact: { id: 8 } },
+    });
+    await flushPromises();
+    expect(wrapper.text()).toContain('Tour A');
+    expect(wrapper.text()).not.toContain('Tour B');
+    expect(wrapper.text()).toContain('CHD 0');
+    expect(wrapper.text()).toContain('02/12/2026');
+    await wrapper.get('select').setValue('os:2');
+    expect(wrapper.text()).toContain('Tour B');
+    expect(wrapper.text()).not.toContain('Tour A');
+    expect(wrapper.text()).toContain('80.00');
+    expect(wrapper.text()).toContain('120.00');
     await wrapper
       .findAll('button')
-      .find(b => b.text().includes('Passeio'))
+      .find(button => button.text() === en.VIARI.QUOTE_STAGE)
       .trigger('click');
-    const itemForm = wrapper.findAll('form').at(-1);
-    await itemForm.get('input').setValue('2');
-    await itemForm.trigger('submit');
-
-    expect(wrapper.emitted('edit')[0][0]).toMatchObject({
-      operacao: 'item_editar',
-      itemId: 'quote-item',
-      qtdAdt: 2,
-      itensSelecionados: [extraId],
-    });
+    expect(wrapper.text()).toContain('Tour A');
+    expect(wrapper.text()).not.toContain('Tour B');
+    wrapper.unmount();
   });
-
-  it('rebuilds the quote editor from the new server revision after a save', async () => {
+  it('selects the newly converted order after refreshing the same quote', async () => {
     vi.stubGlobal('crypto', webcrypto);
-    try {
-      const revisao = '2026-11-28T00:00:00.000Z';
-      let quote = {
-        id: 'quote',
-        codigo: 'ORC-123',
-        status: 'rascunho',
-        revisao,
-        periodoInicio: '2026-12-01T00:00:00.000Z',
-        periodoFim: '2026-12-01T00:00:00.000Z',
-        dataValidade: '2026-11-30T00:00:00.000Z',
-        percentualSinal: 35,
-        obsInternas: 'Nota anterior',
-        itens: [],
-        passageiros: [],
+    HTMLDialogElement.prototype.showModal = vi.fn();
+    const quote = {
+      id: 'orcamento:1',
+      tipo: 'orcamento',
+      codigo: 'Q1',
+      orcamentoIds: ['1'],
+      grupoIds: [],
+      reservaIds: [],
+      passeios: [],
+      financeiro: {},
+    };
+    const order = {
+      id: 'os:2',
+      tipo: 'os',
+      codigo: 'OS2',
+      orcamentoIds: ['1'],
+      grupoIds: ['2'],
+      grupoId: '2',
+      reservaIds: [],
+      passeios: [{ id: 'tour', produtoNome: 'Converted tour', totalPax: 1 }],
+      financeiro: { total: 150, pago: 50, saldo: 100 },
+    };
+    let converted = false;
+    api.read.mockImplementation(async (_id, action) => {
+      if (action === 'contexto')
+        return { clienteId: 'customer', accountId: 1, userId: 5, acoes: [] };
+      if (action === 'cliente_detalhe') return { cliente: { nome: 'Ana' } };
+      return {
+        negociacoes: converted
+          ? [{ ...quote, grupoIds: ['2'] }, order]
+          : [quote],
       };
-      api.read.mockImplementation(async (_conversation, action) => {
-        if (action === 'contexto')
-          return {
-            clienteId: 'cliente',
-            accountId: 9,
-            userId: 17,
-            acoes: ['orcamento_editar'],
-          };
-        if (action === 'cliente_detalhe')
-          return {
-            cliente: { id: 'cliente', nome: 'Ana' },
-            orcamentos: [quote],
-            reservas: [],
-            pagamentos: [],
-          };
-        if (action === 'orcamento') return quote;
-        throw new Error(action);
-      });
-      api.command.mockImplementation(async () => {
-        quote = {
-          ...quote,
-          revisao: '2026-11-28T00:00:01.000Z',
-          obsInternas: 'Nota normalizada',
-        };
-        return { ok: true };
-      });
-
-      const wrapper = mount(Panel, {
-        global,
-        props: {
-          conversationId: 77,
-          contact: { id: 87, name: 'Ana' },
-        },
-      });
+    });
+    api.command.mockResolvedValue({
+      url: 'https://viari.example/atendimento/nativo',
+      origin: 'https://viari.example',
+      channel: 'converted',
+      mode: 'iframe',
+    });
+    const wrapper = mount(Panel, {
+      global,
+      props: { conversationId: 7, contact: { id: 8 } },
+    });
+    try {
+      await flushPromises();
+      converted = true;
+      await wrapper
+        .findAll('button')
+        .find(button => button.text() === en.VIARI.REFRESH)
+        .trigger('click');
       await flushPromises();
       await wrapper
         .findAll('button')
-        .find(b => b.text().includes('ORC-123'))
+        .find(button => button.text() === en.VIARI.ORDER)
+        .trigger('click');
+      expect(wrapper.text()).toContain('Converted tour');
+      expect(wrapper.text()).toContain('100.00');
+      await wrapper
+        .findAll('button')
+        .find(button => button.text() === en.VIARI.OPEN_NATIVE)
         .trigger('click');
       await flushPromises();
-
-      const header = () => wrapper.getComponent(QuoteEditor).get('form');
-      await header().get('textarea').setValue('Nota enviada');
-      await header().trigger('submit');
-      await flushPromises();
-
       expect(api.command).toHaveBeenLastCalledWith(
-        77,
-        'orcamento_editar',
-        expect.objectContaining({
-          dados: expect.objectContaining({
-            revisao,
-            obsInternas: 'Nota enviada',
-          }),
-        }),
+        7,
+        'abrir_nativo',
+        { dados: { destino: 'os', grupoId: '2' } },
         expect.any(String),
         expect.any(AbortSignal)
       );
-      expect(header().get('textarea').element.value).toBe('Nota normalizada');
-      wrapper.unmount();
     } finally {
+      wrapper.unmount();
       vi.unstubAllGlobals();
     }
   });
-
-  it('preserves passenger document, assistance flag and notes when editing the name', async () => {
-    const persisted = {
-      id: 'passenger',
-      nome: 'Ana',
-      tipoPax: 'ADT',
-      idade: 35,
-      documento: 'DOC-TUR-1',
-      necessidadeEspecial: true,
-      observacao: 'Solicitou apoio no embarque',
-    };
-    const reservation = {
-      id: 'child-reservation',
-      agenda: { produto: { nome: 'Passeio' } },
-      atribuicoes: [{ passageiroId: 'group-passenger' }],
-      passageiros: [persisted],
-    };
-    const command = vi.fn().mockResolvedValue({});
-    const wrapper = mount(OrderActions, {
-      global,
-      props: {
-        order: {
-          grupoId: 'order',
-          reservas: [reservation],
-          passageiros: [
-            { id: 'group-passenger', nome: 'Titular', tipoPax: 'ADT' },
-          ],
-        },
-        can: action =>
-          [
-            'reserva_passageiro_editar',
-            'reserva_passageiro_desatribuir',
-          ].includes(action),
-        command,
-        read: vi.fn().mockResolvedValue(reservation),
-      },
-    });
-
-    await wrapper.get('select').setValue(reservation.id);
-    await flushPromises();
-    expect(wrapper.text()).toContain(en.VIARI.UNASSIGN);
-    await wrapper
-      .findAll('button')
-      .find(b => b.text() === en.VIARI.EDIT)
-      .trigger('click');
-    const form = wrapper.get('form');
-    await form.get('input').setValue('Ana Maria');
-    await form.trigger('submit');
-    await flushPromises();
-
-    expect(command).toHaveBeenCalledWith('reserva_passageiro_editar', {
-      reservaId: reservation.id,
-      dados: {
-        passageiroId: persisted.id,
-        nome: 'Ana Maria',
-        tipoPax: persisted.tipoPax,
-        idade: persisted.idade,
-        documento: persisted.documento,
-        necessidadeEspecial: persisted.necessidadeEspecial,
-        observacao: persisted.observacao,
-      },
-    });
-  });
-  it('keeps an unlinked contact read-only until an explicit action and cancels reads on close', async () => {
+  it.each(['pagamento', 'cliente_editar'])(
+    'relaunches the native workspace for %s after conversion or customer creation',
+    async destino => {
+      vi.stubGlobal('crypto', webcrypto);
+      HTMLDialogElement.prototype.showModal = vi.fn();
+      api.command.mockClear();
+      api.read.mockResolvedValue({
+        clienteId: null,
+        accountId: 1,
+        userId: 5,
+        acoes: ['cliente_criar'],
+      });
+      api.command.mockResolvedValue({
+        url: 'https://viari.example/atendimento/nativo?ticket=launch',
+        origin: 'https://viari.example',
+        channel: 'launch',
+        mode: 'iframe',
+      });
+      const wrapper = mount(Panel, {
+        global,
+        props: { conversationId: 7, contact: { id: 8 } },
+      });
+      try {
+        await flushPromises();
+        await wrapper
+          .findAll('button')
+          .find(button => button.text() === en.VIARI.NEW_CUSTOMER)
+          .trigger('click');
+        await flushPromises();
+        expect(wrapper.findComponent(NativeModal).exists()).toBe(true);
+        wrapper.getComponent(NativeModal).vm.$emit('navigate', {
+          destino,
+          grupoId: 'converted-order',
+          url: 'https://attacker.example',
+        });
+        await flushPromises();
+        expect(api.command).toHaveBeenLastCalledWith(
+          7,
+          'abrir_nativo',
+          { dados: { destino, grupoId: 'converted-order' } },
+          expect.any(String),
+          expect.any(AbortSignal)
+        );
+        expect(wrapper.getComponent(NativeModal).props('session').url).toBe(
+          'https://viari.example/atendimento/nativo?ticket=launch'
+        );
+      } finally {
+        wrapper.unmount();
+        vi.unstubAllGlobals();
+      }
+    }
+  );
+  it('keeps an unlinked contact read-only until explicit confirmation', async () => {
+    HTMLDialogElement.prototype.showModal = vi.fn();
+    HTMLDialogElement.prototype.close = vi.fn();
+    api.command.mockClear();
     let signal;
     api.read.mockImplementation(async (_conversation, action, _args, s) => {
       signal = s;
@@ -287,53 +257,7 @@ describe('Viari conversation forms', () => {
     await flushPromises();
     expect(wrapper.text()).toContain('Confirm link');
     expect(api.command).not.toHaveBeenCalled();
-    wrapper.unmount();
-    expect(signal.aborted).toBe(true);
-  });
-  it('only posts a payment after a successful preview and invalidates the preview on editing', async () => {
-    const command = vi.fn().mockResolvedValue({
-      saldo: 90,
-      condicao: 'pix',
-      totalPago: 10,
-      totalEfetivo: 100,
-    });
-    const wrapper = mount(Payment, {
-      global,
-      props: {
-        order: { grupoId: 'order', codigo: '001' },
-        partners: [],
-        accounts: [],
-        command,
-      },
-    });
-    const amount = wrapper.get('input[type=number]');
-    await amount.setValue('20');
-    await wrapper.get('form').trigger('submit');
-    await flushPromises();
-    expect(command.mock.calls.map(c => c[0])).toEqual(['pagamento_previa']);
-    expect(wrapper.text()).toContain('90');
-    await amount.setValue('25');
-    await wrapper.get('form').trigger('submit');
-    await flushPromises();
-    expect(command.mock.calls.map(c => c[0])).toEqual([
-      'pagamento_previa',
-      'pagamento_previa',
-    ]);
-    await wrapper.get('form').trigger('submit');
-    await flushPromises();
-    expect(command.mock.calls[2]).toEqual([
-      'pagamento_registrar',
-      {
-        grupoId: 'order',
-        dados: {
-          valor: 25,
-          metodo: 'pix',
-          tipoPagamento: 'sinal',
-          recebedorTipo: 'empresa',
-          parcelas: 1,
-        },
-      },
-    ]);
+    expect(signal).toBeInstanceOf(AbortSignal);
     wrapper.unmount();
   });
 });

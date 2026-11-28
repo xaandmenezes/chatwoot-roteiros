@@ -1,543 +1,516 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { emitter } from 'shared/helpers/mitt';
 import { BUS_EVENTS } from 'shared/constants/busEvents';
+import { useAbortableRequest } from 'dashboard/composables/useAbortableRequest';
 import api from 'dashboard/api/integrations/viari';
-import QuoteForm from './ViariQuoteForm.vue';
-import PaymentForm from './ViariPaymentForm.vue';
-import { acknowledgePending, runIntention } from './intention';
-import OrderActions from './ViariOrderActions.vue';
-import QuoteEditor from './ViariQuoteEditor.vue';
-import PartnerForm from './ViariPartnerForm.vue';
+import NativeModal from './ViariNativeModal.vue';
+import { runIntention } from './intention';
 
 const props = defineProps({
   conversationId: { type: Number, required: true },
   contact: { type: Object, required: true },
 });
-const { t } = useI18n();
-const controller = new AbortController();
-const linked = ref(null);
+const { t, n } = useI18n();
+const request = useAbortableRequest();
+const context = ref(null);
 const detail = ref(null);
-const quote = ref(null);
-const order = ref(null);
-const candidates = ref([]);
-const lookupComplete = ref(false);
-const searched = ref(false);
-const identity = ref(null);
-const rights = ref([]);
-const pendingAction = ref('');
-const reviewedHistory = ref(false);
-const can = action => rights.value.includes(action);
-const customerEdit = ref(null);
-const customerData = ref({});
-const approved = ref(false);
-const conversion = ref({ locaisEmbarque: {} });
-const reason = ref('');
-const offerLinks = ref({});
-const customerFields = [
-  'email',
-  'documento',
-  'nacionalidade',
-  'hotelHospedado',
-  'dataChegada',
-  'dataPartida',
-  'observacoes',
-];
-const name = ref(props.contact.name || '');
-const phone = ref(props.contact.phone_number || '');
-const tab = ref('history');
-const catalog = ref(null);
-const partners = ref([]);
+const selected = ref('');
+const negotiations = ref([]);
+const negotiation = computed(() =>
+  negotiations.value.find(item => item.id === selected.value)
+);
+const stage = ref('quote');
+const selectedGroup = ref('');
+const selectedQuote = ref('');
+const selectedReservation = ref('');
+const relatedReservations = computed(() =>
+  negotiations.value.filter(
+    item =>
+      item.tipo === 'reserva' &&
+      item.reservaIds.some(id => negotiation.value?.reservaIds.includes(id))
+  )
+);
+const relatedQuotes = computed(() =>
+  negotiations.value.filter(
+    item =>
+      item.tipo === 'orcamento' &&
+      item.orcamentoIds.some(id => negotiation.value?.orcamentoIds.includes(id))
+  )
+);
+const activeNegotiation = computed(() =>
+  stage.value === 'quote'
+    ? negotiations.value.find(item => item.id === selectedQuote.value)
+    : negotiations.value.find(
+        item => item.tipo === 'os' && item.grupoId === selectedGroup.value
+      ) ||
+      negotiations.value.find(item => item.id === selectedReservation.value) ||
+      negotiation.value
+);
 const error = ref('');
-const busy = ref(false);
+const session = ref(null);
+const MODAL_REFRESH_INTERVAL = 15000;
+let refreshTimer;
+watch(session, value => {
+  clearInterval(refreshTimer);
+  if (value)
+    refreshTimer = setInterval(() => {
+      if (!request.isPending.value) run(refresh);
+    }, MODAL_REFRESH_INTERVAL);
+});
+onBeforeUnmount(() => clearInterval(refreshTimer));
+const candidates = ref(null);
+const linking = ref(false);
+const linkingDialog = ref(null);
+watch(linking, value => {
+  if (value) linkingDialog.value.showModal();
+  else linkingDialog.value.close();
+});
 const proposal = ref('');
-
-const quotes = computed(() => detail.value?.orcamentos || []);
-const read = (action, params = {}, signal = controller.signal) =>
-  api.read(props.conversationId, action, params, signal);
-async function refresh() {
-  const context = await read('contexto');
-  rights.value = context.acoes;
-  linked.value = context.clienteId;
-  identity.value = [
-    context.accountId,
-    context.userId,
-    props.conversationId,
-    props.contact.id,
-  ];
-  if (linked.value) detail.value = await read('cliente_detalhe');
-  if (!catalog.value && can('catalogo')) catalog.value = await read('catalogo');
-}
-async function command(action, params) {
-  if (!identity.value) throw new Error('No conversation context');
-  try {
-    return await runIntention(identity.value, action, params, key =>
-      api.command(props.conversationId, action, params, key, controller.signal)
-    );
-  } catch (e) {
-    if (e.code === 'VIARI_PENDING') {
-      pendingAction.value = action;
-      reviewedHistory.value = false;
-      await refresh();
-      tab.value = 'history';
-    }
-    throw e;
-  }
-}
+const can = action => context.value?.acoes?.includes(action);
+const items = computed(() => activeNegotiation.value?.passeios || []);
+const totals = computed(() => activeNegotiation.value?.financeiro);
+const pax = ['Adt', 'Chd', 'Inf', 'Sen', 'Free'];
+const money = value =>
+  value == null
+    ? '—'
+    : n(Number(value), { style: 'currency', currency: 'BRL' });
+const date = value =>
+  value ? value.slice(0, 10).split('-').reverse().join('/') : '—';
 async function run(operation) {
-  if (busy.value) return;
-  busy.value = true;
   error.value = '';
   try {
-    await operation();
+    await request.run(operation);
   } catch (e) {
-    if (!controller.signal.aborted)
-      error.value = e.response?.data?.error?.mensagem || t('VIARI.ERROR');
-  } finally {
-    busy.value = false;
+    error.value = e.response?.data?.error?.mensagem || t('VIARI.ERROR');
   }
 }
-async function find() {
-  const result = await read('cliente_buscar');
-  candidates.value = result.clientes;
-  lookupComplete.value = true;
-
-  searched.value = true;
-}
-async function link(customer) {
-  await command('cliente_vincular', { clienteId: customer.id });
-  await refresh();
-}
-async function createCustomer() {
-  await command('cliente_criar', {
-    dados: {
-      ...Object.fromEntries(
-        Object.entries(customerData.value).filter(([, v]) => v)
-      ),
-      nome: name.value.trim(),
-      telefone: phone.value.trim(),
-    },
-  });
-  await refresh();
-}
-async function openTab(target) {
-  if (target === 'quote' && !catalog.value)
-    catalog.value = await read('catalogo');
-  if (target === 'partner')
-    partners.value = (
-      await read('parceiros', { incluirInativos: can('parceiro_editar') })
-    ).parceiros;
-  tab.value = target;
-}
-async function selectQuote(item) {
-  const result = await read('orcamento', { orcamentoId: item.id });
-  if (!catalog.value && can('catalogo')) catalog.value = await read('catalogo');
-  quote.value = result.orcamento || result;
-  approved.value = false;
-  conversion.value = { locaisEmbarque: {} };
-  reason.value = '';
-  offerLinks.value = {};
-  order.value = null;
+const read = (action, params, signal) =>
+  api.read(props.conversationId, action, params, signal);
+const command = (action, params, signal) =>
+  runIntention(
+    [
+      context.value.accountId,
+      context.value.userId,
+      props.conversationId,
+      props.contact.id,
+    ],
+    action,
+    params,
+    key => api.command(props.conversationId, action, params, key, signal)
+  );
+function selectNegotiation(id) {
+  selected.value = id;
   proposal.value = '';
-  tab.value = 'history';
+  selectedReservation.value = relatedReservations.value[0]?.id || '';
+  selectedQuote.value = relatedQuotes.value[0]?.id || '';
+  selectedGroup.value =
+    negotiation.value?.grupoId || negotiation.value?.grupoIds[0] || '';
+  stage.value = negotiation.value?.tipo === 'orcamento' ? 'quote' : 'order';
 }
-async function saveQuote(dados) {
-  const result = await command('orcamento_criar', { dados });
-  await refresh();
-  await selectQuote(result);
-}
-async function selectOrder(grupoId) {
-  const result = await read('os', { grupoId });
-  order.value = { ...result, grupoId };
-  partners.value = catalog.value?.parceirosRecebedores || [];
-  if (!catalog.value && can('catalogo')) catalog.value = await read('catalogo');
-  tab.value = 'payment';
-}
-async function transition(action, fields = {}) {
-  const dados = {
-    ...fields,
-    revisao: quote.value.revisao || quote.value.atualizadoEm,
-  };
-  const result = await command(action, { orcamentoId: quote.value.id, dados });
-  await refresh();
-  await selectQuote(quote.value);
-  if (action === 'orcamento_enviar') {
-    proposal.value = result.textoWhatsapp || '';
-    offerLinks.value = result;
+async function refresh(signal) {
+  context.value = await read('contexto', {}, signal);
+  detail.value = context.value.clienteId
+    ? await read('cliente_detalhe', {}, signal)
+    : null;
+  negotiations.value = context.value.clienteId
+    ? (await read('resumo_comercial', {}, signal)).negociacoes
+    : [];
+  if (!negotiations.value.some(item => item.id === selected.value)) {
+    selectNegotiation(negotiations.value[0]?.id || '');
+    return;
   }
-  if (action === 'orcamento_converter') await selectOrder(result.grupoId);
+  if (!negotiation.value.grupoIds.includes(selectedGroup.value))
+    selectedGroup.value =
+      negotiation.value.grupoId || negotiation.value.grupoIds[0] || '';
+  if (
+    !relatedReservations.value.some(
+      item => item.id === selectedReservation.value
+    )
+  )
+    selectedReservation.value = relatedReservations.value[0]?.id || '';
+  if (!relatedQuotes.value.some(item => item.id === selectedQuote.value))
+    selectedQuote.value = relatedQuotes.value[0]?.id || '';
+}
+async function openNative(destino, signal, target = null) {
+  const result = await command(
+    'abrir_nativo',
+    {
+      dados: {
+        destino,
+        ...(target?.orcamentoId ? { orcamentoId: target.orcamentoId } : {}),
+        ...(target?.reservaId ? { reservaId: target.reservaId } : {}),
+        ...(target?.grupoId ? { grupoId: target.grupoId } : {}),
+        ...(!target &&
+        ['orcamento', 'orcamento_editar', 'orcamento_converter'].includes(
+          destino
+        ) &&
+        negotiation.value?.orcamentoIds?.length
+          ? {
+              orcamentoId: (stage.value === 'quote'
+                ? activeNegotiation.value
+                : negotiation.value
+              ).orcamentoIds[0],
+            }
+          : {}),
+        ...(!target &&
+        ['os', 'pagamento'].includes(destino) &&
+        activeNegotiation.value?.grupoId
+          ? { grupoId: activeNegotiation.value.grupoId }
+          : {}),
+        ...(!target &&
+        ['reserva', 'pagamento'].includes(destino) &&
+        activeNegotiation.value?.tipo === 'reserva'
+          ? { reservaId: activeNegotiation.value.reservaIds[0] }
+          : {}),
+      },
+    },
+    signal
+  );
+  const url = new URL(result.url);
+  if (
+    result.mode === 'external' ||
+    url.origin !== result.origin ||
+    url.protocol !== 'https:' ||
+    !result.channel
+  ) {
+    error.value = t('VIARI.NATIVE_UNAVAILABLE');
+    return;
+  }
+  session.value = result;
+}
+async function closeNative() {
+  session.value = null;
+  await run(refresh);
+}
+async function find(signal) {
+  candidates.value = (await read('cliente_buscar', {}, signal)).clientes;
+}
+async function savedNative() {
+  session.value = null;
+  await run(async signal => {
+    await refresh(signal);
+    if (!context.value.clienteId) {
+      linking.value = true;
+      await find(signal);
+    }
+  });
+}
+async function navigateNative(event) {
+  const destinations = [
+    'orcamento_converter',
+    'orcamento_editar',
+    'pagamento',
+    'cliente_editar',
+    'os',
+    'reserva',
+  ];
+  if (!destinations.includes(event.destino)) return;
+  await run(signal => openNative(event.destino, signal, event));
+}
+async function link(customer, signal) {
+  await command('cliente_vincular', { clienteId: customer.id }, signal);
+  linking.value = false;
+  await refresh(signal);
+}
+async function prepare(signal) {
+  const orcamentoId = activeNegotiation.value.orcamentoIds[0];
+  const response = await read('orcamento', { orcamentoId }, signal);
+  const quote = response.orcamento || response;
+  const result = await command(
+    'orcamento_enviar',
+    {
+      orcamentoId,
+      dados: { revisao: quote.revisao || quote.atualizadoEm },
+    },
+    signal
+  );
+  proposal.value = result.textoWhatsapp || '';
 }
 onMounted(() => run(refresh));
-onBeforeUnmount(() => controller.abort());
 </script>
 
 <template>
   <section
-    class="flex flex-col gap-2 [&_label]:grid [&_label]:gap-1 [&_input]:min-w-0 [&_select]:min-w-0 [&_button]:text-n-brand [&_button]:text-start [&_button:disabled]:opacity-50"
-    :aria-busy="busy"
+    class="flex min-w-0 flex-col gap-3 text-sm"
+    :aria-busy="request.isPending.value"
   >
-    <fieldset v-if="pendingAction">
-      <p role="alert">{{ t('VIARI.PENDING') }}</p>
-      <label
-        ><input v-model="reviewedHistory" type="checkbox" />{{
-          t('VIARI.RECONCILED')
-        }}</label
-      >
+    <p v-if="error" role="alert" class="m-0 text-n-ruby-9">{{ error }}</p>
+    <p v-if="request.isPending.value" role="status" class="m-0">
+      {{ t('VIARI.LOADING') }}
+    </p>
+    <template v-if="context && !context.clienteId">
+      <p class="m-0">{{ t('VIARI.LINK_REQUIRED') }}</p>
       <button
-        :disabled="!reviewedHistory"
+        type="button"
+        class="text-start text-n-brand"
         @click="
-          acknowledgePending(identity, pendingAction);
-          pendingAction = '';
+          linking = true;
+          run(find);
         "
       >
-        {{ t('VIARI.NEW_INTENT') }}
+        {{ t('VIARI.SEARCH') }}
       </button>
-    </fieldset>
-    <p v-if="error" role="alert">{{ error }}</p>
-    <button v-if="error" @click="run(refresh)">{{ t('VIARI.REFRESH') }}</button>
-    <p v-if="busy" role="status">{{ t('VIARI.LOADING') }}</p>
-    <fieldset :disabled="busy" class="flex min-w-0 flex-col gap-2">
-      <template v-if="!linked">
-        <button v-if="can('parceiros')" @click="run(() => openTab('partner'))">
-          {{ t('VIARI.PARTNER') }}
-        </button>
-        <button :disabled="!identity" @click="run(find)">
-          {{ t('VIARI.SEARCH') }}
-        </button>
-        <button
-          v-if="can('cliente_criar') && !searched"
-          @click="searched = true"
-        >
-          {{ t('VIARI.NEW_CUSTOMER') }}
-        </button>
-        <template v-if="searched">
-          <p v-if="lookupComplete && !candidates.length">
-            {{ t('VIARI.NO_MATCH') }}
-          </p>
-          <button
-            v-for="candidate in can('cliente_vincular') ? candidates : []"
-            :key="candidate.id"
-            @click="run(() => link(candidate))"
-          >
-            {{ t('VIARI.LINK') }} · {{ candidate.nome }} ·
-            {{ candidate.telefone }}
-          </button>
-          <template v-if="can('cliente_criar')">
-            <label>
-              <span>{{ t('VIARI.NAME') }}</span>
-              <input v-model.trim="name" />
-            </label>
-            <label>
-              <span>{{ t('VIARI.PHONE') }}</span>
-              <input v-model.trim="phone" type="tel" />
-            </label>
-            <details>
-              <summary>{{ t('VIARI.DETAILS') }}</summary>
-              <label v-for="f in customerFields" :key="f">
-                <span>{{ t('VIARI.' + f) }}</span>
-                <input
-                  v-model.trim="customerData[f]"
-                  :type="f.startsWith('data') ? 'date' : 'text'"
-                />
-              </label>
-            </details>
-            <label v-if="catalog?.canaisAquisicao?.length">
-              <span>{{ t('VIARI.ACQUISITION') }}</span>
-              <select v-model="customerData.canalAquisicaoId">
-                <option value="">—</option>
-                <option
-                  v-for="c in catalog.canaisAquisicao"
-                  :key="c.id"
-                  :value="c.id"
-                >
-                  {{ c.nome }}
-                </option>
-              </select>
-            </label>
-            <button :disabled="!name.trim()" @click="run(createCustomer)">
-              {{ t('VIARI.CONFIRM_CUSTOMER') }}
-            </button>
-          </template>
-        </template>
-      </template>
-      <template v-else-if="detail">
-        <strong>{{ detail.cliente.nome }}</strong>
+      <button
+        v-if="can('cliente_criar')"
+        type="button"
+        class="text-start text-n-brand"
+        @click="run(signal => openNative('cliente_criar', signal))"
+      >
+        {{ t('VIARI.NEW_CUSTOMER') }}
+      </button>
+    </template>
+    <template v-if="detail">
+      <header class="flex items-center justify-between gap-2">
+        <strong class="truncate">{{ detail.cliente.nome }}</strong>
         <button
           v-if="can('cliente_editar')"
-          @click="
-            customerEdit = {
-              ...Object.fromEntries(
-                ['nome', 'telefone', 'canalAquisicaoId', ...customerFields].map(
-                  k => [
-                    k,
-                    k.startsWith('data')
-                      ? detail.cliente[k]?.slice(0, 10) || ''
-                      : detail.cliente[k] || '',
-                  ]
-                )
-              ),
-            }
-          "
+          type="button"
+          class="text-n-brand"
+          @click="run(signal => openNative('cliente', signal))"
         >
-          {{ t('VIARI.EDIT_CUSTOMER') }}
+          {{ t('VIARI.EDIT') }}
         </button>
-        <form
-          v-if="customerEdit"
-          @submit.prevent="
-            run(async () => {
-              const dados = Object.fromEntries(
-                Object.entries(customerEdit).filter(([, v]) => v !== '')
-              );
-              await command('cliente_editar', { dados });
-              customerEdit = null;
-              await refresh();
-            })
-          "
+      </header>
+      <label class="flex flex-col gap-1">
+        <span class="text-xs text-n-slate-11">{{
+          t('VIARI.NEGOTIATION')
+        }}</span>
+        <select
+          :value="selected"
+          class="w-full min-w-0"
+          @change="selectNegotiation($event.target.value)"
         >
-          <label
-            v-for="key in ['nome', 'telefone', ...customerFields]"
-            :key="key"
-          >
-            <span>{{
-              key === 'nome' ? t('VIARI.NAME') : t('VIARI.' + key)
-            }}</span>
-            <input
-              v-model="customerEdit[key]"
-              :type="key.startsWith('data') ? 'date' : 'text'"
-              :required="key === 'nome'"
-            />
-          </label>
-          <label v-if="catalog?.canaisAquisicao?.length">
-            <span>{{ t('VIARI.ACQUISITION') }}</span>
-            <select v-model="customerEdit.canalAquisicaoId">
-              <option value="">—</option>
-              <option
-                v-for="c in catalog.canaisAquisicao"
-                :key="c.id"
-                :value="c.id"
-              >
-                {{ c.nome }}
-              </option>
-            </select>
-          </label>
-          <button>{{ t('VIARI.SAVE') }}</button>
-        </form>
-        <nav class="flex flex-wrap gap-1">
+          <option v-if="!negotiations.length" value="">
+            {{ t('VIARI.NO_QUOTES') }}
+          </option>
+          <option v-for="item in negotiations" :key="item.id" :value="item.id">
+            {{ item.codigo || item.id }} ·
+            {{ item.status || date(item.passeios[0]?.data) }}
+          </option>
+        </select>
+      </label>
+      <button
+        v-if="can('orcamento_criar')"
+        type="button"
+        class="text-start text-n-brand"
+        @click="run(signal => openNative('orcamento_novo', signal))"
+      >
+        {{ t('VIARI.QUOTE') }}
+      </button>
+      <button
+        v-if="can('reserva_criar')"
+        type="button"
+        class="text-start text-n-brand"
+        @click="run(signal => openNative('reserva_criar', signal))"
+      >
+        {{ t('VIARI.NEW_ORDER') }}
+      </button>
+      <template v-if="negotiation">
+        <nav class="flex gap-2" :aria-label="t('VIARI.STAGES')">
           <button
-            v-for="section in [
-              'history',
-              ...(can('orcamento_criar') ? ['quote'] : []),
-              ...(can('parceiros') ? ['partner'] : []),
-            ]"
-            :key="section"
-            @click="run(() => openTab(section))"
+            type="button"
+            :disabled="!negotiation.orcamentoIds.length"
+            :aria-current="stage === 'quote' ? 'step' : undefined"
+            class="text-n-brand"
+            @click="stage = 'quote'"
           >
-            {{ t('VIARI.' + section.toUpperCase()) }}
+            {{ t('VIARI.QUOTE_STAGE') }}
+          </button>
+          <span aria-hidden="true" class="i-lucide-chevron-right size-4" />
+          <button
+            type="button"
+            :disabled="
+              !negotiation.grupoIds.length && !negotiation.reservaIds.length
+            "
+            :aria-current="stage === 'order' ? 'step' : undefined"
+            class="text-n-brand disabled:opacity-50"
+            @click="stage = 'order'"
+          >
+            {{ t('VIARI.ORDER') }}
+          </button>
+          <span aria-hidden="true" class="i-lucide-chevron-right size-4" />
+          <button
+            type="button"
+            :disabled="
+              !negotiation.grupoIds.length && !negotiation.reservaIds.length
+            "
+            :aria-current="stage === 'payment' ? 'step' : undefined"
+            class="text-n-brand disabled:opacity-50"
+            @click="stage = 'payment'"
+          >
+            {{ t('VIARI.PAYMENT_STAGE') }}
           </button>
         </nav>
-        <template v-if="tab === 'history'">
-          <button @click="run(refresh)">{{ t('VIARI.REFRESH') }}</button>
-          <button
-            v-for="item in quotes"
-            :key="item.id"
-            @click="run(() => selectQuote(item))"
-          >
-            {{ item.codigo }} · {{ item.status }}
-          </button>
-          <template v-if="quote">
-            <strong>{{ quote.codigo }} · {{ quote.status }}</strong>
-            <p>
-              {{ t('VIARI.TOTAL') }} {{ quote.valorTotal }} ·
-              {{ t('VIARI.pix') }} {{ quote.valorTotalPix }}
-            </p>
-            <p v-for="item in quote.itens" :key="item.id">
-              {{ item.produto?.nome || item.nome }} · {{ item.valorTotalItem }}
-            </p>
-            <QuoteEditor
-              v-if="quote.status === 'rascunho' && can('orcamento_editar')"
-              :key="quote.id + (quote.revisao || quote.atualizadoEm)"
-              :quote="quote"
-              :read="read"
-              :catalog="catalog"
-              @edit="
-                fields => run(() => transition('orcamento_editar', fields))
-              "
-            />
-            <button
-              v-if="
-                can('orcamento_enviar') &&
-                ['rascunho', 'enviado', 'visualizado', 'aprovado'].includes(
-                  quote.status
-                )
-              "
-              @click="run(() => transition('orcamento_enviar'))"
-            >
-              {{ t('VIARI.PREPARE') }}
-            </button>
-            <button
-              v-if="proposal"
-              @click="
-                emitter.emit(BUS_EVENTS.INSERT_INTO_RICH_EDITOR, proposal)
-              "
-            >
-              {{ t('VIARI.COMPOSER') }}
-            </button>
-            <template
-              v-if="
-                can('orcamento_aprovar') &&
-                ['rascunho', 'enviado', 'visualizado'].includes(quote.status)
-              "
-            >
-              <label
-                ><input v-model="approved" type="checkbox" />{{
-                  t('VIARI.CONFIRM_APPROVAL')
-                }}</label
-              >
-              <button
-                :disabled="!approved"
-                @click="
-                  run(() =>
-                    transition('orcamento_aprovar', { confirmado: true })
-                  )
-                "
-              >
-                {{ t('VIARI.APPROVE') }}
-              </button>
-              <label>
-                <span>{{ t('VIARI.REASON') }}</span>
-                <input v-model.trim="reason" />
-              </label>
-              <button
-                :disabled="!reason"
-                @click="
-                  run(() => transition('orcamento_recusar', { motivo: reason }))
-                "
-              >
-                {{ t('VIARI.REJECT') }}
-              </button>
-            </template>
-            <template v-if="offerLinks.urlProposta">
-              <a
-                :href="offerLinks.urlProposta"
-                target="_blank"
-                rel="noopener noreferrer"
-                >{{ t('VIARI.PREPARED') }}</a
-              >
-              <a
-                :href="offerLinks.urlPdf"
-                target="_blank"
-                rel="noopener noreferrer"
-                >{{ t('VIARI.PDF') }}</a
-              >
-            </template>
-            <label
-              v-if="can('orcamento_converter') && quote.status === 'aprovado'"
-            >
-              <span>{{ t('VIARI.CONVERT_NOTES') }}</span>
-              <textarea v-model="conversion.observacoes" />
-            </label>
-            <template
-              v-if="
-                can('orcamento_converter') &&
-                quote.status === 'aprovado' &&
-                catalog?.locaisEmbarque?.length
-              "
-            >
-              <label v-for="item in quote.itens" :key="item.id">
-                <span>{{ t('VIARI.EMBARK') }} · {{ item.produto?.nome }}</span>
-                <select
-                  :value="conversion.locaisEmbarque[item.id] || ''"
-                  @change="
-                    $event.target.value
-                      ? (conversion.locaisEmbarque[item.id] =
-                          $event.target.value)
-                      : delete conversion.locaisEmbarque[item.id]
-                  "
-                >
-                  <option value="">—</option>
-                  <option
-                    v-for="e in catalog.locaisEmbarque"
-                    :key="e.id"
-                    :value="e.id"
-                  >
-                    {{ e.nome }}
-                  </option>
-                </select>
-              </label>
-            </template>
-            <button
-              v-if="can('orcamento_converter') && quote.status === 'aprovado'"
-              @click="run(() => transition('orcamento_converter', conversion))"
-            >
-              {{ t('VIARI.CONVERT') }}
-            </button>
-          </template>
-          <button
-            v-for="reservation in detail.reservas.filter(
-              r => r.grupoReservaId && r.orcamentoId
-            )"
-            :key="reservation.id"
-            @click="run(() => selectOrder(reservation.grupoReservaId))"
-          >
-            {{ t('VIARI.ORDER') }} ·
+        <select
+          v-if="stage !== 'quote' && negotiation.grupoIds.length > 1"
+          v-model="selectedGroup"
+          :aria-label="t('VIARI.ORDER')"
+        >
+          <option v-for="id in negotiation.grupoIds" :key="id" :value="id">
             {{
-              reservation.codigo || reservation.voucherCode || reservation.id
+              negotiations.find(
+                item => item.tipo === 'os' && item.grupoId === id
+              )?.codigo || id
             }}
-            · {{ reservation.status }}
-          </button>
-          <p v-for="payment in detail.pagamentos" :key="payment.id">
-            {{ payment.tipoPagamento }} · {{ payment.valor }} ·
-            {{ payment.status }}
-          </p>
-        </template>
-        <QuoteForm
-          v-if="tab === 'quote'"
-          :catalog="catalog"
-          :read="read"
-          @save="data => run(() => saveQuote(data))"
-        />
-        <OrderActions
-          v-if="tab === 'payment'"
-          :key="order.grupoId"
-          :order="order"
-          :command="command"
-          :read="read"
-          :can="can"
-          @changed="
-            run(async () => {
-              await refresh();
-              await selectOrder(order.grupoId);
-            })
+          </option>
+        </select>
+        <select
+          v-if="stage === 'quote' && relatedQuotes.length > 1"
+          v-model="selectedQuote"
+          :aria-label="t('VIARI.QUOTE_STAGE')"
+        >
+          <option v-for="item in relatedQuotes" :key="item.id" :value="item.id">
+            {{ item.codigo || item.id }}
+          </option>
+        </select>
+        <select
+          v-if="
+            stage !== 'quote' &&
+            !negotiation.grupoIds.length &&
+            relatedReservations.length > 1
           "
-        />
-        <PaymentForm
-          v-if="tab === 'payment' && can('pagamento_registrar')"
-          :key="order.grupoId"
-          :accounts="catalog?.contasBancarias || []"
-          :order="order"
-          :partners="partners"
-          :command="command"
-          @paid="
-            run(async () => {
-              await refresh();
-              await selectOrder(order.grupoId);
-            })
+          v-model="selectedReservation"
+          :aria-label="t('VIARI.ORDER')"
+        >
+          <option
+            v-for="item in relatedReservations"
+            :key="item.id"
+            :value="item.id"
+          >
+            {{ item.codigo || item.id }}
+          </option>
+        </select>
+        <ol
+          v-if="stage !== 'payment'"
+          class="m-0 flex list-none flex-col gap-2 p-0"
+        >
+          <li
+            v-for="item in items"
+            :key="item.id"
+            class="rounded-lg border border-n-weak p-2"
+          >
+            <p class="m-0 font-medium">
+              {{
+                item.produtoNome ||
+                item.produto?.nome ||
+                item.agenda?.produto?.nome ||
+                item.nome
+              }}
+            </p>
+            <p class="m-0 text-xs text-n-slate-11">
+              {{ date(item.data) }}
+            </p>
+            <p class="m-0 text-xs">
+              {{
+                pax
+                  .map(
+                    type => type.toUpperCase() + ' ' + (item['qtd' + type] ?? 0)
+                  )
+                  .join(' · ')
+              }}
+            </p>
+            <p class="m-0 text-xs">
+              {{ t('VIARI.PAX') }}
+              {{ item.totalPax }}
+            </p>
+            <p class="m-0 text-end">
+              {{ item.horario || '' }}
+            </p>
+          </li>
+        </ol>
+        <dl class="m-0 grid grid-cols-2 gap-1 rounded-lg bg-n-alpha-2 p-2">
+          <dt>{{ t('VIARI.TOTAL') }}</dt>
+          <dd class="m-0 text-end">
+            {{ money(totals?.total) }}
+          </dd>
+          <dt>{{ t('VIARI.NORMAL_TOTAL') }}</dt>
+          <dd class="m-0 text-end">{{ money(totals?.totalNormal) }}</dd>
+          <dt>{{ t('VIARI.PIX_TOTAL') }}</dt>
+          <dd class="m-0 text-end">{{ money(totals?.totalPix) }}</dd>
+          <dt>{{ t('VIARI.TOTAL_PAID') }}</dt>
+          <dd class="m-0 text-end">{{ money(totals?.pago) }}</dd>
+          <dt>{{ t('VIARI.BALANCE') }}</dt>
+          <dd class="m-0 text-end">{{ money(totals?.saldo) }}</dd>
+        </dl>
+        <button
+          type="button"
+          class="text-start text-n-brand"
+          @click="
+            run(signal =>
+              openNative(
+                stage === 'quote'
+                  ? 'orcamento'
+                  : stage === 'payment'
+                    ? 'pagamento'
+                    : activeNegotiation.tipo === 'reserva'
+                      ? 'reserva'
+                      : 'os',
+                signal
+              )
+            )
           "
-        />
+        >
+          {{ t('VIARI.OPEN_NATIVE') }}
+        </button>
+        <button
+          v-if="
+            stage === 'quote' &&
+            negotiation.orcamentoIds.length &&
+            can('orcamento_enviar')
+          "
+          type="button"
+          class="text-start text-n-brand"
+          @click="run(prepare)"
+        >
+          {{ t('VIARI.PREPARE') }}
+        </button>
+        <button
+          v-if="proposal"
+          type="button"
+          class="text-start text-n-brand"
+          @click="emitter.emit(BUS_EVENTS.INSERT_INTO_RICH_EDITOR, proposal)"
+        >
+          {{ t('VIARI.COMPOSER') }}
+        </button>
       </template>
-      <PartnerForm
-        v-if="tab === 'partner'"
-        :partners="partners"
-        :can="can"
-        @save="
-          (action, dados) =>
-            run(async () => {
-              await command(action, { dados });
-              await openTab('partner');
-            })
-        "
-      />
-    </fieldset>
+    </template>
+    <button type="button" class="text-start text-n-brand" @click="run(refresh)">
+      {{ t('VIARI.REFRESH') }}
+    </button>
+    <dialog
+      ref="linkingDialog"
+      class="fixed inset-0 z-50 rounded-xl border border-n-weak bg-n-background p-4"
+      :aria-label="t('VIARI.SEARCH')"
+      @cancel.prevent="linking = false"
+    >
+      <div class="flex flex-col gap-3">
+        <p v-if="candidates && !candidates.length" class="m-0">
+          {{ t('VIARI.NO_MATCH') }}
+        </p>
+        <button
+          v-for="candidate in can('cliente_vincular') ? candidates : []"
+          :key="candidate.id"
+          type="button"
+          class="text-start text-n-brand"
+          @click="run(signal => link(candidate, signal))"
+        >
+          {{ t('VIARI.LINK') }} · {{ candidate.nome }} ·
+          {{ candidate.telefone }}
+        </button>
+        <button type="button" @click="linking = false">
+          {{ t('VIARI.CLOSE') }}
+        </button>
+      </div>
+    </dialog>
+    <NativeModal
+      v-if="session"
+      :session="session"
+      @saved="savedNative"
+      @navigate="navigateNative"
+      @refresh="run(refresh)"
+      @close="closeNative"
+    />
   </section>
 </template>
