@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { copyTextToClipboard } from 'shared/helpers/clipboard';
 import { emitter } from 'shared/helpers/mitt';
 import { BUS_EVENTS } from 'shared/constants/busEvents';
 import { useAbortableRequest } from 'dashboard/composables/useAbortableRequest';
@@ -52,13 +53,6 @@ const error = ref('');
 const session = ref(null);
 const MODAL_REFRESH_INTERVAL = 15000;
 let refreshTimer;
-watch(session, value => {
-  clearInterval(refreshTimer);
-  if (value)
-    refreshTimer = setInterval(() => {
-      if (!request.isPending.value) run(refresh);
-    }, MODAL_REFRESH_INTERVAL);
-});
 onBeforeUnmount(() => clearInterval(refreshTimer));
 const candidates = ref(null);
 const linking = ref(false);
@@ -68,9 +62,18 @@ watch(linking, value => {
   else linkingDialog.value.close();
 });
 const proposal = ref('');
+const copiedProposal = ref(false);
+watch(
+  () => activeNegotiation.value?.id,
+  () => {
+    proposal.value = '';
+    copiedProposal.value = false;
+  }
+);
 const can = action => context.value?.acoes?.includes(action);
 const items = computed(() => activeNegotiation.value?.passeios || []);
 const totals = computed(() => activeNegotiation.value?.financeiro);
+const STAGE_SEPARATOR = '—';
 const pax = ['Adt', 'Chd', 'Inf', 'Sen', 'Free'];
 const money = value =>
   value == null
@@ -103,6 +106,7 @@ const command = (action, params, signal) =>
 function selectNegotiation(id) {
   selected.value = id;
   proposal.value = '';
+  copiedProposal.value = false;
   selectedReservation.value = relatedReservations.value[0]?.id || '';
   selectedQuote.value = relatedQuotes.value[0]?.id || '';
   selectedGroup.value =
@@ -176,7 +180,7 @@ async function openNative(destino, signal, target = null) {
     !result.channel
   ) {
     error.value = t('VIARI.NATIVE_UNAVAILABLE');
-    return;
+    return false;
   }
   session.value = result;
   return true;
@@ -239,6 +243,7 @@ async function link(customer, signal) {
 async function prepare(signal) {
   const orcamentoId = activeNegotiation.value.orcamentoIds[0];
   const response = await read('orcamento', { orcamentoId }, signal);
+  if (activeNegotiation.value?.orcamentoIds[0] !== orcamentoId) return;
   const quote = response.orcamento || response;
   const result = await command(
     'orcamento_enviar',
@@ -248,8 +253,29 @@ async function prepare(signal) {
     },
     signal
   );
+  if (activeNegotiation.value?.orcamentoIds[0] !== orcamentoId) return;
+  await refresh(signal);
+  if (activeNegotiation.value?.orcamentoIds[0] !== orcamentoId) return;
   proposal.value = result.textoWhatsapp || '';
+  copiedProposal.value = false;
 }
+async function copyProposal(signal) {
+  copiedProposal.value = false;
+  const orcamentoId = activeNegotiation.value.orcamentoIds[0];
+  const result = await read('orcamento_texto', { orcamentoId }, signal);
+  if (activeNegotiation.value?.orcamentoIds[0] !== orcamentoId) return;
+  proposal.value = result.textoWhatsapp;
+  await copyTextToClipboard(proposal.value);
+  if (activeNegotiation.value?.orcamentoIds[0] === orcamentoId)
+    copiedProposal.value = true;
+}
+watch(session, value => {
+  clearInterval(refreshTimer);
+  if (value)
+    refreshTimer = setInterval(() => {
+      if (!request.isPending.value) run(refresh);
+    }, MODAL_REFRESH_INTERVAL);
+});
 onMounted(() => run(refresh));
 </script>
 
@@ -340,7 +366,7 @@ onMounted(() => run(refresh));
           >
             {{ t('VIARI.QUOTE_STAGE') }}
           </button>
-          <span aria-hidden="true" class="i-lucide-chevron-right size-4" />
+          <span aria-hidden="true">{{ STAGE_SEPARATOR }}</span>
           <button
             type="button"
             :disabled="
@@ -352,7 +378,7 @@ onMounted(() => run(refresh));
           >
             {{ t('VIARI.ORDER') }}
           </button>
-          <span aria-hidden="true" class="i-lucide-chevron-right size-4" />
+          <span aria-hidden="true">{{ STAGE_SEPARATOR }}</span>
           <button
             type="button"
             :disabled="
@@ -422,7 +448,7 @@ onMounted(() => run(refresh));
               }}
             </p>
             <p class="m-0 text-xs text-n-slate-11">
-              {{ date(item.data) }}
+              {{ date(item.data) }} {{ item.horario || '' }}
             </p>
             <p class="m-0 text-xs">
               {{
@@ -432,31 +458,92 @@ onMounted(() => run(refresh));
                   )
                   .join(' · ')
               }}
+              <span class="ms-2">{{ t('VIARI.PAX') }} {{ item.totalPax }}</span>
             </p>
-            <p class="m-0 text-xs">
-              {{ t('VIARI.PAX') }}
-              {{ item.totalPax }}
+            <p v-if="item.status" class="m-0 text-xs">
+              {{
+                item.status === 'cancelada'
+                  ? t('VIARI.CANCELED_ACTIVITY')
+                  : item.status === 'noshow'
+                    ? t('VIARI.NO_SHOW_ACTIVITY')
+                    : item.status
+              }}
             </p>
-            <p class="m-0 text-end">
-              {{ item.horario || '' }}
+            <p
+              v-if="['cancelada', 'noshow'].includes(item.status)"
+              class="m-0 text-end font-medium"
+            >
+              {{ t('VIARI.RETENTION_FINANCIAL') }}
+              {{ money(item.valorFinanceiro) }}
             </p>
-            <p class="m-0 text-end font-medium">{{ money(item.valor) }}</p>
+            <p v-else-if="stage !== 'quote'" class="m-0 text-end font-medium">
+              {{ t('VIARI.CURRENT_AMOUNT') }} {{ money(item.valor) }}
+            </p>
+            <dl class="m-0 grid grid-cols-2 gap-1 text-xs">
+              <dt>
+                {{
+                  ['cancelada', 'noshow'].includes(item.status)
+                    ? t('VIARI.RECORDED_PIX')
+                    : t('VIARI.PIX_CASH')
+                }}
+              </dt>
+              <dd class="m-0 text-end">{{ money(item.valorPix) }}</dd>
+              <dt>
+                {{
+                  ['cancelada', 'noshow'].includes(item.status)
+                    ? t('VIARI.RECORDED_CARD')
+                    : t('VIARI.CARD_OTHER')
+                }}
+              </dt>
+              <dd class="m-0 text-end">{{ money(item.valorNormal) }}</dd>
+            </dl>
           </li>
         </ol>
         <dl class="m-0 grid grid-cols-2 gap-1 rounded-lg bg-n-alpha-2 p-2">
-          <dt>{{ t('VIARI.TOTAL') }}</dt>
-          <dd class="m-0 text-end">
-            {{ money(totals?.total) }}
-          </dd>
-          <dt>{{ t('VIARI.NORMAL_TOTAL') }}</dt>
+          <template v-if="stage !== 'quote' || totals?.condicao">
+            <dt>{{ t('VIARI.EFFECTIVE_TOTAL') }}</dt>
+            <dd class="m-0 text-end">{{ money(totals?.total) }}</dd>
+          </template>
+          <dt>
+            {{
+              stage === 'payment'
+                ? t('VIARI.RECORDED_CARD')
+                : t('VIARI.CARD_OTHER')
+            }}
+          </dt>
           <dd class="m-0 text-end">{{ money(totals?.totalNormal) }}</dd>
-          <dt>{{ t('VIARI.PIX_TOTAL') }}</dt>
+          <dt>
+            {{
+              stage === 'payment'
+                ? t('VIARI.RECORDED_PIX')
+                : t('VIARI.PIX_CASH')
+            }}
+          </dt>
           <dd class="m-0 text-end">{{ money(totals?.totalPix) }}</dd>
           <dt>{{ t('VIARI.TOTAL_PAID') }}</dt>
           <dd class="m-0 text-end">{{ money(totals?.pago) }}</dd>
           <dt>{{ t('VIARI.BALANCE') }}</dt>
           <dd class="m-0 text-end">{{ money(totals?.saldo) }}</dd>
         </dl>
+        <template v-if="stage === 'payment'">
+          <dl
+            class="m-0 grid grid-cols-2 gap-1 rounded-lg border border-n-weak p-2"
+          >
+            <dt>{{ t('VIARI.PIX_BALANCE') }}</dt>
+            <dd class="m-0 text-end">{{ money(totals?.saldoPix) }}</dd>
+            <dt>{{ t('VIARI.CARD_BALANCE') }}</dt>
+            <dd class="m-0 text-end">{{ money(totals?.saldoCartao) }}</dd>
+            <dt>{{ t('VIARI.APPLICABLE_PIX_TOTAL') }}</dt>
+            <dd class="m-0 text-end">{{ money(totals?.totalPixAplicavel) }}</dd>
+          </dl>
+          <p
+            v-if="totals?.condicao === 'normal'"
+            role="status"
+            class="m-0 text-xs"
+          >
+            {{ t('VIARI.NORMAL_APPLIED') }}
+          </p>
+        </template>
         <button
           type="button"
           class="text-start text-n-brand"
@@ -481,14 +568,30 @@ onMounted(() => run(refresh));
           v-if="
             stage === 'quote' &&
             negotiation.orcamentoIds.length &&
+            activeNegotiation?.status === 'rascunho' &&
             can('orcamento_enviar')
           "
           type="button"
           class="text-start text-n-brand"
           @click="run(prepare)"
         >
-          {{ t('VIARI.PREPARE') }}
+          {{ t('VIARI.MARK_PROPOSAL_SENT') }}
         </button>
+        <button
+          v-if="
+            stage === 'quote' &&
+            activeNegotiation?.orcamentoIds.length &&
+            can('orcamento_texto')
+          "
+          type="button"
+          class="text-start text-n-brand"
+          @click="run(copyProposal)"
+        >
+          {{ t('VIARI.COPY_PROPOSAL') }}
+        </button>
+        <p v-if="copiedProposal" role="status" class="m-0 text-xs">
+          {{ t('VIARI.PROPOSAL_COPIED') }}
+        </p>
         <button
           v-if="proposal"
           type="button"

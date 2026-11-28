@@ -59,6 +59,7 @@ onBeforeUnmount(() => window.removeEventListener('message', receive));
           :title="t('VIARI.NATIVE_TITLE')"
           sandbox="allow-scripts allow-same-origin allow-forms allow-downloads"
           referrerpolicy="no-referrer"
+          allow="clipboard-write"
           class="w-full flex-1 border-0"
         />
       </section>

@@ -148,6 +148,23 @@ RSpec.describe 'Conversation Viari native launch', type: :request do
     expect(response).to have_http_status(:ok)
   end
 
+  it 'reads proposal text for the bound customer without submitting a command' do
+    quote = SecureRandom.uuid
+    expect(client).not_to receive(:post)
+    expect(client).to receive(:get).with('orcamento_texto', 'clienteId' => customer, 'orcamentoId' => quote)
+                                  .and_return([200, { 'ok' => true, 'data' => { 'orcamentoId' => quote, 'status' => 'rascunho', 'textoWhatsapp' => 'Proposta para conferência' } }])
+    get path, params: { acao: 'orcamento_texto', orcamentoId: quote, clienteId: SecureRandom.uuid }, headers: headers
+    expect(response).to have_http_status(:ok)
+    expect(response.parsed_body.dig('data', 'textoWhatsapp')).to eq('Proposta para conferência')
+  end
+
+  it 'denies proposal text access before a customer is bound' do
+    Viari::ContactLink.where(contact_id: conversation.contact.id).delete_all
+    expect(client).not_to receive(:get).with('orcamento_texto', anything)
+    get path, params: { acao: 'orcamento_texto', orcamentoId: SecureRandom.uuid }, headers: headers
+    expect(response).to have_http_status(:conflict)
+  end
+
   it 'reads the summary using the persisted customer' do
     expect(client).to receive(:get).with('resumo_comercial', 'clienteId' => customer)
                                   .and_return([200, { 'ok' => true, 'data' => { 'cliente' => { 'id' => customer }, 'orcamentos' => [] } }])

@@ -141,6 +141,22 @@
     "OPEN_NATIVE": "Manage in Viari",
     "NORMAL_TOTAL": "Standard total",
     "PIX_TOTAL": "Pix total",
-    "NEW_ORDER": "New service order"
+    "NEW_ORDER": "New service order",
+    "COPY_PROPOSAL": "Copy proposal for customer",
+    "PROPOSAL_COPIED": "Proposal copied.",
+    "PIX_CASH": "Pix/cash",
+    "CARD_OTHER": "Card and other methods",
+    "PIX_BALANCE": "Remaining with Pix/cash",
+    "CARD_BALANCE": "Remaining with card and other methods",
+    "APPLICABLE_PIX_TOTAL": "Applicable Pix/cash total",
+    "NORMAL_APPLIED": "A payment has already applied the standard price. Paying the remainder with Pix does not reduce the price.",
+    "MARK_PROPOSAL_SENT": "Mark proposal as sent",
+    "CANCELED_ACTIVITY": "Canceled",
+    "NO_SHOW_ACTIVITY": "No-show",
+    "RETENTION_FINANCIAL": "Retention / financial amount",
+    "CURRENT_AMOUNT": "Effective amount",
+    "RECORDED_PIX": "Original Pix/cash price",
+    "RECORDED_CARD": "Original card/other price",
+    "EFFECTIVE_TOTAL": "Effective total"
   }
 }

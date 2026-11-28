@@ -56,6 +56,7 @@ describe('Viari native workspace', () => {
     expect(wrapper.emitted('close')).toHaveLength(1);
     expect(frame.getAttribute('sandbox')).not.toContain('allow-top-navigation');
     expect(frame.getAttribute('sandbox')).not.toContain('allow-popups');
+    expect(frame.getAttribute('allow')).toBe('clipboard-write');
     wrapper.unmount();
   });
 });

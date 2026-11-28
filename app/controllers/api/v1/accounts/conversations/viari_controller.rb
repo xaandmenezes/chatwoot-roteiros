@@ -7,7 +7,8 @@ class Api::V1::Accounts::Conversations::ViariController < Api::V1::Accounts::Con
   end
 
   READS = {
-    'resumo_comercial' => [], 'capacidades' => [], 'catalogo' => [], 'parceiros' => [:busca, :incluirInativos], 'cliente_detalhe' => [], 'orcamento' => [:orcamentoId],
+    'resumo_comercial' => [], 'capacidades' => [], 'catalogo' => [], 'parceiros' => [:busca, :incluirInativos],
+    'cliente_detalhe' => [], 'orcamento' => [:orcamentoId], 'orcamento_texto' => [:orcamentoId],
     'reserva_agendas_remarcacao' => [:reservaId], 'reserva' => [:reservaId], 'os' => [:grupoId], 'agendas' => [:produtoId, :dataInicio, :dataFim],
     'tarifas' => [:produtoId, :grupoTarifaId, :data]
   }.freeze

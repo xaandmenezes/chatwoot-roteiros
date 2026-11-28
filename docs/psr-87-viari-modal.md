@@ -33,3 +33,22 @@ A implementação e o estado de validação devem ser registrados nos PRs e na i
 Além dos requisitos da PSR-86 (origens Viari, chave de integração, usuário mapeado e segredo de assinatura), configurar no Viari `CHATWOOT_ORIGIN` com a origem exata do Chatwoot e `VIARI_PUBLIC_URL` com a origem pública do Viari. Ambas devem usar HTTPS na implantação; o modal depende de uma sessão normal do Viari no navegador. Preferir origens sob o mesmo site para que a sessão funcione dentro do iframe, sem enfraquecer os atributos dos cookies. A origem deve ser autorizada pelo proxy de produção também, se este aplicar cabeçalhos de framing adicionais. O ticket de lançamento de curta validade vincula o operador, a empresa e a tela solicitada; não concede autenticação. O login do Viari continua obrigatório quando não há sessão válida.
 
 O Rails valida o vínculo antes de emitir consultas ou pedidos de abertura; o Viari valida escopo e permissões no lançamento. A UI não deve usar mensagens do iframe como fonte de valores; busca novamente `resumo_comercial`. O orçamento sem lançamento financeiro ainda não tem saldo/pago efetivos, exibidos como indisponíveis até existir OS ou reserva.
+
+## Revisão de paridade comercial — 28/11/2026
+
+A revisão conferiu o head da `main` Viari `b7231fb6`, ancestral do PR #12 (sem commits de atraso), e as interfaces nativas de orçamento, OS, reserva e pagamento. Paridade do núcleo financeiro não significa paridade integral da experiência incorporada.
+
+### Regras e correções
+
+- Pix e dinheiro usam condição promocional; crédito, débito, boleto e transferência usam a condição normal. Um pagamento aprovado de método normal altera a condição da OS inteira, inclusive o saldo a receber posteriormente por Pix. Estorno/edição recalculam a condição conforme os pagamentos aprovados. A interface recebe `saldoPix`, `saldoCartao`, `totalPixAplicavel` e `condicao` do mesmo helper `calcularSaldosPorForma` do Viari; não recalcula no Vue.
+- O resumo exibe os preços persistidos normal/Pix por passeio e evidencia retenção financeira em cancelamento/no-show. A composição da OS inclui os registros históricos considerados pelas consultas/previa financeira nativas, mantendo a lista de passeios visíveis separada.
+- Copiar proposta usa a leitura `orcamento_texto` com cliente derivado do vínculo e o formatador oficial de WhatsApp, sem criar token, registrar envio ou alterar status. Marcar como enviada é uma ação separada. O compositor permanece opcional; nenhuma mensagem é enviada automaticamente.
+- Rótulos compactos em português: Orçamento — OS — Pagamento. O iframe delega clipboard-write; o Viari tem retorno visível e prévia selecionável quando copiar falha.
+
+### Pontos ainda não homologados ou sem paridade
+
+- PDF da proposta e voucher: links nativos ainda não têm destino incorporado dedicado; a navegação restrita do modal os bloqueia. Impressão de recibo usa diálogo do navegador, não disponível de forma garantida no iframe.
+- O pagamento de reserva avulsa abre o detalhe da reserva (o formulário deve ser aberto ali); a OS abre diretamente na etapa financeira. Retorno/listagem nativa de alguns fluxos, histórico de navegação e filtros de parceiros ainda não têm equivalência integral no modal.
+- O lançamento confere conta, cliente e ator; as mutações nativas usam a sessão e permissões ordinárias do Viari, não uma sessão nova limitada a um único cliente. Validar o escopo operacional desejado antes da ativação.
+- O guard de origem de orçamento convertido aplica-se às chamadas da API de atendimento assinada; a interface nativa incorporada usa sessão normal, preservando as regras de reserva/OS direta. Não remover a proteção legada inadvertidamente.
+- Homologar com banco e navegador os fluxos de venda, descontos/pacote, pagamentos mistos, alteração, cancelamento, estorno, e isolamento entre contas. Não houve operação em produção.
