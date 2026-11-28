@@ -47,18 +47,22 @@ const save = async inbox => {
 </script>
 
 <template>
-  <fieldset v-show="inboxes.length" class="mt-4 border-t border-n-weak pt-4">
-    <legend class="text-sm font-semibold text-n-slate-12">
+  <fieldset v-show="inboxes.length" class="mb-4 min-w-0 space-y-3">
+    <legend class="mb-2 text-sm font-semibold text-n-slate-12">
       {{ t('AGENT_MGMT.INBOX_ACCESS.TITLE') }}
     </legend>
     <div
       v-for="inbox in inboxes"
       :key="inbox.id"
-      class="flex items-end gap-2 pb-2"
+      class="flex flex-wrap items-end gap-2"
     >
-      <label class="mb-0 flex-1">
+      <label class="min-w-0 basis-full break-words sm:flex-1">
         {{ inbox.name }}
-        <select v-model="levels[inbox.id]" :disabled="savingInbox !== null">
+        <select
+          v-model="levels[inbox.id]"
+          class="mb-0"
+          :disabled="savingInbox !== null"
+        >
           <option value="none">{{ t('AGENT_MGMT.INBOX_ACCESS.NONE') }}</option>
           <option value="agent">
             {{ t('AGENT_MGMT.INBOX_ACCESS.AGENT') }}
@@ -70,7 +74,7 @@ const save = async inbox => {
       </label>
       <Button
         type="button"
-        sm
+        faded
         slate
         :label="t('AGENT_MGMT.INBOX_ACCESS.SAVE')"
         :disabled="

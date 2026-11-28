@@ -205,19 +205,21 @@ const resetPassword = async () => {
         </label>
       </div>
 
-      <div class="flex flex-row justify-start w-full gap-2 px-0 py-2">
-        <div class="w-[50%] ltr:text-left rtl:text-right">
-          <Button
-            v-if="provider !== 'saml'"
-            ghost
-            type="button"
-            icon="i-lucide-lock-keyhole"
-            class="!px-2"
-            :label="$t('AGENT_MGMT.EDIT.PASSWORD_RESET.ADMIN_RESET_BUTTON')"
-            @click.prevent="resetPassword"
-          />
-        </div>
-        <div class="w-[50%] flex justify-end items-center gap-2">
+      <AgentInboxAccess :key="id" :agent-id="id" />
+
+      <div
+        class="flex flex-wrap items-center gap-2 border-t border-n-weak pt-4"
+      >
+        <Button
+          v-if="provider !== 'saml'"
+          ghost
+          type="button"
+          icon="i-lucide-lock-keyhole"
+          class="!px-2"
+          :label="$t('AGENT_MGMT.EDIT.PASSWORD_RESET.ADMIN_RESET_BUTTON')"
+          @click.prevent="resetPassword"
+        />
+        <div class="ms-auto flex flex-wrap justify-end gap-2">
           <Button
             faded
             slate
@@ -234,6 +236,5 @@ const resetPassword = async () => {
         </div>
       </div>
     </form>
-    <AgentInboxAccess :key="id" :agent-id="id" />
   </div>
 </template>
